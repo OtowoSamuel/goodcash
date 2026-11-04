@@ -1,0 +1,19 @@
+{
+  "name": "goodcash",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace apps/web run dev",
+    "build": "npm --workspace apps/web run build",
+    "test": "npm --workspace apps/web run test",
+    "lint": "npm --workspace apps/web run lint",
+    "typecheck": "npm --workspace apps/web run typecheck",
+    "contracts:test": "cd packages/contracts && forge test",
+    "contracts:build": "cd packages/contracts && forge build"
+  }
+}
