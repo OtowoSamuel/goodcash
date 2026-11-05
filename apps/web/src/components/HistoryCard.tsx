@@ -126,7 +126,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
 
       {/* History List */}
       {filteredHistory.length === 0 ? (
-        <div className="gc-card border-dashed border-[2.5px] border-[#111] shadow-none bg-transparent">
+        <div className="border-[2.5px] border-dashed border-[#111] rounded-2xl p-6 text-left">
           <div className="text-xs font-semibold text-[#111]">
             Empty state: "{t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.'}"
           </div>
