@@ -95,8 +95,8 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
   });
 
   return (
-    <div className="gc-card">
-      {/* Header & Filter Pills Row */}
+    <>
+      {/* Header & Filter Pills Row — sits directly on page background */}
       <div className="flex justify-between items-center gap-2">
         <span className="text-xl font-bold text-[#111]">{t.navHistory}</span>
         <div className="flex gap-1.5">
@@ -142,7 +142,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
             return (
               <div key={item.id} className="gc-card">
                 {/* Top Row: Conversion text left, Status pill right */}
-                <div className="flex justify-between items-center gap-2">
+                <div className="flex justify-between items-start gap-2">
                   <div>
                     <div className="gc-big gc-big--history text-[#111]">
                       {item.amountInG.toLocaleString()} G$ →{' '}
@@ -161,12 +161,12 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                   </span>
                 </div>
 
-                {/* Bottom: Receipt link under conversion text */}
+                {/* Bottom: Receipt link under conversion text — black text */}
                 <a
                   href={`https://celo.blockscout.com/tx/${item.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs font-mono text-[#8B5CF6] mt-8 gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+                  className="text-xs font-mono text-[#111] mt-8 gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
                 >
                   {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
                 </a>
@@ -175,6 +175,6 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
           })}
         </div>
       )}
-    </div>
+    </>
   );
 };
