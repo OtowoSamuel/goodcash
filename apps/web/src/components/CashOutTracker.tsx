@@ -229,7 +229,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
   // Poll status on load and on an interval regardless of tapping "I've sent it"
   useEffect(() => {
-    if (localOrder.status === 'settled' || activeFailure) return;
+    if (localOrder.status === 'settled' || localOrder.status === 'refunded' || localOrder.status === 'error' || activeFailure) return;
 
     // Check on load
     pollOnce().catch(() => {});
@@ -294,7 +294,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   const bankReference = localOrder.paymentReference || `PAY-NGN-${txHash.slice(2, 8).toUpperCase()}`;
 
   return (
-    <div className="w-full max-w-xl mx-auto rounded-3xl border border-[#2D204A] bg-[#120D1D]/95 p-6 sm:p-8 shadow-2xl backdrop-blur-md text-white animate-fade-in relative">
+    <div className="w-full max-w-xl mx-auto rounded-3xl border border-[#2D204A] bg-[#120D1D]/95 p-6 sm:p-8 shadow-2xl backdrop-blur-md text-white animate-fade-in relative" aria-live="polite">
       {/* Top of the Screen: Headline & Subtitle */}
       <div className="text-center mb-6">
         <div className="text-3xl sm:text-4xl font-extrabold font-manrope text-white tracking-tight">
