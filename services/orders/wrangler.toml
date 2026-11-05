@@ -1,0 +1,26 @@
+name = "goodcash-orders"
+main = "src/index.ts"
+compatibility_date = "2026-11-04"
+compatibility_flags = ["nodejs_compat"]
+
+# KV namespace binding — set up "ORDER_STORE" in CF dashboard
+# or via `wrangler kv:namespace create ORDER_STORE`
+# and replace <KV_NAMESPACE_ID> with the real ID before deploy
+[[kv_namespaces]]
+binding = "ORDER_STORE"
+id = "<KV_NAMESPACE_ID>"
+
+# Secrets — set via `wrangler secret put PAYCREST_API_KEY` etc.
+# Never put real values in this file.
+[vars]
+# Production-only origins. Dev origins live in [env.development.vars] so they
+# are never shipped to production.
+PAYCREST_BASE_URL = "https://api.paycrest.io"
+CELO_RPC_URL = "https://forno.celo.org"
+VERIFY_SWAP_ONCHAIN = "true"
+RATE_LIMIT_MAX = "30"
+RATE_LIMIT_WINDOW_SECONDS = "60"
+ALLOWED_ORIGINS = "https://goodcash.app,https://www.goodcash.app,https://goodcash.pages.dev"
+
+[env.development.vars]
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.app,https://www.goodcash.app,https://goodcash.pages.dev"
