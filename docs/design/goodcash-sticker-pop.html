@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoodCash Sticker Pop, all screens</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f5fa;--card:#fff;--ink:#1a1530;--mute:#6b6585;--line:#e4e1ee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14101f;--card:#1e182f;--ink:#f1eefb;--mute:#a49fbd;--line:#322b49}}
+:root[data-theme="dark"]{--bg:#14101f;--card:#1e182f;--ink:#f1eefb;--mute:#a49fbd;--line:#322b49}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 Inter,system-ui,sans-serif}
+.w{max-width:1100px;margin:0 auto;padding:24px 16px 56px}
+h1{font:800 26px 'Bricolage Grotesque',sans-serif;margin:0}h2{font:800 17px 'Bricolage Grotesque',sans-serif;margin:30px 0 8px}
+p{color:var(--mute);font-size:14px;margin:6px 0}
+.scroll{display:flex;gap:22px;overflow-x:auto;padding:18px 4px 12px}
+.cap{font:700 12px Inter;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);margin:0 0 8px}
+.tbl{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 14px;overflow-x:auto}
+.tbl div{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}.tbl div:last-child{border:0}
+.tbl b{min-width:130px}.tbl span{color:var(--mute)}
+/* product: Sticker Pop */
+.ph{--ink:#111;--pu:#7b39fc;--ye:#ffd23f;--mi:#8cf0c0;flex:none;width:272px;height:560px;border-radius:32px;border:7px solid #0d0a16;background:#cdb8ff;color:#111;font-family:'Bricolage Grotesque',sans-serif;display:flex;flex-direction:column;padding:14px 14px 12px;gap:10px;overflow:hidden;position:relative}
+.top{display:flex;justify-content:space-between;align-items:center}
+.logo{font:800 20px 'Bricolage Grotesque'}
+.chip{font:600 11px Inter;background:#fff;border:2.5px solid #111;border-radius:99px;padding:4px 10px;box-shadow:3px 3px 0 #111}
+.back{width:34px;height:34px;border-radius:12px;background:#fff;border:2.5px solid #111;box-shadow:3px 3px 0 #111;display:flex;align-items:center;justify-content:center;font:800 16px Inter}
+.title{font:800 20px 'Bricolage Grotesque'}
+.card{background:#fff;border:2.5px solid #111;border-radius:18px;box-shadow:5px 5px 0 #111;padding:12px 14px;position:relative}
+.lab{font:700 10.5px 'Bricolage Grotesque';text-transform:uppercase;letter-spacing:.04em}
+.big{font:800 42px/1 'Bricolage Grotesque';font-variant-numeric:tabular-nums;margin-top:2px}
+.sm{font-size:12.5px;font-weight:600}
+.coin{position:absolute;right:12px;top:12px;width:42px;height:42px;border-radius:50%;background:var(--ye);border:2.5px solid #111;display:flex;align-items:center;justify-content:center;font:800 13px 'Bricolage Grotesque';transform:rotate(12deg);box-shadow:2px 2px 0 #111}
+.bar{height:18px;border:2.5px solid #111;border-radius:99px;background:#fff;overflow:hidden;margin:9px 0 5px}.bar i{display:block;width:29%;height:100%;background:var(--pu)}
+.sticker{position:absolute;right:-5px;bottom:-11px;background:var(--ye);border:2.5px solid #111;border-radius:10px;padding:1px 8px;font:800 12px 'Bricolage Grotesque';transform:rotate(-5deg)}
+.sp{flex:1}
+.btn{height:52px;flex:none;border-radius:16px;background:var(--pu);color:#fff;border:2.5px solid #111;box-shadow:5px 5px 0 #111;font:800 15px 'Bricolage Grotesque';display:flex;align-items:center;justify-content:center}
+.btn.dis{background:#e9e3f7;color:#6b5f8a;box-shadow:none}
+.btn.w2{background:#fff;color:#111}
+.nav{display:flex;gap:6px;background:#fff;border:2.5px solid #111;border-radius:16px;padding:4px;flex:none}
+.nav span{flex:1;text-align:center;font:800 11px 'Bricolage Grotesque';padding:6px 0;border-radius:11px}.nav .on{background:var(--pu);color:#fff}
+.pill{font:800 12px 'Bricolage Grotesque';background:#ede6ff;border:2px solid #111;border-radius:99px;padding:3px 9px}
+.row{display:flex;justify-content:space-between;align-items:center}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);text-align:center;font:800 18px 'Bricolage Grotesque';row-gap:6px;flex:none}
+.cost .row{padding:6px 0;font-size:12px;font-weight:600;border-bottom:2px dashed #cfc3ee}.cost .row:last-child{border:0}
+.mark{background:var(--ye);padding:0 4px;border-radius:5px}
+.note{background:#fff;border:2.5px solid #111;border-radius:14px;padding:8px 10px;font-size:11.5px;font-weight:600}
+.tl{display:flex;gap:10px}.tl .n{display:flex;flex-direction:column;align-items:center}
+.dot{width:16px;height:16px;border-radius:50%;border:2.5px solid #111;background:#fff;flex:none}.dot.d{background:var(--pu)}.dot.c{background:var(--ye)}
+.ln{width:3px;flex:1;background:#111;margin:2px 0}
+.tl b{font:800 13px 'Bricolage Grotesque'}.tl p{margin:0 0 10px;font-size:11.5px;color:#333;font-weight:600}
+.hero{height:200px;margin:-14px -14px 0;background:var(--pu);border-bottom:2.5px solid #111;position:relative}
+.c1{position:absolute;border-radius:50%;background:var(--ye);border:2.5px solid #111;box-shadow:3px 3px 0 #111}
+.ok{width:48px;height:48px;border-radius:50%;background:var(--mi);border:2.5px solid #111;display:flex;align-items:center;justify-content:center;font:800 24px Inter;margin:-38px auto 8px;box-shadow:3px 3px 0 #111}
+</style>
+</head>
+<body>
+<div class="w">
+<h1>GoodCash, Sticker Pop (cleaned up)</h1>
+<p>Direction C on all five screens. To get B’s cleanliness, there is one sticker per screen, one accent color per job, big calm numbers, and plain white cards. Sample numbers (₦1,372 per USD).</p>
+<div class="scroll">
+
+<div><p class="cap">1 Home</p><div class="ph">
+<div class="top"><span class="logo">GoodCash</span><span class="chip">0xafDe…8cb6</span></div>
+<div class="card" style="margin-top:6px"><div class="coin">G$</div><div class="lab">Your balance</div><div class="big">1,297.5</div><div class="sm">about ₦203 after fees</div><div class="bar"><i></i></div><div class="sm">3,177 G$ to go</div><div class="sticker">29%</div></div>
+<div class="card" style="margin-top:6px"><div class="lab">First payout</div><div class="sm" style="margin-top:2px">Minimum cash out is about ₦690.</div></div>
+<div class="card row"><div><div class="lab">Last cash out</div><div class="sm">1,000 G$ → ₦156</div></div><span class="sm">4 Nov ›</span></div>
+<div class="sp"></div><div class="btn dis">Cash out opens at 4,474 G$</div>
+<div class="nav"><span class="on">Home</span><span>Cash out</span><span>History</span></div></div></div>
+
+<div><p class="cap">2 Cash out</p><div class="ph">
+<div class="top"><span class="back">✕</span><span class="title">Cash out</span><span style="width:34px"></span></div>
+<div class="card"><div class="row"><span class="lab">You give</span><span class="pill">MAX 1,420</span></div><div class="row"><div class="big">1,000</div><span class="pill" style="background:var(--ye)">G$</span></div></div>
+<div class="card" style="background:var(--mi)"><div class="lab">You receive about</div><div class="row"><div class="big">₦164</div><span class="pill" style="background:#fff">NGN</span></div><div class="sm">at least 0.1129 USDT</div></div>
+<div class="keys"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>.</span><span>0</span><span>⌫</span></div>
+<div class="sp"></div><div class="btn">Review</div></div></div>
+
+<div><p class="cap">3 Review</p><div class="ph">
+<div class="top"><span class="back">‹</span><span class="title">Review</span><span style="width:34px"></span></div>
+<div class="card"><div class="lab">You get about</div><div class="big">₦164</div><div class="sm">for 1,000 G$ · at least 0.1129 USDT</div></div>
+<div class="card row"><div><div class="lab">Paid to</div><div class="sm">Your bank account</div></div><span class="pill">Add ›</span></div>
+<div class="card cost"><div class="row"><span>GoodDollar contribution (10%)</span><span class="mark">−100 G$</span></div><div class="row"><span>Network fee</span><span>under $0.001</span></div><div class="row"><span>Price protection</span><span>1%</span></div></div>
+<div class="note">Quote refreshes in 18s. Arrival time depends on the payout partner.</div>
+<div class="sp"></div><div class="btn">Confirm cash out</div></div></div>
+
+<div><p class="cap">4 Status</p><div class="ph">
+<div class="top"><span class="back">✕</span><span class="title"></span><span style="width:34px"></span></div>
+<div><div class="title" style="font-size:26px">On its way</div><p style="color:#222;font-weight:600;margin:2px 0 6px;font-size:12.5px">We’ll update this page as each step finishes.</p></div>
+<div class="card"><div class="tl"><div class="n"><i class="dot d"></i><i class="ln"></i></div><div><b>Swapped to USDT</b><p>Done · 1,000 G$ → 0.1129 USDT</p></div></div>
+<div class="tl"><div class="n"><i class="dot c"></i><i class="ln" style="background:#cfc3ee"></i></div><div><b>Sent to payout partner</b><p>In progress</p></div></div>
+<div class="tl"><div class="n"><i class="dot"></i></div><div><b>Naira in your bank</b><p style="margin:0">Waiting</p></div></div></div>
+<div class="card cost"><div class="lab" style="margin-bottom:2px">Details</div><div class="row"><span>You gave</span><span>1,000 G$</span></div><div class="row"><span>You get about</span><span>₦164</span></div><div class="row"><span>Receipt</span><span>0x1f73…e705 ↗</span></div></div>
+<div class="sp"></div><div class="btn w2">Back to home</div></div></div>
+
+<div><p class="cap">5 Success</p><div class="ph">
+<div class="hero"><i class="c1" style="width:62px;height:62px;left:100px;top:60px"></i><i class="c1" style="width:40px;height:40px;left:160px;top:112px"></i><i class="c1" style="width:28px;height:28px;left:62px;top:116px"></i></div>
+<div class="card" style="text-align:center;margin-top:-6px"><div class="ok">✓</div><div class="lab">Cash out complete</div><div class="big" style="font-size:38px">₦164</div><div class="sm">on its way to your bank</div></div>
+<div class="sp"></div><div class="btn">Close</div><div class="btn w2">View transaction</div></div></div>
+
+</div>
+
+<h2>Rules that keep it clean</h2>
+<div class="tbl">
+<div><b>Color jobs</b><span>Purple = main action and progress. Yellow = sticker, coin and cost highlight. Mint = money you receive and success. Nothing else.</span></div>
+<div><b>One sticker</b><span>At most one tilted element per screen (the coin or the badge). Everything else sits straight.</span></div>
+<div><b>Outlines</b><span>2.5px black on cards, buttons and chips. Hard shadow 5px on cards and buttons, 3px on small chips.</span></div>
+<div><b>Surfaces</b><span>Lilac #cdb8ff background, plain white cards. No gradients or glow.</span></div>
+<div><b>Type</b><span>Bricolage Grotesque 800 for numbers and titles, 600 for body. Numbers use tabular figures. Addresses and receipts can use Inter.</span></div>
+<div><b>Buttons</b><span>52 to 54px, 16px radius, purple with white text. Disabled is pale lilac with no shadow and says why.</span></div>
+</div>
+</div>
+</body>
+</html>
