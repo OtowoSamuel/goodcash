@@ -865,25 +865,15 @@ export function App({
             <span className="font-bold text-[#111] text-xl">GoodCash</span>
           </div>
           <div className="flex items-center gap-2">
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as Language)}
-              className="text-xs text-[#111] border-none bg-transparent outline-none font-bold cursor-pointer"
-            >
-              <option value="en">EN</option>
-              <option value="pcm">PCM</option>
-              <option value="ha">HA</option>
-              <option value="yo">YO</option>
-              <option value="ig">IG</option>
-            </select>
-            <div className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-xs">
+            <span className="font-bold text-sm">EN ⌄</span>
+            <button className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-sm">
               {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
-            </div>
+            </button>
           </div>
         </div>
 
         {/* Mobile Content */}
-        <div className="flex-1 overflow-y-auto px-4">
+        <div className="flex flex-col gap-4 px-4">
           {mobileView === 'cashout' ? (
             <CashOutCard balanceG={balanceG} onInitiateCashOut={handleInitiateCashOut} language={language} />
           ) : mobileView === 'review' ? (
@@ -914,25 +904,25 @@ export function App({
         </div>
 
         {/* Bottom Navigation */}
-        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] bg-white border-2 border-[#111] rounded-full p-1 flex justify-between shadow-[4px_4px_0px_#111] z-50">
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] bg-white border-2 border-[#111] rounded-full p-2 flex justify-between items-center shadow-[4px_4px_0px_#111] z-50 md:hidden">
           <button
             type="button"
             onClick={() => setMobileView('home')}
-            className={`flex flex-col items-center gap-1 text-xs ${mobileView === 'home' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+            className="bg-[#7b39fc] text-white rounded-full px-6 py-2 font-bold"
           >
             Home
           </button>
           <button
             type="button"
-            onClick={() => setMobileView('cashout')}
-            className={`flex flex-col items-center gap-1 text-xs ${mobileView === 'cashout' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+            onClick={() => setCurrentTab('cashout')}
+            className="px-4 py-2 font-bold text-[#111]"
           >
             Cash out
           </button>
           <button
             type="button"
             onClick={() => setCurrentTab('history')}
-            className={`flex flex-col items-center gap-1 text-xs ${currentTab === 'history' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+            className="px-4 py-2 font-bold text-[#111]"
           >
             History
           </button>
