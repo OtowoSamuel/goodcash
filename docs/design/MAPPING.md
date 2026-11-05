@@ -102,7 +102,7 @@ postcss.config.js are NOT edited.
 
 | Design screen | Left column | Right panel | Notes |
 |---|---|---|---|
-| Desktop Home | ReadinessCard + ClaimCard + Last Cash Out row + main button | HOW IT WORKS, WHAT IT COSTS, STAY SAFE (three cards) | Balance big num = 52px desktop |
+| Desktop Home | ReadinessCard + ClaimCard + main button (no Last cash out card on desktop) | HOW IT WORKS, WHAT IT COSTS, STAY SAFE (three cards) | Balance big num = 52px desktop |
 | Desktop Cash out | CashOutCard (typed input, % chips) | WHAT YOU'LL PAY, ROUTE, GOOD TO KNOW | Review/Status/Success open inside same 420px column |
 | Desktop History | HistoryCard with filter pills + order cards + totals/status-means cards below | YOUR TOTALS, WHAT STATUSES MEAN, RECEIPTS | Same cards used on mobile but placed in right panel on desktop |
 
