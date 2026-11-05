@@ -4,6 +4,7 @@ import { SafetyBanner } from './components/SafetyBanner';
 import { ReadinessCard } from './components/ReadinessCard';
 import { ClaimCard } from './components/ClaimCard';
 import { CashOutCard } from './components/CashOutCard';
+import { MobileCashOut } from './components/MobileCashOut';
 import { ConfirmModal } from './components/ConfirmModal';
 import { CashOutTracker } from './components/CashOutTracker';
 import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
@@ -81,7 +82,6 @@ export function App({
   const [miniPayBlocked, setMiniPayBlocked] = useState<boolean>(() => detectMiniPay());
   const [walletAddress, setWalletAddress] = useState<string | null>(initialWalletAddress);
   const [swapError, setSwapError] = useState<string | null>(null);
-  // When swap succeeds but order creation fails, stash the result for retry
   const [pendingSwapResult, setPendingSwapResult] = useState<{
     txHash: string;
     usdtReceived: number;
@@ -97,13 +97,11 @@ export function App({
     return cached ? Number(cached) : Date.now();
   });
 
-  // History
   const [history, setHistory] = useState<SwapHistoryItem[]>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_history') : null;
     return cached ? JSON.parse(cached) : INITIAL_HISTORY;
   });
 
-  // Modal & Success states
   const [pendingQuote, setPendingQuote] = useState<{
     quote: QuoteResult;
     amountG: number;
@@ -146,16 +144,15 @@ export function App({
     return null;
   });
 
-  // Privacy note toggle (desktop + mobile footer link)
   const [showPrivacy, setShowPrivacy] = useState(false);
 
   // Debug view toggle for mobile testing
-  const [mobileView, setMobileView] = useState<'home' | 'cashout' | 'claim' | 'history' | 'offramp' | 'review' | 'processing' | 'success'>('home');
+  const [mobileView, setMobileView] = useState<
+    'home' | 'cashout' | 'claim' | 'history' | 'offramp' | 'review' | 'processing' | 'success'
+  >('home');
 
-  // Active translations shortcut
   const t = getTranslations(language);
 
-  // Sync active tracker to localStorage: store ONLY orderId and txHash (zero bank details)
   useEffect(() => {
     if (typeof localStorage !== 'undefined') {
       if (trackerData && (trackerData.orderId || trackerData.txHash)) {
@@ -172,7 +169,6 @@ export function App({
     }
   }, [trackerData]);
 
-  // Sync to localStorage
   useEffect(() => {
     setMiniPayBlocked(detectMiniPay());
   }, []);
@@ -228,7 +224,6 @@ export function App({
     }
   }, [balanceG, currentTab, walletAddress]);
 
-  // UBI Claim handler
   const handleClaimSuccess = (claimedG: number) => {
     setBalanceG((prev) => prev + claimedG);
     emitAnalyticsEvent('claim_confirmed', {
@@ -237,7 +232,6 @@ export function App({
     });
   };
 
-  // Initiate Cash Out review modal
   const handleInitiateCashOut = (
     quote: QuoteResult,
     amountG: number,
@@ -270,7 +264,6 @@ export function App({
     });
   };
 
-  // Real router execution and Paycrest order creation
   const handleConfirmSwap = async () => {
     if (!pendingQuote) return;
     if (!walletAddress) {
@@ -289,7 +282,6 @@ export function App({
     });
 
     try {
-      // 1. Send router transaction, wait for receipt, parse CashOut event log
       const swapResult = await executeRouterSwap({
         amountG,
         quote,
@@ -301,12 +293,9 @@ export function App({
       const realUsdtReceived = swapResult.usdtReceived;
       const realTxHash = swapResult.txHash;
 
-      // Receipt confirmed: persist the payout handoff before calling Paycrest.
-      // Only the swap identity is stored; bank details always stay in memory.
       savePendingPayout({ txHash: realTxHash, usdtReceived: realUsdtReceived });
       setPendingSwapResult({ txHash: realTxHash, usdtReceived: realUsdtReceived, amountG });
 
-      // 2. Try to create Paycrest order using the REAL USDT amount from the log
       let order: OffRampOrder;
       try {
         order = await createPaycrestOrder({
@@ -322,18 +311,15 @@ export function App({
           },
         });
       } catch (orderErr: unknown) {
-        // Swap succeeded but order creation failed — keep the persisted record for retry
         setPendingSwapResult({ txHash: realTxHash, usdtReceived: realUsdtReceived, amountG });
         const orderMsg = orderErr instanceof Error ? orderErr.message : 'Order creation failed';
         setSwapError(`Swap confirmed (${realTxHash.slice(0, 10)}…) but payout order failed: ${orderMsg}`);
-        return; // Do NOT re-throw — modal stays open with retry
+        return;
       }
 
-      // Order created: clear the pending-payout handoff
       clearPendingPayout();
       setPendingSwapResult(null);
 
-      // 3. Update balances and history
       setBalanceG((prev) => Math.max(0, prev - amountG));
 
       const newHistoryItem: SwapHistoryItem = {
@@ -370,7 +356,6 @@ export function App({
         })
       );
 
-      // 4. Open tracker screen with the created Paycrest order
       setTrackerData({
         txHash: realTxHash,
         usdtReceived: realUsdtReceived,
@@ -387,12 +372,10 @@ export function App({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Swap transaction failed';
       setSwapError(msg);
-      // Swap itself failed — strictly do NOT create Paycrest order, do NOT set trackerData
       throw err;
     }
   };
 
-  // Retry payout: reuse the confirmed swap result without re-swapping
   const handleRetryPayout = async () => {
     if (!pendingSwapResult || !pendingQuote) return;
     if (!walletAddress) {
@@ -415,7 +398,6 @@ export function App({
         },
       });
 
-      // Success! Update balance, history, tracker
       const amountGSwapped = pendingSwapResult.amountG ?? 0;
       if (amountGSwapped > 0) {
         setBalanceG((prev) => Math.max(0, prev - amountGSwapped));
@@ -456,8 +438,6 @@ export function App({
     }
   };
 
-  // After a reload, the swap is already confirmed. The user re-enters bank
-  // details here; they are used for this request only and never persisted.
   const handleFinishPendingPayout = async (
     bankCode: string,
     bankName: string,
@@ -539,7 +519,6 @@ export function App({
     <div className="gc">
       {/* ── Desktop Layout ── */}
       <div className="hidden md:flex flex-col h-full">
-      {/* ── Top Navbar (Desktop bar-top + Mobile top row + Mobile bottom nav) ── */}
       <Navbar
         currentTab={currentTab}
         onSelectTab={(tab) => {
@@ -555,14 +534,11 @@ export function App({
         isDemoMode={isDemoMode}
       />
 
-      {/* ── Main Responsive Content Area ── */}
       <main className="gc-main">
-        {/* Mobile Safety Banner */}
         <div className="gc-mobile-only" style={{ width: '100%', maxWidth: '420px', margin: '0 auto' }}>
           <SafetyBanner language={language} />
         </div>
 
-        {/* Primary Screen Column (Mobile full / Desktop 420px) */}
         <div className="gc-col">
           {trackerData ? (
             <CashOutTracker
@@ -621,7 +597,6 @@ export function App({
           ) : null}
         </div>
 
-        {/* Right Info Panel (Desktop only: 340px) */}
         <aside className="gc-side">
           {currentTab === 'home' && (
             <>
@@ -756,7 +731,6 @@ export function App({
         </aside>
       </main>
 
-      {/* Privacy toggle link */}
       <button
         type="button"
         onClick={() => setShowPrivacy((v) => !v)}
@@ -765,7 +739,6 @@ export function App({
         Privacy
       </button>
 
-      {/* Privacy Note / Modal (toggled by Privacy link on desktop and mobile) */}
       {showPrivacy && (
         <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto 10px', padding: '0 14px' }}>
           <div
@@ -801,7 +774,6 @@ export function App({
         </div>
       )}
 
-      {/* Confirmation Modal */}
       {pendingQuote && (
         <ConfirmModal
           isOpen={true}
@@ -822,7 +794,6 @@ export function App({
         />
       )}
 
-      {/* ── Global Footer Bar (all breakpoints) ── */}
       <footer className="flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4">
         <span className="font-semibold text-[#111]">{t.footerText}</span>
         <div className="flex items-center gap-4">
@@ -859,74 +830,97 @@ export function App({
 
       {/* ── Mobile Shell ── */}
       <div className="flex flex-col md:hidden w-full min-h-screen bg-[#d4c5fb] pb-24 relative">
-        {/* Mobile Header */}
-        <div className="flex justify-between items-center px-4 pt-6 pb-4">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[#111] text-xl">GoodCash</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm">EN ⌄</span>
-            <button className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-sm">
-              {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Content */}
-        <div className="flex flex-col gap-4 px-4">
-          {mobileView === 'cashout' ? (
-            <CashOutCard balanceG={balanceG} onInitiateCashOut={handleInitiateCashOut} language={language} />
-          ) : mobileView === 'review' ? (
-            <ClaimCard isVerified={true} entitlementG={123.48} onClaimSuccess={handleClaimSuccess} language={language} />
-          ) : mobileView === 'processing' ? (
-            <div className="flex-1 flex flex-col items-center justify-center py-10">
-              <div className="w-12 h-12 border-2 border-[#111] rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-[#111] font-bold text-sm">Processing payment...</p>
-            </div>
-          ) : mobileView === 'success' ? (
-            <div className="flex-1 flex flex-col items-center justify-center py-10">
-              <div className="w-12 h-12 border-2 border-[#111] rounded-full bg-[#63f2b4] flex items-center justify-center mx-auto mb-4">
-                <span className="text-[#111] font-bold text-xs">✓</span>
+        {mobileView === 'cashout' ? (
+          <MobileCashOut
+            balanceG={balanceG}
+            ngnPerUsdt={pendingQuote?.ngnPerUsdt ?? 1452.6}
+            onClose={() => setMobileView('home')}
+            onReview={(amountG: number, nairaEstimate: number | null, usdtEstimate: number) => {
+              // Create quote and transition to the review modal
+              const quote = getNetQuote({ amountIn: BigInt(Math.floor(amountG * 1e18)) });
+              setPendingQuote({
+                quote,
+                amountG,
+                slippageBps: 100, // 1% default slippage
+                ngnPerUsdt: nairaEstimate && usdtEstimate > 0 ? nairaEstimate / usdtEstimate : null,
+              });
+              setMobileView('home');
+            }}
+          />
+        ) : (
+          <>
+            {/* Mobile Header */}
+            <div className="flex justify-between items-center px-4 pt-6 pb-4">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-[#111] text-xl">GoodCash</span>
               </div>
-              <h2 className="text-[#111] font-bold text-xl mb-2">Success</h2>
-              <p className="text-[#666] text-sm text-center">Your payout has been completed successfully.</p>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm">EN ⌄</span>
+                <button className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-sm">
+                  {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
+                </button>
+              </div>
             </div>
-          ) : (
-            <ReadinessCard
-              balanceG={balanceG}
-              dailyClaimG={123.48}
-              onCashOutClick={() => setCurrentTab('cashout')}
-              onClaimClick={() => setCurrentTab('claim')}
-              language={language}
-              isStale={balanceIsStale}
-            />
-          )}
-        </div>
 
-        {/* Bottom Navigation */}
-        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] bg-white border-2 border-[#111] rounded-full p-2 flex justify-between items-center shadow-[4px_4px_0px_#111] z-50 md:hidden">
-          <button
-            type="button"
-            onClick={() => setMobileView('home')}
-            className="bg-[#7b39fc] text-white rounded-full px-6 py-2 font-bold"
-          >
-            Home
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentTab('cashout')}
-            className="px-4 py-2 font-bold text-[#111]"
-          >
-            Cash out
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentTab('history')}
-            className="px-4 py-2 font-bold text-[#111]"
-          >
-            History
-          </button>
-        </nav>
+            {/* Mobile Content */}
+            <div className="flex flex-col gap-4 px-4">
+              {mobileView === 'review' ? (
+                <ClaimCard isVerified={true} entitlementG={123.48} onClaimSuccess={handleClaimSuccess} language={language} />
+              ) : mobileView === 'processing' ? (
+                <div className="flex-1 flex flex-col items-center justify-center py-10">
+                  <div className="w-12 h-12 border-2 border-[#111] rounded-full animate-spin mx-auto mb-4" />
+                  <p className="text-[#111] font-bold text-sm">Processing payment...</p>
+                </div>
+              ) : mobileView === 'success' ? (
+                <div className="flex-1 flex flex-col items-center justify-center py-10">
+                  <div className="w-12 h-12 border-2 border-[#111] rounded-full bg-[#63f2b4] flex items-center justify-center mx-auto mb-4">
+                    <span className="text-[#111] font-bold text-xs">✓</span>
+                  </div>
+                  <h2 className="text-[#111] font-bold text-xl mb-2">Success</h2>
+                  <p className="text-[#666] text-sm text-center">Your payout has been completed successfully.</p>
+                </div>
+              ) : (
+                <ReadinessCard
+                  balanceG={balanceG}
+                  dailyClaimG={123.48}
+                  onCashOutClick={() => setMobileView('cashout')}
+                  onClaimClick={() => setCurrentTab('claim')}
+                  language={language}
+                  isStale={balanceIsStale}
+                />
+              )}
+            </div>
+
+            {/* Bottom Navigation */}
+            <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] bg-white border-2 border-[#111] rounded-full p-2 flex justify-between items-center shadow-[4px_4px_0px_#111] z-50 md:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileView('home')}
+                className={
+                  mobileView === 'home'
+                    ? 'bg-[#7b39fc] text-white rounded-full px-6 py-2 font-bold'
+                    : 'px-4 py-2 font-bold text-[#111]'
+                }
+              >
+                Home
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileView('cashout')}
+                className="px-4 py-2 font-bold text-[#111]"
+              >
+                Cash out
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentTab('history')}
+                className="px-4 py-2 font-bold text-[#111]"
+              >
+                History
+              </button>
+            </nav>
+          </>
+        )}
       </div>
     </div>
   );
