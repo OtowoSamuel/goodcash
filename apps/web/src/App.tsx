@@ -149,6 +149,9 @@ export function App({
   // Privacy note toggle (desktop + mobile footer link)
   const [showPrivacy, setShowPrivacy] = useState(false);
 
+  // Debug view toggle for mobile testing
+  const [mobileView, setMobileView] = useState<'home' | 'cashout' | 'claim' | 'history' | 'offramp' | 'review' | 'processing' | 'success'>('home');
+
   // Active translations shortcut
   const t = getTranslations(language);
 
@@ -534,6 +537,8 @@ export function App({
 
   return (
     <div className="gc">
+      {/* ── Desktop Layout ── */}
+      <div className="hidden md:flex flex-col h-full">
       {/* ── Top Navbar (Desktop bar-top + Mobile top row + Mobile bottom nav) ── */}
       <Navbar
         currentTab={currentTab}
@@ -849,6 +854,90 @@ export function App({
           </a>
         </div>
       </footer>
+      {/* ── End Desktop Layout ── */}
+      </div>
+
+      {/* ── Mobile Shell ── */}
+      <div className="flex flex-col md:hidden w-full min-h-screen bg-[#d4c5fb] pb-24 relative">
+        {/* Mobile Header */}
+        <div className="flex justify-between items-center px-4 pt-6 pb-4">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-[#111] text-xl">GoodCash</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+              className="text-xs text-[#111] border-none bg-transparent outline-none font-bold cursor-pointer"
+            >
+              <option value="en">EN</option>
+              <option value="pcm">PCM</option>
+              <option value="ha">HA</option>
+              <option value="yo">YO</option>
+              <option value="ig">IG</option>
+            </select>
+            <div className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-xs">
+              {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Content */}
+        <div className="flex-1 overflow-y-auto px-4">
+          {mobileView === 'cashout' ? (
+            <CashOutCard balanceG={balanceG} onInitiateCashOut={handleInitiateCashOut} language={language} />
+          ) : mobileView === 'review' ? (
+            <ClaimCard isVerified={true} entitlementG={123.48} onClaimSuccess={handleClaimSuccess} language={language} />
+          ) : mobileView === 'processing' ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-10">
+              <div className="w-12 h-12 border-2 border-[#111] rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-[#111] font-bold text-sm">Processing payment...</p>
+            </div>
+          ) : mobileView === 'success' ? (
+            <div className="flex-1 flex flex-col items-center justify-center py-10">
+              <div className="w-12 h-12 border-2 border-[#111] rounded-full bg-[#63f2b4] flex items-center justify-center mx-auto mb-4">
+                <span className="text-[#111] font-bold text-xs">✓</span>
+              </div>
+              <h2 className="text-[#111] font-bold text-xl mb-2">Success</h2>
+              <p className="text-[#666] text-sm text-center">Your payout has been completed successfully.</p>
+            </div>
+          ) : (
+            <ReadinessCard
+              balanceG={balanceG}
+              dailyClaimG={123.48}
+              onCashOutClick={() => setCurrentTab('cashout')}
+              onClaimClick={() => setCurrentTab('claim')}
+              language={language}
+              isStale={balanceIsStale}
+            />
+          )}
+        </div>
+
+        {/* Bottom Navigation */}
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] bg-white border-2 border-[#111] rounded-full p-1 flex justify-between shadow-[4px_4px_0px_#111] z-50">
+          <button
+            type="button"
+            onClick={() => setMobileView('home')}
+            className={`flex flex-col items-center gap-1 text-xs ${mobileView === 'home' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView('cashout')}
+            className={`flex flex-col items-center gap-1 text-xs ${mobileView === 'cashout' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+          >
+            Cash out
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentTab('history')}
+            className={`flex flex-col items-center gap-1 text-xs ${currentTab === 'history' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+          >
+            History
+          </button>
+        </nav>
+      </div>
     </div>
   );
 }
