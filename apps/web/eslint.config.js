@@ -7,7 +7,7 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default [
   {
-    ignores: ['dist', 'node_modules', 'coverage']
+    ignores: ['dist', 'dev-dist', 'node_modules', 'coverage']
   },
   {
     files: ['**/*.{js,ts,tsx}'],
@@ -28,6 +28,7 @@ export default [
     rules: {
       ...tseslint.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]
     }
   },

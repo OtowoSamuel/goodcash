@@ -19,5 +19,6 @@
     "baseUrl": "."
   },
   "include": ["src"],
+  "exclude": ["src/**/*.anvil.test.ts"],
   "references": []
 }

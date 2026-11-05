@@ -11,9 +11,19 @@
     "dev": "npm --workspace apps/web run dev",
     "build": "npm --workspace apps/web run build",
     "test": "npm --workspace apps/web run test",
+    "test:orders": "npm --workspace services/orders run test",
+    "test:all": "npm --workspace apps/web run test && npm --workspace services/orders run test && npm run contracts:test",
     "lint": "npm --workspace apps/web run lint",
     "typecheck": "npm --workspace apps/web run typecheck",
     "contracts:test": "cd packages/contracts && forge test",
     "contracts:build": "cd packages/contracts && forge build"
+  },
+  "devDependencies": {
+    "@goodsdks/citizen-sdk": "^1.2.7",
+    "@goodsdks/identity-sdk": "^1.0.5",
+    "autoprefixer": "^10.6.2",
+    "fast-glob": "^3.3.3",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.4"
   }
 }

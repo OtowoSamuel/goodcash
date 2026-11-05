@@ -935,7 +935,8 @@ contract RouterForkTests is Test {
     address alice     = makeAddr("alice");
     address recipient = makeAddr("recipient");
 
-    // Large G$ whale / Reserve — we'll prank as a known holder or use deal()
+    // Large G$ whale / Reserve (Uniswap V3 G$/USDm pool holds 8.3M+ G$)
+    address constant G_WHALE = 0x9491d57c5687AB75726423B55AC2d87D1cDa2c3F;
     uint256 constant SWAP_AMOUNT = 1_000e18; // 1,000 G$
 
     function setUp() public {
@@ -957,8 +958,9 @@ contract RouterForkTests is Test {
         vm.prank(owner);
         router.unpause();
 
-        // Deal alice some G$ (Foundry fork cheat code)
-        deal(G_DOLLAR_ADDR, alice, SWAP_AMOUNT * 10);
+        // Transfer G$ from the Uniswap pool whale to alice
+        vm.prank(G_WHALE);
+        IERC20(G_DOLLAR_ADDR).transfer(alice, SWAP_AMOUNT * 20);
     }
 
     // ── Fork test: Reserve route — 1,000 G$ → USDm ───────────────────────
@@ -1008,7 +1010,8 @@ contract RouterForkTests is Test {
         uint256 expectedNet = 1_139_928_040_919_229_989; // from VERIFY_OUTPUT.txt
         uint256 minAmountOut = (expectedNet * 98) / 100;
 
-        deal(G_DOLLAR_ADDR, alice, amount10k * 2);
+        vm.prank(G_WHALE);
+        IERC20(G_DOLLAR_ADDR).transfer(alice, amount10k * 2);
 
         vm.startPrank(alice);
         gDollar.approve(address(router), amount10k);

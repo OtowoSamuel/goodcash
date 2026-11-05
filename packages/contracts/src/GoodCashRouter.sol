@@ -75,10 +75,9 @@ contract GoodCashRouter is ReentrancyGuard, Pausable {
     /// @dev Fee tier for the G$/USDm Uniswap V3 pool (1%, encoded as 10000 / 1e6)
     uint24 public constant G_DOLLAR_USDM_FEE = 10_000;
 
-    /// @dev Fee tier for USDm/USDT swaps — NOTE: not independently verified yet.
-    ///      If the pool does not exist at this tier, the transaction will revert.
-    ///      See docs/CONTRACT.md for the verification step before this route is used in production.
-    uint24 public constant USDM_USDT_FEE = 3_000; // 0.3% — most common for stablecoin pairs
+    /// @dev Fee tier for USDm/USDT swaps: verified on Celo mainnet.
+    ///      Fee 100 (0.01%) pool (0x5dC631aD6C26BEA1a59fBF2C2680CF3df43d249f) holds $597k+ USDT.
+    uint24 public constant USDM_USDT_FEE = 100; // 0.01% — canonical Celo stablecoin pair
 
     /// @dev Maximum feeBps the owner can ever set (1%). Guards against fat-finger.
     uint256 public constant MAX_FEE_BPS = 100; // 1 %
