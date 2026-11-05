@@ -56,9 +56,9 @@ describe('HistoryCard', () => {
 
   it('displays all transactions when "All" filter is active', () => {
     render(<HistoryCard history={mockHistory} onCashOutClick={() => {}} language="en" ngnPerUsdt={1500} />);
-    expect(screen.getByText('1,000 G$')).toBeInTheDocument();
-    expect(screen.getByText('500 G$')).toBeInTheDocument();
-    expect(screen.getByText('750 G$')).toBeInTheDocument();
+    expect(screen.getByText(/1,000 G\$/)).toBeInTheDocument();
+    expect(screen.getByText(/500 G\$/)).toBeInTheDocument();
+    expect(screen.getByText(/750 G\$/)).toBeInTheDocument();
   });
 
   it('filters to show only "Paid" transactions', () => {
@@ -68,10 +68,10 @@ describe('HistoryCard', () => {
     fireEvent.click(paidButton);
 
     // Should show the 2 paid transactions
-    expect(screen.getByText('1,000 G$')).toBeInTheDocument();
-    expect(screen.getByText('750 G$')).toBeInTheDocument();
+    expect(screen.getByText(/1,000 G\$/)).toBeInTheDocument();
+    expect(screen.getByText(/750 G\$/)).toBeInTheDocument();
     // Should not show the "on its way" transaction
-    expect(screen.queryByText('500 G$')).not.toBeInTheDocument();
+    expect(screen.queryByText(/500 G\$/)).not.toBeInTheDocument();
   });
 
   it('filters to show only "On its way" transactions', () => {
@@ -81,13 +81,13 @@ describe('HistoryCard', () => {
     fireEvent.click(onItsWayButton);
 
     // Should show the 1 "on its way" transaction
-    expect(screen.getByText('500 G$')).toBeInTheDocument();
+    expect(screen.getByText(/500 G\$/)).toBeInTheDocument();
     // Should not show the paid transactions
-    expect(screen.queryByText('1,000 G$')).not.toBeInTheDocument();
-    expect(screen.queryByText('750 G$')).not.toBeInTheDocument();
+    expect(screen.queryByText(/1,000 G\$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/750 G\$/)).not.toBeInTheDocument();
   });
 
-  it('shows "no matching transactions" when filter returns empty', () => {
+  it('shows empty state when filter returns no matches', () => {
     const allPaidHistory: SwapHistoryItem[] = [
       {
         id: '1',
@@ -109,7 +109,7 @@ describe('HistoryCard', () => {
     const onItsWayButton = screen.getByRole('button', { name: /On its way/i });
     fireEvent.click(onItsWayButton);
 
-    expect(screen.getByText(/No transactions match this filter/i)).toBeInTheDocument();
+    expect(screen.getByText(/No cash outs yet/i)).toBeInTheDocument();
   });
 
   it('renders receipt links that open blockscout', () => {
