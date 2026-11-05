@@ -24,8 +24,8 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         <button
           type="button"
           onClick={onBack}
-          aria-label="Back to cash out"
-          className="bg-white border-2 border-[#111] rounded-xl w-10 h-10 flex items-center justify-center shadow-[2px_2px_0px_#111] font-bold text-xl z-10"
+          aria-label="Back"
+          className="bg-white border-2 border-[#111] rounded-xl w-10 h-10 flex items-center justify-center shadow-[2px_2px_0px_#111] font-black text-2xl pb-0.5 z-10"
         >
           ‹
         </button>
@@ -36,7 +36,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
       </header>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col gap-3 mb-24 overflow-y-auto">
+      <div className="flex-1 flex flex-col gap-3 pb-24 overflow-y-auto">
         {/* Top Card: YOU GET ABOUT */}
         <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111]">
           <div className="font-extrabold text-xs tracking-wide text-[#111] mb-2">
@@ -75,9 +75,10 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
             <span className="text-sm font-medium text-[#111]">
               GoodDollar contribution (10%)
             </span>
-            <span className="bg-[#ffd23f] border-2 border-[#111] px-2 py-0.5 rounded-md font-bold text-xs text-[#111]">
-              −{exitContributionG} G$
-            </span>
+            <div className="bg-[#ffd23f] border-2 border-[#111] rounded-lg px-2.5 py-1 text-center font-bold text-xs leading-tight flex flex-col justify-center">
+              <span>−{exitContributionG}</span>
+              <span>G$</span>
+            </div>
           </div>
 
           {/* Row 2: Network fee */}
