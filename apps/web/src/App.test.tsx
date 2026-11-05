@@ -44,7 +44,7 @@ const BANK_CODE = 'ZENITHB0001';
 
 async function selectBank() {
   await screen.findByRole('option', { name: BANK_NAME });
-  fireEvent.change(screen.getByLabelText('Bank name'), { target: { value: BANK_CODE } });
+  fireEvent.change(screen.getByLabelText('Bank'), { target: { value: BANK_CODE } });
 }
 
 function mockPaycrestBanking(accountName: string | Promise<string>) {

@@ -127,3 +127,7 @@ export function getCashoutRate(gAmount: number, dailyClaimG = 123.48, ngnPerUsdt
     ngnPerUsdt: effectiveNgnRate,
   };
 }
+
+export function formatNaira(naira: number): string {
+  return '₦' + Math.round(naira).toLocaleString();
+}

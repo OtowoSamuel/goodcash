@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { Language } from '../lib/i18n';
+import { getTranslations } from '../lib/i18n';
 import { getNetQuote, type QuoteResult, MAX_PRICE_IMPACT_BPS } from '../lib/quote';
-import { fetchPaycrestRate, getCashoutRate } from '../lib/rate';
+import { fetchPaycrestRate, getCashoutRate, formatNaira, MIN_NET_USDT_REQUIRED } from '../lib/rate';
 import { useBankAccountVerification } from '../lib/useOffRamp';
 
 interface CashOutCardProps {
@@ -20,7 +21,13 @@ interface CashOutCardProps {
   ngnPerUsdt?: number | null;
 }
 
-export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCashOut, language: _language, ngnPerUsdt: initialNgnRate = null }) => {
+export const CashOutCard: React.FC<CashOutCardProps> = ({
+  balanceG,
+  onInitiateCashOut,
+  language,
+  ngnPerUsdt: initialNgnRate = null,
+}) => {
+  const t = getTranslations(language);
 
   const [inputAmountG, setInputAmountG] = useState<string>('1000');
   const [slippagePercent, setSlippagePercent] = useState<number>(1);
@@ -29,6 +36,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCa
   const [secondsRemaining, setSecondsRemaining] = useState<number>(30);
   const [ngnPerUsdt, setNgnPerUsdt] = useState<number | null>(initialNgnRate);
   const [rateError, setRateError] = useState<string | null>(null);
+
   const {
     institutions,
     institutionsLoading,
@@ -45,6 +53,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCa
     setConfirmed,
   } = useBankAccountVerification('NGN');
 
+  // Fetch NGN rate on mount
   useEffect(() => {
     let isMounted = true;
 
@@ -58,15 +67,16 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCa
       .catch(() => {
         if (isMounted) {
           setNgnPerUsdt(null);
-          setRateError('Rate unavailable, try again');
+          setRateError(t.rateUnavailableTryAgain);
         }
       });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [t.rateUnavailableTryAgain]);
 
+  // Update quote when input changes
   useEffect(() => {
     const rawAmount = parseFloat(inputAmountG);
     if (!isNaN(rawAmount) && rawAmount > 0) {
@@ -82,6 +92,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCa
     }
   }, [inputAmountG]);
 
+  // Quote refresh timer
   useEffect(() => {
     const timer = setInterval(() => {
       setSecondsRemaining((prev) => {
@@ -123,26 +134,29 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCa
   const isBankDetailsValid = isBankValid && isAccountNumberValid && isAccountHolderValid && confirmed;
 
   const slippageBps = slippagePercent * 100;
-  const receiveNaira = Number.isFinite(rate.netNaira) ? rate.netNaira.toFixed(2) : '—';
   const canReview = isValidAmount && quote !== null && !isRateUnavailable && isBankDetailsValid;
 
   return (
     <div className="panel-card w-full rounded-[28px] p-5 pb-28 sm:p-6">
+      {/* Header with title and quote refresh timer */}
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[#A39BBE]">Cash Out</p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-[#A39BBE]">{t.cashOut}</p>
           <h2 className="mt-1 text-2xl font-semibold text-white">G$ to NGN</h2>
         </div>
         <div className="inline-flex items-center gap-2 rounded-full border border-[#2D204A] bg-[#120D1D] px-2.5 py-1 text-[11px] font-medium text-[#C4B5FD]">
           <span className="h-2 w-2 rounded-full bg-[#10B981]" />
-          Quote refreshes in {secondsRemaining}s
+          {t.quoteRefreshesIn.replace('{seconds}', secondsRemaining.toString())}
         </div>
       </div>
 
+      {/* G$ Input Section */}
       <div className="rounded-2xl border border-[#2D204A] bg-[#120D1D] p-4">
         <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">
-          <span>G$ amount</span>
-          <span>Balance {balanceG.toLocaleString()} G$</span>
+          <span>{t.gAmountLabel}</span>
+          <span>
+            {t.balanceLabel} {balanceG.toLocaleString()} G$
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -154,138 +168,172 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCa
             placeholder="0"
             className="w-full bg-transparent text-4xl font-semibold tracking-[-0.05em] text-white outline-none placeholder:text-[#A39BBE]"
           />
-          <div className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-2 text-base font-semibold text-[#E5E7EB]">G$</div>
+          <div className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-2 text-base font-semibold text-[#E5E7EB]">
+            G$
+          </div>
         </div>
 
+        {/* Percentage Chips */}
         <div className="mt-4 grid grid-cols-4 gap-2">
-          {[25, 50, 75, 100].map((pct) => (
+          {[
+            { label: '25%', value: 25 },
+            { label: '50%', value: 50 },
+            { label: '75%', value: 75 },
+            { label: t.maxButton, value: 100 },
+          ].map((chip) => (
             <button
-              key={pct}
+              key={chip.value}
               type="button"
-              onClick={() => handleQuickPercent(pct)}
-              className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-2 py-2 text-xs font-medium text-[#E5E7EB] transition hover:border-[#7C3AED]/60"
+              onClick={() => handleQuickPercent(chip.value)}
+              className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-2 py-2 text-xs font-medium text-[#E5E7EB] transition hover:border-[#7C3AED]/60 hover:bg-[#7C3AED]/10"
             >
-              {pct}%
+              {chip.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-5 rounded-2xl border border-[#2D204A] bg-gradient-to-br from-[#1B122E] to-[#120D1D] p-5">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-[#A39BBE]">You receive about</p>
-        <div className="mt-3 text-[42px] font-bold tracking-[-0.06em] text-[#10B981]">{Number.isFinite(rate.netNaira) ? `₦${receiveNaira}` : '—'}</div>
-        <p className="mt-2 text-xs text-[#A39BBE]">
-          {rateError ?? 'Estimate. Final amount is set by our payout partner when the order is created.'}
-        </p>
+      {/* Hero Naira Display Card */}
+      <div className="mt-5 rounded-2xl border border-[#10B981]/30 bg-gradient-to-br from-[#064E3B]/40 to-[#022C22]/60 p-5 shadow-[0_8px_32px_rgba(16,185,129,0.12)]">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-[#6EE7B7]">{t.youReceiveAbout}</p>
+        <div className="gc-big mt-3 text-[#10B981]">
+          {Number.isFinite(rate.netNaira) ? formatNaira(rate.netNaira) : t.nairaUnavailable}
+        </div>
+        <p className="mt-2 text-xs text-[#A7F3D0]">{t.estimateFinalAmountNote}</p>
+        {rateError && <p className="mt-1 text-xs text-[#FCA5A5]">{rateError}</p>}
       </div>
 
+      {/* Price Protection Section */}
       <div className="mt-5 rounded-2xl border border-[#2D204A] bg-[#120D1D] p-4">
-        <div className="flex items-center justify-between gap-3 border-b border-[#2D204A] pb-3 text-sm text-[#E5E7EB]">
-          <span>Bank</span>
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#E5E7EB]">{t.priceProtection}</p>
+            <p className="mt-1 text-xs text-[#A39BBE]">{t.priceProtectionExplanation}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDetails((prev) => !prev)}
+            className="text-xs font-medium text-[#C4B5FD] underline underline-offset-4"
+          >
+            {showDetails ? 'Hide' : t.details}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {[1, 2, 3].map((val) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setSlippagePercent(val)}
+              className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
+                slippagePercent === val
+                  ? 'border-[#7C3AED] bg-[#7C3AED]/20 text-[#C4B5FD] shadow-[0_0_16px_rgba(124,58,237,0.3)]'
+                  : 'border-[#2D204A] bg-[#1B122E] text-[#A39BBE] hover:border-[#7C3AED]/40'
+              }`}
+            >
+              {val}%
+            </button>
+          ))}
+        </div>
+
+        {/* Expanded Details */}
+        {showDetails && (
+          <div className="mt-3 space-y-2 rounded-xl border border-[#2D204A] bg-[#1B122E] p-3 text-xs text-[#D9D0F4]">
+            <div className="flex items-center justify-between">
+              <span>{t.slippageShort}</span>
+              <span className="font-mono text-white">{slippagePercent}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>{t.route}</span>
+              <span className="font-mono text-white">{t.routeReserveToUsdt}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>{t.deadline}</span>
+              <span className="font-mono text-white">{t.deadlineSeconds}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bank Details Section */}
+      <div className="mt-5 rounded-2xl border border-[#2D204A] bg-[#120D1D] p-4">
+        <p className="mb-3 text-sm font-semibold text-[#E5E7EB]">{t.bankDetails}</p>
+
+        {/* Bank Select */}
+        <div className="mb-3">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">{t.bankLabel}</label>
           <select
-            aria-label="Bank name"
+            aria-label={t.bankLabel}
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
-            className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-2 text-sm text-[#E5E7EB] outline-none"
+            className="mt-1 w-full rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-sm text-[#E5E7EB] outline-none"
           >
-            <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
+            <option value="">{institutionsLoading ? t.loadingBanks : t.selectBank}</option>
             {institutions.map((bank) => (
-              <option key={bank.code} value={bank.code}>{bank.name}</option>
+              <option key={bank.code} value={bank.code}>
+                {bank.name}
+              </option>
             ))}
           </select>
         </div>
 
-        <div className="mt-3 space-y-2">
-          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account number</label>
+        {/* Account Number */}
+        <div className="mb-3">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">
+            {t.accountNumberLabel}
+          </label>
           <input
             type="text"
             inputMode="numeric"
             value={accountIdentifier}
             onChange={(e) => setAccountIdentifier(e.target.value)}
-            placeholder="10-digit account number"
-            className="w-full rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white outline-none placeholder:text-[#A39BBE]"
+            placeholder={t.accountNumberPlaceholder}
+            className="mt-1 w-full rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white outline-none placeholder:text-[#A39BBE]"
           />
         </div>
 
-        <div className="mt-3 space-y-2">
-          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account name</label>
-          <div className="min-h-[48px] rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white">
-            {verificationStatus === 'loading' && <span className="text-[#A39BBE]">Verifying with Paycrest…</span>}
-            {verificationStatus === 'idle' && <span className="text-[#A39BBE]">Enter a 10-digit account number</span>}
+        {/* Account Name */}
+        <div className="mb-3">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">
+            {t.accountNameLabel}
+          </label>
+          <div className="mt-1 min-h-[48px] rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white">
+            {verificationStatus === 'loading' && <span className="text-[#A39BBE]">{t.verifyingWithPaycrest}</span>}
+            {verificationStatus === 'idle' && <span className="text-[#A39BBE]">{t.enterTenDigitAccount}</span>}
             {verificationStatus === 'error' && <span className="text-[#FCA5A5]">{verificationError}</span>}
             {verificationStatus === 'verified' && accountName && <span className="font-semibold">{accountName}</span>}
           </div>
           {verificationStatus === 'verified' && accountName && (
-            <label className="flex items-start gap-2 text-xs text-[#D9D0F4]">
+            <label className="mt-2 flex items-start gap-2 text-xs text-[#D9D0F4]">
               <input
                 type="checkbox"
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
                 className="mt-0.5 h-4 w-4 accent-[#7C3AED]"
               />
-              I confirm this is my account name
+              {t.confirmAccountName}
             </label>
           )}
-          {institutionsError && <p className="text-xs text-[#FCA5A5]">{institutionsError}</p>}
+          {institutionsError && <p className="mt-2 text-xs text-[#FCA5A5]">{institutionsError}</p>}
         </div>
 
-        <div className="mt-4 flex items-center justify-between border-t border-[#2D204A] pt-3 text-sm text-[#E5E7EB]">
-          <span>Exit contribution</span>
+        {/* Exit Contribution */}
+        <div className="flex items-center justify-between border-t border-[#2D204A] pt-3 text-sm text-[#E5E7EB]">
+          <span>{t.exitContribution}</span>
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[#FCA5A5]">−{exitContributionG.toFixed(0)} G$</span>
             <button type="button" className="text-xs font-medium text-[#C4B5FD] underline underline-offset-4">
-              Why the 10%?
+              {t.whyTheTenPercent}
             </button>
           </div>
         </div>
-
-        <div className="mt-3 flex items-center justify-between text-sm text-[#E5E7EB]">
-          <span>Price protection</span>
-          <button
-            type="button"
-            onClick={() => setShowDetails((prev) => !prev)}
-            className="font-semibold text-[#C4B5FD] underline underline-offset-4"
-          >
-            {showDetails ? 'Hide details' : 'Details'}
-          </button>
-        </div>
-
-        {showDetails && (
-          <div className="mt-3 space-y-2 rounded-xl border border-[#2D204A] bg-[#1B122E] p-3 text-xs text-[#D9D0F4]">
-            <div className="flex items-center justify-between">
-              <span>Slippage</span>
-              <span className="font-mono text-white">{slippagePercent}%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Route</span>
-              <span className="font-mono text-white">Reserve → USDT</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>Deadline</span>
-              <span className="font-mono text-white">300s</span>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              {[1, 2, 3].map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setSlippagePercent(val)}
-                  className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${
-                    slippagePercent === val ? 'bg-[#7C3AED] text-white' : 'bg-[#1B122E] text-[#A39BBE]'
-                  }`}
-                >
-                  {val}%
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
+      {/* Error Messages */}
       {isHighImpact && (
         <div className="mt-5 rounded-2xl border border-[#F87171]/40 bg-[#7F1D1D]/20 p-3 text-sm text-[#FECACA]">
-          Price impact is too high for this trade. Please lower the amount or wait for better liquidity.
+          {t.priceImpactWarning}
         </div>
       )}
 
@@ -297,24 +345,36 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({ balanceG, onInitiateCa
 
       {isBelowMinimum && amountNumber > 0 && (
         <div className="mt-5 rounded-2xl border border-[#FBBF24]/40 bg-[#4A3410]/20 p-3 text-sm text-[#FDE68A]">
-          Need about {rate.remainingG.toFixed(0)} more G$ ({rate.daysToMinimum || 1} days of claiming).
+          {t.minimumCashOutAbout.replace('{naira}', ngnPerUsdt ? formatNaira(MIN_NET_USDT_REQUIRED * ngnPerUsdt) : t.nairaUnavailable)}
         </div>
       )}
 
+      {/* Fixed Bottom Button */}
       <div className="pointer-events-none fixed inset-x-0 bottom-[72px] z-20 flex justify-center px-4">
         <div className="pointer-events-auto w-full max-w-[420px] rounded-t-3xl border border-[#2D204A] bg-[#120D1D]/95 px-4 pb-4 pt-3 shadow-[0_-16px_32px_rgba(8,3,17,0.55)] backdrop-blur-md">
           <button
             type="button"
             onClick={() =>
               quote &&
-              onInitiateCashOut(quote, amountNumber, slippageBps, bankName, accountIdentifier, accountName ?? '', ngnPerUsdt, institutionCode)
+              onInitiateCashOut(
+                quote,
+                amountNumber,
+                slippageBps,
+                bankName,
+                accountIdentifier,
+                accountName ?? '',
+                ngnPerUsdt,
+                institutionCode
+              )
             }
             disabled={!canReview}
             className={`w-full rounded-2xl px-4 py-3.5 text-base font-semibold transition ${
-              canReview ? 'bg-[#7C3AED] text-white shadow-[0_20px_34px_rgba(124,58,237,0.22)] hover:bg-[#8B5CF6]' : 'cursor-not-allowed border border-[#2D204A] bg-[#1B122E] text-[#A39BBE]'
+              canReview
+                ? 'bg-[#7C3AED] text-white shadow-[0_20px_34px_rgba(124,58,237,0.22)] hover:bg-[#8B5CF6]'
+                : 'cursor-not-allowed border border-[#2D204A] bg-[#1B122E] text-[#A39BBE]'
             }`}
           >
-            {rateError ? 'Rate unavailable, try again' : 'Review cash out'}
+            {rateError ? t.rateUnavailableTryAgain : t.reviewCashOut}
           </button>
         </div>
       </div>

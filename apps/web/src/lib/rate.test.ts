@@ -164,7 +164,7 @@ describe('shared rate conversion', () => {
       expect(reviewBtn).toBeDisabled();
     });
 
-    const bankSelect = screen.getByLabelText('Bank name');
+    const bankSelect = screen.getByLabelText('Bank');
     const accountInput = screen.getByPlaceholderText('10-digit account number');
 
     // 2. Only bank selected: still disabled
@@ -206,7 +206,7 @@ describe('shared rate conversion', () => {
 
     // Provide valid bank details
     await screen.findByRole('option', { name: BANK_NAME });
-    fireEvent.change(screen.getByLabelText('Bank name'), { target: { value: BANK_CODE } });
+    fireEvent.change(screen.getByLabelText('Bank'), { target: { value: BANK_CODE } });
     fireEvent.change(screen.getByPlaceholderText('10-digit account number'), { target: { value: '1234567890' } });
     expect(await screen.findByText('JANE DOE')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /confirm this is my account name/i }));

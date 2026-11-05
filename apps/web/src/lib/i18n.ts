@@ -90,6 +90,36 @@ export interface Translations {
   claimTitle: string;
   claimed: string;
   backToHome: string;
+
+  // Step 4a keys (English-only; other languages fall back via getTranslations)
+  youGiveG: string;
+  youReceiveAbout: string;
+  atLeastUsdt: string;
+  priceProtection: string;
+  priceProtectionExplanation: string;
+  bankDetails: string;
+  bankLabel: string;
+  selectBank: string;
+  loadingBanks: string;
+  accountNumberLabel: string;
+  accountNumberPlaceholder: string;
+  accountNameLabel: string;
+  verifyingWithPaycrest: string;
+  enterTenDigitAccount: string;
+  confirmAccountName: string;
+  exitContribution: string;
+  whyTheTenPercent: string;
+  slippageShort: string;
+  route: string;
+  routeReserveToUsdt: string;
+  deadline: string;
+  deadlineSeconds: string;
+  quoteRefreshesIn: string;
+  gAmountLabel: string;
+  maxButton: string;
+  reviewCashOut: string;
+  rateUnavailableTryAgain: string;
+  estimateFinalAmountNote: string;
 }
 
 /** Merge English defaults with the selected language so all keys are present. */
@@ -183,6 +213,34 @@ export const translations: Record<Language, Partial<Translations>> = {
     claimTitle: 'Claim',
     claimed: 'Claimed',
     backToHome: 'Back to home',
+    youGiveG: 'You give',
+    youReceiveAbout: 'You receive about',
+    atLeastUsdt: 'At least {usdt} USDT',
+    priceProtection: 'Price protection',
+    priceProtectionExplanation: 'Protects you if the price drops while your transaction is pending.',
+    bankDetails: 'Bank details',
+    bankLabel: 'Bank',
+    selectBank: 'Select bank',
+    loadingBanks: 'Loading banks…',
+    accountNumberLabel: 'Account number',
+    accountNumberPlaceholder: '10-digit account number',
+    accountNameLabel: 'Account name',
+    verifyingWithPaycrest: 'Verifying with Paycrest…',
+    enterTenDigitAccount: 'Enter a 10-digit account number',
+    confirmAccountName: 'I confirm this is my account name',
+    exitContribution: 'Exit contribution',
+    whyTheTenPercent: 'Why the 10%?',
+    slippageShort: 'Slippage',
+    route: 'Route',
+    routeReserveToUsdt: 'Reserve → USDT',
+    deadline: 'Deadline',
+    deadlineSeconds: '300s',
+    quoteRefreshesIn: 'Quote refreshes in {seconds}s',
+    gAmountLabel: 'G$ amount',
+    maxButton: 'MAX',
+    reviewCashOut: 'Review cash out',
+    rateUnavailableTryAgain: 'Rate unavailable, try again',
+    estimateFinalAmountNote: 'Estimate. Final amount is set by our payout partner when the order is created.',
   },
   pcm: {
     appName: 'GoodCash',

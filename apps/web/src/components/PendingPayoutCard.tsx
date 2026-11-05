@@ -72,7 +72,7 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
         <div className="flex items-center justify-between gap-3 border-b border-[#2D204A] pb-3 text-sm text-[#E5E7EB]">
           <span>Bank</span>
           <select
-            aria-label="Bank name"
+            aria-label="Bank"
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
