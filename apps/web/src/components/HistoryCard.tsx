@@ -105,41 +105,39 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
 
   return (
     <div className="gc-card">
-      <div className="mb-4 flex items-center justify-between">
+      {/* Header & Filter Pills Row */}
+      <div className="mb-4 flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-semibold text-white">{t.navHistory}</h2>
-          <p className="mt-1 text-xs text-[#A39BBE]">{t.receiptsExplanation}</p>
+          <h2 className="text-2xl font-bold text-[#111]">{t.navHistory}</h2>
         </div>
-      </div>
-
-      {/* Filter Pills */}
-      <div className="mb-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setCurrentFilter('all')}
-          className={`gc-pill gc-hit ${currentFilter === 'all' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
-        >
-          {t.filterAll || 'All'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setCurrentFilter('onItsWay')}
-          className={`gc-pill gc-pill--ye gc-hit ${currentFilter === 'onItsWay' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
-        >
-          {t.filterOnItsWay || 'On its way'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setCurrentFilter('paid')}
-          className={`gc-pill gc-pill--mint gc-hit ${currentFilter === 'paid' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
-        >
-          {t.filterPaid || 'Paid'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setCurrentFilter('all')}
+            className={`gc-pill gc-hit ${currentFilter === 'all' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
+          >
+            {t.filterAll || 'All'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentFilter('onItsWay')}
+            className={`gc-pill gc-pill--ye gc-hit ${currentFilter === 'onItsWay' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
+          >
+            {t.filterOnItsWay || 'On its way'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentFilter('paid')}
+            className={`gc-pill gc-pill--mint gc-hit ${currentFilter === 'paid' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
+          >
+            {t.filterPaid || 'Paid'}
+          </button>
+        </div>
       </div>
 
       {/* History List */}
       {filteredHistory.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-[#2D204A] bg-[#120D1D] p-8 text-center">
+        <div className="border-[2.5px] border-dashed border-[#111] rounded-2xl p-6 text-center bg-[#120D1D]">
           <p className="text-sm text-[#A39BBE]">
             {history.length === 0
               ? t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.'
@@ -156,40 +154,36 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
 
             return (
               <div key={item.id} className="gc-card p-4">
-                {/* Amount and Status */}
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <div className="gc-big flex items-center gap-2">
-                      <span className="text-white">{item.amountInG.toLocaleString()} G$</span>
-                      <span className="text-[#A39BBE]">→</span>
-                      <span className="text-[#10B981]">
-                        {Number.isFinite(estimatedNaira) && estimatedNaira !== null ? formatNaira(estimatedNaira) : '—'}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-[#A39BBE]">
-                      {formatDisplayDate(item.timestamp)} · {item.amountOutUsdt.toFixed(4)} USDT
-                    </p>
+                {/* Top Row: Conversion text left, Status pill right */}
+                <div className="mb-2 flex justify-between items-start gap-3">
+                  <div className="gc-big flex items-center gap-2">
+                    <span className="text-[#111]">{item.amountInG.toLocaleString()} G$</span>
+                    <span className="text-[#666]">→</span>
+                    <span className="text-[#10B981]">
+                      {Number.isFinite(estimatedNaira) && estimatedNaira !== null ? formatNaira(estimatedNaira) : '—'}
+                    </span>
                   </div>
-
-                  {/* Status Pill */}
                   <div>
                     {status === 'paid' ? (
                       <span className="gc-pill gc-pill--mint">{t.statusPaid || 'Paid'}</span>
                     ) : status === 'onItsWay' ? (
                       <span className="gc-pill gc-pill--ye">{t.statusOnItsWay || 'On its way'}</span>
                     ) : (
-                      <span className="gc-pill">{t.statusUnknown || 'Unknown'}</span>
+                      <span className="gc-pill">{t.statusUnknown || 'Status unknown'}</span>
                     )}
                   </div>
                 </div>
 
-                {/* Receipt Link */}
-              <a
-                href={`https://celo.blockscout.com/tx/${item.txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-mono text-[#8B5CF6] hover:text-[#C4B5FD] hover:underline gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
-              >
+                {/* Bottom: Timestamp/USDT + Receipt link stacked under conversion text */}
+                <p className="mt-1 text-xs text-[#666] mb-2">
+                  {formatDisplayDate(item.timestamp)} · {item.amountOutUsdt.toFixed(4)} USDT
+                </p>
+                <a
+                  href={`https://celo.blockscout.com/tx/${item.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-mono text-[#8B5CF6] hover:text-[#C4B5FD] hover:underline gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+                >
                   {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
                 </a>
               </div>
