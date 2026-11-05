@@ -145,16 +145,16 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             Balance {balanceG.toLocaleString()} G$
           </div>
         </div>
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center w-full overflow-hidden mb-6">
           <input
             type="number"
             min="1"
             value={inputAmountG}
             onChange={(e) => setInputAmountG(e.target.value)}
             placeholder="0"
-            className="gc-big font-black text-[#111] bg-transparent outline-none w-auto"
+            className="gc-big font-black text-[#111] bg-transparent border-none outline-none focus:outline-none focus:ring-0 p-0 w-full min-w-0 flex-1"
           />
-          <div className="bg-[#ffd23f] border-2 border-[#111] rounded-full px-3 py-1 font-bold">
+          <div className="bg-[#ffd23f] border-2 border-[#111] rounded-full px-3 py-1 font-bold text-sm shrink-0">
             G$
           </div>
         </div>
