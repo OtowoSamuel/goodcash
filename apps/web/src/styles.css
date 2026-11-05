@@ -114,8 +114,6 @@ button {
   font-size: 15px;
   line-height: 1.5;
   min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
   /* Respect safe-area insets */
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -547,8 +545,6 @@ button {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
   gap: 10px;
 }
 
