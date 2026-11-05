@@ -662,23 +662,21 @@ export function App({
           {currentTab === 'cashout' && (
             <>
               <div className="gc-card">
-                <div className="gc-row">
-                  <span className="gc-lab">What you'll pay</span>
-                  {pendingQuote?.quote && (
-                    <span className="gc-pill gc-pill--mint gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2">
-                      Refreshes in 18s
-                    </span>
-                  )}
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold uppercase text-[#111]">WHAT YOU'LL PAY</h3>
+                  <div className="bg-[#63f2b4] border-2 border-[#111] rounded-full px-3 py-1 font-bold text-sm text-[#111]">
+                    Refreshes in 18s
+                  </div>
                 </div>
-                <div className="gc-row border-b border-dashed border-[#A39BBE] pt-2 pb-2">
+                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
                   <span>GoodDollar contribution (10%)</span>
-                  <span className="bg-[#ffd23f] px-1 py-0.5 rounded font-medium">−100 G$</span>
+                  <span className="bg-[#ffd23f] px-2 py-0.5 rounded text-[#111] font-medium">−100 G$</span>
                 </div>
-                <div className="gc-row border-b border-dashed border-[#A39BBE] pt-2 pb-2">
+                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
                   <span>Network fee</span>
                   <span>under $0.001</span>
                 </div>
-                <div className="gc-row pt-2 pb-2">
+                <div className="gc-row pt-3 pb-3">
                   <span>You get at least</span>
                   <span>
                     {pendingQuote?.quote
