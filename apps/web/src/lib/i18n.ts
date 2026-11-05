@@ -134,6 +134,17 @@ export interface Translations {
   retryPayout: string;
   retryingPayout: string;
   refreshQuote: string;
+
+  // Step 5 keys (English-only; other languages fall back via getTranslations)
+  filterAll: string;
+  filterOnItsWay: string;
+  filterPaid: string;
+  statusPaid: string;
+  statusOnItsWay: string;
+  statusUnknown: string;
+  receipt: string;
+  noCashOutsYet: string;
+  noMatchingTransactions: string;
 }
 
 /** Merge English defaults with the selected language so all keys are present. */
@@ -267,6 +278,15 @@ export const translations: Record<Language, Partial<Translations>> = {
     retryPayout: 'Retry payout (swap already confirmed)',
     retryingPayout: 'Retrying payout…',
     refreshQuote: 'Refresh quote',
+    filterAll: 'All',
+    filterOnItsWay: 'On its way',
+    filterPaid: 'Paid',
+    statusPaid: 'Paid',
+    statusOnItsWay: 'On its way',
+    statusUnknown: 'Unknown',
+    receipt: 'Receipt',
+    noCashOutsYet: 'No cash outs yet. Your first one will show up here.',
+    noMatchingTransactions: 'No transactions match this filter.',
   },
   pcm: {
     appName: 'GoodCash',

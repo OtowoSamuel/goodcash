@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Language } from '../lib/i18n';
-import { ORDERS_API_BASE, getCashoutRate } from '../lib/rate';
+import { getTranslations } from '../lib/i18n';
+import { ORDERS_API_BASE, getCashoutRate, formatNaira } from '../lib/rate';
 
 export interface SwapHistoryItem {
   id: string;
@@ -26,28 +27,25 @@ interface HistoryCardProps {
   ngnPerUsdt?: number | null;
 }
 
+type FilterType = 'all' | 'onItsWay' | 'paid';
+
 function formatDisplayDate(timestamp: number): string {
   const date = new Date(timestamp);
   const day = date.getDate();
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const month = months[date.getMonth()];
   const year = date.getFullYear();
   return `${day} ${month} ${year}`;
 }
 
-export const HistoryCard: React.FC<HistoryCardProps> = ({
-  history,
-  onCashOutClick,
-  ngnPerUsdt = null,
-}) => {
+export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClick, language, ngnPerUsdt = null }) => {
+  const t = getTranslations(language);
+  const [currentFilter, setCurrentFilter] = useState<FilterType>('all');
   const [orderStatuses, setOrderStatuses] = React.useState<
     Record<string, { status: string; paymentReference?: string | null }>
   >({});
 
-  // Fetch live order status from orders service by order ID (GET /orders/:id)
+  // Fetch live order status
   React.useEffect(() => {
     const orderIds = history.map((h) => h.orderId).filter((id): id is string => Boolean(id));
     if (orderIds.length === 0) return;
@@ -58,13 +56,10 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({
         const res = await fetch(`${ORDERS_API_BASE}/orders/${id}`);
         if (res.ok && !cancelled) {
           const data = (await res.json()) as { status: string; paymentReference?: string | null };
-          setOrderStatuses((prev) => ({
-            ...prev,
-            [id]: data,
-          }));
+          setOrderStatuses((prev) => ({ ...prev, [id]: data }));
         }
       } catch {
-        // Keep Status unknown on lookup failure
+        // Keep status unknown on lookup failure
       }
     });
 
@@ -72,192 +67,131 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({
       cancelled = true;
     };
   }, [history]);
-  return (
-    <div className="glass-panel rounded-2xl p-6 sm:p-8 w-full max-w-xl mx-auto shadow-2xl relative">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-manrope font-bold text-white">Cash-Out History</h2>
-          <p className="text-xs text-[#A39BBE] font-sans mt-0.5">
-            Verified on-chain CashOut events and off-ramp payout tracking.
-          </p>
-        </div>
 
+  // Derive overall status for each item
+  const getItemStatus = (item: SwapHistoryItem): 'paid' | 'onItsWay' | 'unknown' => {
+    const liveOrder = item.orderId ? orderStatuses[item.orderId] : undefined;
+    const liveStatus = liveOrder?.status;
+
+    if (liveStatus === 'settled' || item.steps?.paidInNaira === 'completed') {
+      return 'paid';
+    }
+    if (liveStatus && ['initiated', 'deposited', 'pending', 'fulfilling', 'validated', 'settling'].includes(liveStatus)) {
+      return 'onItsWay';
+    }
+    if (item.steps?.paidInNaira === 'processing' || item.steps?.sentToPartner === 'completed') {
+      return 'onItsWay';
+    }
+    return 'unknown';
+  };
+
+  // Filter history
+  const filteredHistory = history.filter((item) => {
+    if (currentFilter === 'all') return true;
+    const status = getItemStatus(item);
+    if (currentFilter === 'paid') return status === 'paid';
+    if (currentFilter === 'onItsWay') return status === 'onItsWay';
+    return true;
+  });
+
+  // Calculate totals
+  const totalCashOuts = history.length;
+  const totalGSwapped = history.reduce((sum, item) => sum + item.amountInG, 0);
+  const totalNairaReceived = history.reduce((sum, item) => {
+    const naira =
+      item.nairaAmount ?? (ngnPerUsdt && ngnPerUsdt > 0 ? getCashoutRate(item.amountInG, 123.48, ngnPerUsdt).netNaira : 0);
+    return sum + (Number.isFinite(naira) ? naira : 0);
+  }, 0);
+
+  return (
+    <div className="gc-card">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold text-white">{t.navHistory}</h2>
+          <p className="mt-1 text-xs text-[#A39BBE]">{t.receiptsExplanation}</p>
+        </div>
+      </div>
+
+      {/* Filter Pills */}
+      <div className="mb-4 flex items-center gap-2">
         <button
-          onClick={onCashOutClick}
-          className="bg-[#7b39fc] hover:bg-[#8c4eff] text-white text-xs font-cabin font-medium px-3 py-1.5 rounded-lg shadow-sm"
+          type="button"
+          onClick={() => setCurrentFilter('all')}
+          className={`gc-pill ${currentFilter === 'all' ? 'gc-pill--on' : ''}`}
         >
-          New Cash-Out
+          {t.filterAll || 'All'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCurrentFilter('onItsWay')}
+          className={`gc-pill gc-pill--ye ${currentFilter === 'onItsWay' ? 'gc-pill--on' : ''}`}
+        >
+          {t.filterOnItsWay || 'On its way'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCurrentFilter('paid')}
+          className={`gc-pill gc-pill--mint ${currentFilter === 'paid' ? 'gc-pill--on' : ''}`}
+        >
+          {t.filterPaid || 'Paid'}
         </button>
       </div>
 
-      {history.length === 0 ? (
-        <div className="bg-[#18122c]/60 border border-white/5 rounded-xl p-8 text-center">
-          <p className="text-sm font-sans text-white/60">No cash-out swaps found yet.</p>
-          <p className="text-xs text-white/40 mt-1">
-            When you swap your G$ for USDT, your transactions will appear here.
+      {/* History List */}
+      {filteredHistory.length === 0 ? (
+        <div className="rounded-2xl border-2 border-dashed border-[#2D204A] bg-[#120D1D] p-8 text-center">
+          <p className="text-sm text-[#A39BBE]">
+            {history.length === 0
+              ? t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.'
+              : t.noMatchingTransactions || 'No transactions match this filter.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {history.map((item) => {
+        <div className="space-y-3">
+          {filteredHistory.map((item) => {
             const liveOrder = item.orderId ? orderStatuses[item.orderId] : undefined;
-            const liveStatus = liveOrder?.status;
-
-            // "swapped" comes from the on-chain event, not a default
-            const swappedStatus = item.steps?.swapped ?? (item.txHash ? 'completed' : 'unknown');
-
-            // sentToPartner & paidInNaira statuses derived from live orders service lookup; Status unknown if lookup fails
-            let partnerStatus: 'completed' | 'pending' | 'failed' | 'unknown' =
-              item.steps?.sentToPartner === 'waiting'
-                ? 'pending'
-                : (item.steps?.sentToPartner ?? 'unknown');
-            let nairaStatus: 'completed' | 'processing' | 'pending' | 'failed' | 'unknown' = item.steps?.paidInNaira ?? 'unknown';
-
-            if (liveStatus) {
-              if (liveStatus === 'initiated') {
-                partnerStatus = 'pending';
-                nairaStatus = 'pending';
-              } else if (liveStatus === 'deposited') {
-                partnerStatus = 'completed';
-                nairaStatus = 'processing';
-              } else if (['pending', 'fulfilling', 'validated', 'settling'].includes(liveStatus)) {
-                partnerStatus = 'completed';
-                nairaStatus = 'processing';
-              } else if (liveStatus === 'settled') {
-                partnerStatus = 'completed';
-                nairaStatus = 'completed';
-              } else if (liveStatus === 'expired') {
-                partnerStatus = 'failed';
-                nairaStatus = 'failed';
-              } else if (['refunded', 'refunding', 'error'].includes(liveStatus)) {
-                partnerStatus = 'completed';
-                nairaStatus = 'failed';
-              }
-            }
-
-            const bankRef = liveOrder?.paymentReference ?? item.bankReference;
-
-            // Use getCashoutRate or stored nairaAmount — never a hardcoded rate
             const estimatedNaira =
-              item.nairaAmount ??
-              (ngnPerUsdt && ngnPerUsdt > 0
-                ? getCashoutRate(item.amountInG, 123.48, ngnPerUsdt).netNaira
-                : null);
+              item.nairaAmount ?? (ngnPerUsdt && ngnPerUsdt > 0 ? getCashoutRate(item.amountInG, 123.48, ngnPerUsdt).netNaira : null);
+            const status = getItemStatus(item);
 
             return (
-              <div
-                key={item.id}
-                className="bg-[#17112c]/90 border border-[#2D204A] rounded-2xl p-4 sm:p-5 hover:border-purple-400/40 transition-colors shadow-lg"
-              >
-                {/* Header: Amounts, Date, Explorer Link */}
-                <div className="flex items-start justify-between gap-3 mb-3">
+              <div key={item.id} className="gc-card p-4">
+                {/* Amount and Status */}
+                <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-sans font-bold text-white text-base">
-                        {item.amountInG.toLocaleString()} G$
-                      </span>
-                      <span className="text-[#A39BBE] text-xs">→</span>
-                      <span className="font-sans font-bold text-emerald-400 text-base">
-                        {item.amountOutUsdt.toFixed(4)} USDT
-                      </span>
-                      {Number.isFinite(estimatedNaira) && estimatedNaira !== null && (
-                        <span className="text-xs font-semibold text-purple-200 bg-purple-500/20 px-2 py-0.5 rounded-md border border-purple-400/20">
-                          ≈ ₦{Math.round(estimatedNaira).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 text-[11px] text-[#A39BBE]">
-                      <span>{formatDisplayDate(item.timestamp)}</span>
-                      <span>•</span>
-                      <span className="text-purple-300 font-medium truncate max-w-[220px]">
-                        {item.route}
+                    <div className="gc-big flex items-center gap-2">
+                      <span className="text-white">{item.amountInG.toLocaleString()} G$</span>
+                      <span className="text-[#A39BBE]">→</span>
+                      <span className="text-[#10B981]">
+                        {Number.isFinite(estimatedNaira) && estimatedNaira !== null ? formatNaira(estimatedNaira) : '—'}
                       </span>
                     </div>
+                    <p className="mt-1 text-xs text-[#A39BBE]">
+                      {formatDisplayDate(item.timestamp)} · {item.amountOutUsdt.toFixed(4)} USDT
+                    </p>
                   </div>
 
-                  <a
-                    href={`https://celo.blockscout.com/tx/${item.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-[#8B5CF6] hover:text-white font-mono underline underline-offset-2 shrink-0"
-                  >
-                    <span>{item.txHash.slice(0, 6)}...{item.txHash.slice(-4)}</span>
-                    <span>↗</span>
-                  </a>
-                </div>
-
-                {/* Sub-steps Indicator (Swapped, Sent to partner, Paid in naira) */}
-                <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-center text-[11px]">
-                  {/* Step 1: Swapped */}
-                  <div className="bg-[#120D1D] rounded-xl p-2 border border-white/5 flex flex-col items-center">
-                    <span
-                      className={`font-bold mb-0.5 ${
-                        swappedStatus === 'completed'
-                          ? 'text-emerald-400'
-                          : swappedStatus === 'pending'
-                          ? 'text-purple-300'
-                          : 'text-[#A39BBE]'
-                      }`}
-                    >
-                      {swappedStatus === 'completed'
-                        ? '✓ Swapped'
-                        : swappedStatus === 'pending'
-                        ? '⏳ Swapping'
-                        : swappedStatus === 'failed'
-                        ? '✗ Failed'
-                        : 'Status unknown'}
-                    </span>
-                    <span className="text-[10px] text-white/50">Celo on-chain</span>
-                  </div>
-
-                  {/* Step 2: Sent to partner */}
-                  <div className="bg-[#120D1D] rounded-xl p-2 border border-white/5 flex flex-col items-center">
-                    <span
-                      className={`font-bold mb-0.5 ${
-                        partnerStatus === 'completed'
-                          ? 'text-emerald-400'
-                          : partnerStatus === 'pending'
-                          ? 'text-purple-300'
-                          : 'text-[#A39BBE]'
-                      }`}
-                    >
-                      {partnerStatus === 'completed'
-                        ? '✓ Sent'
-                        : partnerStatus === 'pending'
-                        ? '⏳ Sending'
-                        : partnerStatus === 'failed'
-                        ? '✗ Expired'
-                        : 'Status unknown'}
-                    </span>
-                    <span className="text-[10px] text-white/50">To Paycrest</span>
-                  </div>
-
-                  {/* Step 3: Paid in naira */}
-                  <div className="bg-[#120D1D] rounded-xl p-2 border border-white/5 flex flex-col items-center">
-                    <span
-                      className={`font-bold mb-0.5 ${
-                        nairaStatus === 'completed'
-                          ? 'text-emerald-400'
-                          : nairaStatus === 'processing'
-                          ? 'text-purple-300'
-                          : 'text-[#A39BBE]'
-                      }`}
-                    >
-                      {nairaStatus === 'completed'
-                        ? '✓ Paid NGN'
-                        : nairaStatus === 'processing'
-                        ? '⏳ Paying'
-                        : nairaStatus === 'pending'
-                        ? '⏳ Pending'
-                        : nairaStatus === 'failed'
-                        ? '✗ Refunded'
-                        : 'Status unknown'}
-                    </span>
-                    <span className="text-[10px] text-white/50">
-                      {bankRef ? bankRef.slice(0, 8) : 'Bank payout'}
-                    </span>
+                  {/* Status Pill */}
+                  <div>
+                    {status === 'paid' ? (
+                      <span className="gc-pill gc-pill--mint">{t.statusPaid || 'Paid'}</span>
+                    ) : status === 'onItsWay' ? (
+                      <span className="gc-pill gc-pill--ye">{t.statusOnItsWay || 'On its way'}</span>
+                    ) : (
+                      <span className="gc-pill">{t.statusUnknown || 'Unknown'}</span>
+                    )}
                   </div>
                 </div>
+
+                {/* Receipt Link */}
+                <a
+                  href={`https://celo.blockscout.com/tx/${item.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-mono text-[#8B5CF6] hover:text-[#C4B5FD] hover:underline"
+                >
+                  {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
+                </a>
               </div>
             );
           })}

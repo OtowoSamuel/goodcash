@@ -9,6 +9,7 @@ import { CashOutTracker } from './components/CashOutTracker';
 import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
 import type { Language } from './lib/i18n';
 import { getTranslations } from './lib/i18n';
+import { getCashoutRate } from './lib/rate';
 import { BLOCKSCOUT_URL } from './components/SafetyBanner';
 import { getNetQuote, type QuoteResult } from './lib/quote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
@@ -692,7 +693,15 @@ export function App({
                 </div>
                 <div className="gc-row">
                   <span>{t.totalNairaReceived}</span>
-                  <span>-</span>
+                  <span>
+                    {(() => {
+                      const total = history.reduce((sum, item) => {
+                        const naira = item.nairaAmount ?? (pendingQuote?.ngnPerUsdt && pendingQuote.ngnPerUsdt > 0 ? getCashoutRate(item.amountInG, 123.48, pendingQuote.ngnPerUsdt).netNaira : 0);
+                        return sum + (Number.isFinite(naira) ? naira : 0);
+                      }, 0);
+                      return Number.isFinite(total) && total > 0 ? `₦${Math.round(total).toLocaleString()}` : '—';
+                    })()}
+                  </span>
                 </div>
               </div>
               <div className="gc-card">
