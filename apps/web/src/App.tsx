@@ -662,13 +662,40 @@ export function App({
           {currentTab === 'cashout' && (
             <>
               <div className="gc-card">
+                <div className="gc-row">
+                  <span className="gc-lab">What you'll pay</span>
+                  {pendingQuote?.quote && (
+                    <span className="gc-pill gc-pill--mint gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2">
+                      Refreshes in 18s
+                    </span>
+                  )}
+                </div>
+                <div className="gc-row">
+                  <span>GoodDollar contribution (10%)</span>
+                  <span className="gc-mark">−100 G$</span>
+                </div>
+                <div className="gc-row">
+                  <span>Network fee</span>
+                  <span>under $0.001</span>
+                </div>
+                <div className="gc-row">
+                  <span>You get at least</span>
+                  <span>
+                    {pendingQuote?.quote
+                      ? `0.${Math.floor((Number(pendingQuote.quote.usdtOut) / 1e6) * 10000).toString().padStart(4, '0')}`
+                      : '—'}
+                    USDT
+                  </span>
+                </div>
+              </div>
+              <div className="gc-card">
                 <div className="gc-lab">{t.routeTitle}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
                   {t.routeExplanation}{' '}
                   <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>{t.details}</span>
                 </div>
               </div>
-              <div className="gc-card gc-card--yellow">
+              <div className="gc-card gc-card--ye">
                 <div className="gc-lab">{t.goodToKnowTitle}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
                   {t.goodToKnowText}
