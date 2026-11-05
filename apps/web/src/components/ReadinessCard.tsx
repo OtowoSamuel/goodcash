@@ -1,6 +1,18 @@
 import React from 'react';
 import type { Language } from '../lib/i18n';
+import { getTranslations } from '../lib/i18n';
 import { getCashoutRate, MIN_NET_USDT_REQUIRED } from '../lib/rate';
+import type { SwapHistoryItem } from './HistoryCard';
+
+/** Subset of the useClaim hook state needed by the Home claim card. */
+export interface HomeClaimState {
+  status: 'idle' | 'loading' | 'can_claim' | 'already_claimed' | 'not_verified' | 'error';
+  entitlement: bigint;
+  nextClaimTime: Date | null;
+  verificationUrl: string | null;
+  error: string | null;
+  isLoading: boolean;
+}
 
 interface ReadinessCardProps {
   balanceG: number;
@@ -11,71 +23,209 @@ interface ReadinessCardProps {
   isLoading?: boolean;
   isStale?: boolean;
   ngnPerUsdt?: number | null;
+  /** Most recent history items for the "Last cash out" card (mobile). */
+  history?: SwapHistoryItem[];
+  /** Called when the user taps the Last cash out card. */
+  onLastCashOutClick?: () => void;
+  /** Claim hook state from useClaim (wired in App.tsx). */
+  claimState?: HomeClaimState;
+  /** Refresh the claim state (for the error retry pill). */
+  onClaimRefresh?: () => void;
+}
+
+function formatG(amount: number): string {
+  return amount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function formatNaira(naira: number): string {
+  return '₦' + Math.round(naira).toLocaleString();
+}
+
+function formatCountdown(date: Date): string {
+  const diff = date.getTime() - Date.now();
+  if (diff <= 0) return 'soon';
+  const h = Math.floor(diff / 3_600_000);
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  return `${h}h ${m}m`;
+}
+
+function formatDateShort(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ›';
 }
 
 export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   balanceG,
-  dailyClaimG = 123.48,
+  dailyClaimG = 0,
   onCashOutClick,
   onClaimClick,
   isStale = false,
-  ngnPerUsdt,
+  ngnPerUsdt = null,
+  history = [],
+  onLastCashOutClick,
+  claimState,
+  onClaimRefresh,
 }) => {
+  const t = getTranslations('en');
   const rate = getCashoutRate(balanceG, dailyClaimG, ngnPerUsdt);
-  const progress = Math.min(100, Math.max(0, (rate.netUsdt / MIN_NET_USDT_REQUIRED) * 100));
+  const percent = Math.min(100, Math.round((rate.netUsdt / MIN_NET_USDT_REQUIRED) * 100));
   const minimumReached = rate.minimumReached;
-  const remainingText = minimumReached
-    ? 'Ready to cash out'
-    : `About ${rate.daysToMinimum || 1} more days of claiming to cash out`;
-  const buttonText = minimumReached ? 'Cash out' : "Claim today's G$";
-  const buttonAction = minimumReached ? onCashOutClick : onClaimClick;
+
+  // Naira display helpers
+  const nairaStr = rate.rateUnavailable
+    ? t.nairaUnavailable
+    : formatNaira(rate.netNaira);
+
+  const minNaira = ngnPerUsdt != null && Number.isFinite(ngnPerUsdt)
+    ? formatNaira(MIN_NET_USDT_REQUIRED * ngnPerUsdt)
+    : t.nairaUnavailable;
+
+  // Last cash out from history
+  const lastCashOut = history.length > 0 ? history[0] : null;
+
+  // Claim card helpers
+  const cs = claimState;
+  const entitlementG = cs ? Number(cs.entitlement) / 1e18 : 0;
+
+  // Single purple button rule: claim button is purple when cash-out button is NOT purple
+  const claimBtnClass = minimumReached ? 'gc-btn gc-btn--white' : 'gc-btn';
 
   return (
-    <div className="panel-card w-full rounded-[28px] p-5 sm:p-6">
-      <div className="mb-5">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-[#A39BBE]">G$ balance</p>
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="text-4xl font-bold tracking-[-0.06em] text-white sm:text-5xl">
-            {balanceG.toLocaleString(undefined, { maximumFractionDigits: 2 })} G$
-          </span>
+    <>
+      {/* ── Balance card ────────────────────────────────────────────── */}
+      <div className="gc-card">
+        <div className="gc-coin">G$</div>
+        <div className="gc-lab">{t.yourBalance}</div>
+        <div className="gc-big gc-big--home-desktop">{formatG(balanceG)}</div>
+        <div className="gc-sm">
+          {t.aboutNairaAfterFees.replace('{naira}', nairaStr)}
         </div>
-        <p className="mt-2 text-sm text-[#A39BBE]">
-          {Number.isFinite(rate.netNaira) ? `₦${rate.netNaira.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : 'Rate unavailable, try again'}
-        </p>
+        <div className="gc-bar">
+          <div className="gc-bar__fill" style={{ width: `${percent}%` }} />
+        </div>
+        <div className="gc-sm">
+          {minimumReached
+            ? t.readyToCashOutShort
+            : t.gToGo.replace('{n}', Math.ceil(rate.remainingG).toLocaleString())}
+        </div>
+        <div className="gc-sticker">{percent}%</div>
       </div>
 
-      <div className="rounded-2xl border border-[#2D204A] bg-[#120D1D] p-4">
-        <div className="mb-3 flex items-center justify-between gap-3 text-[12px] text-[#A39BBE]">
-          <span>
-            {minimumReached
-              ? `$${MIN_NET_USDT_REQUIRED.toFixed(2)} of $${MIN_NET_USDT_REQUIRED.toFixed(2)} reached`
-              : `$${rate.remainingUsdt.toFixed(2)} of $${MIN_NET_USDT_REQUIRED.toFixed(2)} needed`}
-          </span>
-          <span className="font-semibold text-[#10B981]">{Math.round(progress)}%</span>
-        </div>
-        <div className="h-3 w-full overflow-hidden rounded-full bg-[#1B122E]">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]"
-            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-          />
+      {/* ── First payout card ───────────────────────────────────────── */}
+      <div className="gc-card">
+        <div className="gc-lab">{t.firstPayout}</div>
+        <div className="gc-sm" style={{ marginTop: '2px' }}>
+          {t.minimumCashOutAbout.replace('{naira}', minNaira)}
         </div>
       </div>
 
-      <div className="mt-5 rounded-2xl border border-[#2D204A] bg-[#1B122E] p-4 text-sm text-[#D9D0F4]">
-        {remainingText}
+      {/* ── Claim card ──────────────────────────────────────────────── */}
+      <div className="gc-card">
+        <div className="gc-lab">{t.todayClaim}</div>
+        {cs?.isLoading ? (
+          <div style={{ height: '42px', background: '#ede6ff', borderRadius: '8px', marginTop: '4px' }} />
+        ) : (
+          <div className="gc-big">{cs ? formatG(entitlementG) : '0.0'}</div>
+        )}
+        {/* Status line */}
+        {cs?.status === 'can_claim' && (
+          <div className="gc-sm" style={{ marginTop: '2px' }}>{t.availableToClaimNow}</div>
+        )}
+        {cs?.status === 'already_claimed' && cs.nextClaimTime && (
+          <div className="gc-sm" style={{ marginTop: '2px' }}>
+            {t.nextClaimIn.replace('{time}', formatCountdown(cs.nextClaimTime))}
+          </div>
+        )}
+        {cs?.status === 'not_verified' && (
+          <>
+            <div className="gc-sm" style={{ marginTop: '2px' }}>{t.verificationNeeded}</div>
+            {cs.verificationUrl && (
+              <a
+                href={cs.verificationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="gc-sm"
+                style={{ display: 'block', marginTop: '2px', color: 'var(--gc-pu)', textDecoration: 'underline' }}
+              >
+                {t.verifyAtGoodDollar}
+              </a>
+            )}
+          </>
+        )}
+        {cs?.status === 'error' && (
+          <div className="gc-note" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <span>{t.couldNotLoadClaim}</span>
+            {onClaimRefresh && (
+              <button type="button" onClick={onClaimRefresh} className="gc-pill gc-hit" style={{ cursor: 'pointer' }}>
+                {t.retry}
+              </button>
+            )}
+          </div>
+        )}
+        {cs?.status === 'idle' && !cs?.isLoading && (
+          <div className="gc-sm" style={{ marginTop: '2px' }}>—</div>
+        )}
+        {/* Claim button — opens Claim screen, does NOT claim directly */}
+        {cs?.status === 'can_claim' && (
+          <button
+            type="button"
+            onClick={onClaimClick}
+            className={`${claimBtnClass} gc-hit`}
+            style={{ marginTop: '10px' }}
+          >
+            {t.claimTodayG}
+          </button>
+        )}
+        {cs?.status === 'already_claimed' && (
+          <button type="button" disabled className="gc-btn gc-btn--dis gc-hit" style={{ marginTop: '10px' }}>
+            {t.comeBackLater}
+          </button>
+        )}
+        {cs?.status === 'not_verified' && (
+          <button type="button" disabled className="gc-btn gc-btn--dis gc-hit" style={{ marginTop: '10px' }}>
+            {t.claimTodayG}
+          </button>
+        )}
       </div>
 
-      <button
-        type="button"
-        onClick={buttonAction}
-        className="mt-5 w-full rounded-2xl bg-[#7C3AED] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_32px_rgba(124,58,237,0.25)] transition hover:bg-[#8B5CF6]"
-      >
-        {buttonText}
-      </button>
+      {/* ── Last cash out (mobile only) ─────────────────────────────── */}
+      {lastCashOut && (
+        <div
+          className="gc-card gc-mobile-only"
+          onClick={onLastCashOutClick}
+          style={{ cursor: onLastCashOutClick ? 'pointer' : 'default' }}
+        >
+          <div className="gc-row">
+            <div>
+              <div className="gc-lab">{t.lastCashOut}</div>
+              <div className="gc-sm" style={{ marginTop: '2px' }}>
+                {lastCashOut.amountInG.toLocaleString()} G$ → ₦{Math.round((lastCashOut.amountOutUsdt || 0) * (ngnPerUsdt || 0)).toLocaleString()}
+              </div>
+            </div>
+            <span className="gc-sm">{formatDateShort(lastCashOut.timestamp)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Spacer (mobile: pushes button to bottom) ────────────────── */}
+      <div className="gc-sp" />
+
+      {/* ── Main button ─────────────────────────────────────────────── */}
+      {minimumReached ? (
+        <button type="button" onClick={onCashOutClick} className="gc-btn gc-hit">
+          {t.cashOut}
+        </button>
+      ) : (
+        <button type="button" disabled className="gc-btn gc-btn--dis gc-hit">
+          {t.cashOutOpensAt.replace('{n}', Math.ceil(rate.remainingG).toLocaleString())}
+        </button>
+      )}
 
       {isStale && (
-        <p className="mt-4 text-center text-[10px] uppercase tracking-[0.14em] text-[#A39BBE]">Balance refresh pending</p>
+        <div className="gc-sm" style={{ textAlign: 'center', marginTop: '8px', color: 'var(--gc-mute, #6b6585)' }}>
+          Balance refresh pending
+        </div>
       )}
-    </div>
+    </>
   );
 };

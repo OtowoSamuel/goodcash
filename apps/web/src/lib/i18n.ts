@@ -66,6 +66,30 @@ export interface Translations {
   privacyLinkText: string;
   privacyTitle: string;
   privacyText: string;
+
+  // Step 3 keys (English-only; other languages fall back via getTranslations)
+  yourBalance: string;
+  aboutNairaAfterFees: string;
+  gToGo: string;
+  readyToCashOutShort: string;
+  firstPayout: string;
+  minimumCashOutAbout: string;
+  lastCashOut: string;
+  todayClaim: string;
+  availableToClaimNow: string;
+  claimTodayG: string;
+  comeBackLater: string;
+  nextClaimIn: string;
+  verificationNeeded: string;
+  verifyAtGoodDollar: string;
+  couldNotLoadClaim: string;
+  retry: string;
+  cashOutOpensAt: string;
+  cashOut: string;
+  nairaUnavailable: string;
+  claimTitle: string;
+  claimed: string;
+  backToHome: string;
 }
 
 /** Merge English defaults with the selected language so all keys are present. */
@@ -136,6 +160,29 @@ export const translations: Record<Language, Partial<Translations>> = {
     privacyLinkText: 'Privacy',
     privacyTitle: 'Privacy',
     privacyText: 'Wallet addresses are pseudonymous personal data. GoodCash analytics are wallet-level only and never include bank details, names, phone numbers, or raw partner responses. Swaps happen on Celo; the naira payout is handled by our payout partner.',
+
+    yourBalance: 'Your balance',
+    aboutNairaAfterFees: 'about {naira} after fees',
+    gToGo: '{n} G$ to go',
+    readyToCashOutShort: 'Ready to cash out',
+    firstPayout: 'First payout',
+    minimumCashOutAbout: 'Minimum cash out is about {naira}.',
+    lastCashOut: 'Last cash out',
+    todayClaim: "Today's claim",
+    availableToClaimNow: 'Available to claim now',
+    claimTodayG: "Claim today's G$",
+    comeBackLater: 'Come back later',
+    nextClaimIn: 'Next claim in {time}',
+    verificationNeeded: 'Verification needed',
+    verifyAtGoodDollar: 'Verify at wallet.gooddollar.org ↗',
+    couldNotLoadClaim: "Couldn't load your claim. Try again.",
+    retry: 'Retry',
+    cashOutOpensAt: 'Cash out opens at {n} G$',
+    cashOut: 'Cash out',
+    nairaUnavailable: '₦ -',
+    claimTitle: 'Claim',
+    claimed: 'Claimed',
+    backToHome: 'Back to home',
   },
   pcm: {
     appName: 'GoodCash',

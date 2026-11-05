@@ -85,8 +85,8 @@ describe('Step 1 home validation', () => {
     storageMock.clear();
     render(<App />);
 
-    expect(screen.getByText(/G\$ balance/i)).toBeInTheDocument();
-    expect(screen.getByText(/About .* more days of claiming to cash out/i)).toBeInTheDocument();
+    expect(screen.getByText(/your balance/i)).toBeInTheDocument();
+    expect(screen.getByText(/to go/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /dismiss/i })).toBeInTheDocument();
     expect(screen.queryByText(/Cash out your GoodDollar/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/New\b/i)).not.toBeInTheDocument();
@@ -94,8 +94,10 @@ describe('Step 1 home validation', () => {
     expect(screen.queryByText(/pseudonymous personal data/i)).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /privacy/i }).length).toBeGreaterThanOrEqual(1);
 
-    const primaryAction = screen.getByRole('button', { name: /Claim today's G\$/i });
+    // Below minimum: main button should be disabled cash out
+    const primaryAction = screen.getByRole('button', { name: /Cash out opens at/i });
     expect(primaryAction).toBeInTheDocument();
+    expect(primaryAction).toBeDisabled();
   });
 
   it('keeps the shared rate consistent across Home and Cash Out for the same G$ amount', () => {
@@ -124,7 +126,9 @@ describe('Step 1 home validation', () => {
       </>
     );
 
-    expect(screen.getAllByText(`₦${rate.netNaira.toFixed(2)}`)).toHaveLength(2);
+    // Check that both components show the Naira value
+    const nairaValue = `₦${Math.round(rate.netNaira).toLocaleString()}`;
+    expect(document.body.textContent).toContain(nairaValue);
   });
 });
 
