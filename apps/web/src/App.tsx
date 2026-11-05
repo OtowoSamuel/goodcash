@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Navbar } from './components/Navbar';
 import { SafetyBanner } from './components/SafetyBanner';
 import { ReadinessCard } from './components/ReadinessCard';
 import { ClaimCard } from './components/ClaimCard';
@@ -148,6 +147,9 @@ export function App({
 
   // Privacy note toggle (desktop + mobile footer link)
   const [showPrivacy, setShowPrivacy] = useState(false);
+
+  // Debug view toggle for testing different screens
+  const [debugView, setDebugView] = useState<'home' | 'cashout' | 'review' | 'processing' | 'success' | null>(null);
 
   // Active translations shortcut
   const t = getTranslations(language);
@@ -425,8 +427,8 @@ export function App({
         amountInG: amountGSwapped,
         amountOutUsdt: pendingSwapResult.usdtReceived,
         route: pendingQuote.quote.route === 'reserve'
-          ? 'GoodDollar Reserve \u2192 Uniswap V3 (fee 100)'
-          : 'Uniswap V3 (G$/USDm) \u2192 Uniswap V3 (USDm/USDT)',
+          ? 'GoodDollar Reserve → Uniswap V3 (fee 100)'
+          : 'Uniswap V3 (G$/USDm) → Uniswap V3 (USDm/USDT)',
         orderId: order.orderId,
         steps: { swapped: 'completed', sentToPartner: 'pending', paidInNaira: 'pending' },
       };
@@ -447,6 +449,7 @@ export function App({
       clearPendingPayout();
       setPendingSwapResult(null);
       setPendingQuote(null);
+      setCurrentTab('home');
     } catch (retryErr: unknown) {
       const msg = retryErr instanceof Error ? retryErr.message : 'Retry failed';
       setSwapError(`Retry payout failed: ${msg}`);
@@ -533,322 +536,127 @@ export function App({
   }
 
   return (
-    <div className="gc">
-      {/* ── Top Navbar (Desktop bar-top + Mobile top row + Mobile bottom nav) ── */}
-      <Navbar
-        currentTab={currentTab}
-        onSelectTab={(tab) => {
-          setCurrentTab(tab);
-          setTrackerData(null);
-        }}
-        walletAddress={walletAddress}
-        onConnectWallet={handleConnectWallet}
-        onDisconnectWallet={handleDisconnectWallet}
-        language={language}
-        onSelectLanguage={setLanguage}
-        isMiniPayBlocked={miniPayBlocked}
-        isDemoMode={isDemoMode}
-      />
+    <div className="w-full max-w-md mx-auto min-h-screen relative bg-[#d4c5fb] flex flex-col pb-24">
+      {/* ── Mobile Header ── */}
+      <div className="flex justify-between items-center px-4 pt-6 pb-4">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-[#111] text-xl">GoodCash</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value as Language)}
+            className="text-xs text-[#111] border-none bg-transparent outline-none font-bold cursor-pointer"
+          >
+            <option value="en">EN</option>
+            <option value="pcm">PCM</option>
+            <option value="ha">HA</option>
+            <option value="yo">YO</option>
+            <option value="ig">IG</option>
+          </select>
+          <div className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-xs">
+            {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
+          </div>
+        </div>
+      </div>
 
-      {/* ── Main Responsive Content Area ── */}
-      <main className="gc-main">
+      {/* ── Main Content ── */}
+      <div className="flex-1 overflow-y-auto px-4">
         {/* Mobile Safety Banner */}
-        <div className="gc-mobile-only" style={{ width: '100%', maxWidth: '420px', margin: '0 auto' }}>
+        {miniPayBlocked ? (
+          <MiniPayNotice language={language} />
+        ) : null}
+        <div className="gc-mobile-only">
           <SafetyBanner language={language} />
         </div>
 
-        {/* Primary Screen Column (Mobile full / Desktop 420px) */}
-        <div className="gc-col">
-          {trackerData ? (
-            <CashOutTracker
-              txHash={trackerData.txHash}
-              usdtReceived={trackerData.usdtReceived}
-              amountGSwapped={trackerData.amountGSwapped}
-              bankName={trackerData.bankName || 'Bank Payout'}
-              accountNumber={trackerData.accountNumber || '••••••••'}
-              accountHolderName={trackerData.accountHolderName || 'Beneficiary'}
-              ngnPerUsdt={trackerData.ngnPerUsdt}
-              initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
-              walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}
-              language={language}
-              onDone={() => {
-                setTrackerData(null);
-                setCurrentTab('home');
-              }}
-            />
-          ) : pendingSwapResult && !pendingQuote ? (
-            <PendingPayoutCard
-              txHash={pendingSwapResult.txHash}
-              usdtReceived={pendingSwapResult.usdtReceived}
-              onRetry={handleFinishPendingPayout}
-              errorMessage={swapError}
-              language={language}
-            />
-          ) : currentTab === 'home' ? (
-            <ReadinessCard
-              balanceG={balanceG}
-              dailyClaimG={123.48}
-              onCashOutClick={() => setCurrentTab('cashout')}
-              onClaimClick={() => setCurrentTab('claim')}
-              language={language}
-              isStale={balanceIsStale}
-            />
-          ) : currentTab === 'cashout' ? (
-            <CashOutCard
-              balanceG={balanceG}
-              onInitiateCashOut={handleInitiateCashOut}
-              language={language}
-            />
-          ) : currentTab === 'claim' ? (
-            <ClaimCard
-              isVerified={true}
-              entitlementG={123.48}
-              onClaimSuccess={handleClaimSuccess}
-              language={language}
-            />
-          ) : currentTab === 'history' ? (
-            <HistoryCard
-              history={history}
-              onCashOutClick={() => setCurrentTab('cashout')}
-              language={language}
-              ngnPerUsdt={pendingQuote?.ngnPerUsdt ?? null}
-            />
-          ) : null}
-        </div>
-
-        {/* Right Info Panel (Desktop only: 340px) */}
-        <aside className="gc-side">
-          {currentTab === 'home' && (
-            <>
-              <div className="gc-card">
-                <div className="gc-lab">{t.howItWorks}</div>
-                <div className="gc-st">
-                  <b className="gc-st__num">1</b>
-                  <span className="gc-sm">{t.howItWorksStep1}</span>
-                </div>
-                <div className="gc-st">
-                  <b className="gc-st__num">2</b>
-                  <span className="gc-sm">{t.howItWorksStep2}</span>
-                </div>
-                <div className="gc-st">
-                  <b className="gc-st__num">3</b>
-                  <span className="gc-sm">{t.howItWorksStep3}</span>
-                </div>
-              </div>
-              <div className="gc-card">
-                <div className="gc-lab">{t.whatItCostsPanel}</div>
-                <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.whatItCostsExplanation}
-                </div>
-              </div>
-              <div className="gc-card gc-card--mint">
-                <div className="gc-lab">{t.staySafe}</div>
-                <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.staySafeText}{' '}
-                  <a
-                    href={BLOCKSCOUT_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="gc-inter"
-                    style={{ color: '#111', textDecoration: 'underline' }}
-                  >
-                    Contract 0xA433…c407 ↗
-                  </a>
-                </div>
-              </div>
-            </>
-          )}
-
-          {currentTab === 'cashout' && (
-            <>
-              <div className="gc-card">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold uppercase text-[#111]">WHAT YOU'LL PAY</h3>
-                  <div className="bg-[#63f2b4] border-2 border-[#111] rounded-full px-3 py-1 font-bold text-sm text-[#111]">
-                    Refreshes in 18s
-                  </div>
-                </div>
-                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
-                  <span>GoodDollar contribution (10%)</span>
-                  <span className="bg-[#ffd23f] px-2 py-0.5 rounded text-[#111] font-medium">−100 G$</span>
-                </div>
-                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
-                  <span>Network fee</span>
-                  <span>under $0.001</span>
-                </div>
-                <div className="gc-row pt-3 pb-3">
-                  <span>You get at least</span>
-                  <span>
-                    {pendingQuote?.quote
-                      ? `0.${Math.floor((Number(pendingQuote.quote.usdtOut) / 1e6) * 10000).toString().padStart(4, '0')}`
-                      : '—'}
-                    USDT
-                  </span>
-                </div>
-              </div>
-              <div className="gc-card">
-                <div className="gc-lab">{t.routeTitle}</div>
-                <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.routeExplanation}{' '}
-                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>{t.details}</span>
-                </div>
-              </div>
-              <div className="gc-card gc-card--ye">
-                <div className="gc-lab">{t.goodToKnowTitle}</div>
-                <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.goodToKnowText}
-                </div>
-              </div>
-            </>
-          )}
-
-          {currentTab === 'history' && (
-            <>
-              <div className="gc-card gc-cost">
-                <div className="gc-lab" style={{ marginBottom: '2px' }}>{t.yourTotals}</div>
-                <div className="gc-row">
-                  <span>{t.totalCashOuts}</span>
-                  <span>{history.length}</span>
-                </div>
-                <div className="gc-row">
-                  <span>{t.totalGSwapped}</span>
-                  <span>
-                    {history.reduce((sum, item) => sum + (item.amountInG || 0), 0).toLocaleString()} G$
-                  </span>
-                </div>
-                <div className="gc-row">
-                  <span>{t.totalNairaReceived}</span>
-                  <span>
-                    {(() => {
-                      const total = history.reduce((sum, item) => {
-                        const naira = item.nairaAmount ?? (pendingQuote?.ngnPerUsdt && pendingQuote.ngnPerUsdt > 0 ? getCashoutRate(item.amountInG, 123.48, pendingQuote.ngnPerUsdt).netNaira : 0);
-                        return sum + (Number.isFinite(naira) ? naira : 0);
-                      }, 0);
-                      return Number.isFinite(total) && total > 0 ? `₦${Math.round(total).toLocaleString()}` : '—';
-                    })()}
-                  </span>
-                </div>
-              </div>
-              <div className="gc-card">
-                <div className="gc-lab">{t.whatStatusesMean}</div>
-                <div className="gc-st">
-                  <b className="gc-st__num">1</b>
-                  <span className="gc-sm"><u>On its way</u>: {t.statusOnItsWayExplanation.replace(/^[^:]*:\s*/, '')}</span>
-                </div>
-                <div className="gc-st">
-                  <b className="gc-st__num">2</b>
-                  <span className="gc-sm"><u>Paid</u>: {t.statusPaidExplanation.replace(/^[^:]*:\s*/, '')}</span>
-                </div>
-              </div>
-              <div className="gc-card gc-card--mint">
-                <div className="gc-lab">{t.receiptsTitle}</div>
-                <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.receiptsExplanation}
-                </div>
-              </div>
-            </>
-          )}
-        </aside>
-      </main>
-
-      {/* Privacy toggle link */}
-      <button
-        type="button"
-        onClick={() => setShowPrivacy((v) => !v)}
-        className="text-[#111] font-semibold text-sm underline hover:text-[#111]/80 mb-4 ml-4"
-      >
-        Privacy
-      </button>
-
-      {/* Privacy Note / Modal (toggled by Privacy link on desktop and mobile) */}
-      {showPrivacy && (
-        <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto 10px', padding: '0 14px' }}>
-          <div
-            className="gc-note"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '10px',
+        {trackerData ? (
+          <CashOutTracker
+            txHash={trackerData.txHash}
+            usdtReceived={trackerData.usdtReceived}
+            amountGSwapped={trackerData.amountGSwapped}
+            bankName={trackerData.bankName || 'Bank Payout'}
+            accountNumber={trackerData.accountNumber || '••••••••'}
+            accountHolderName={trackerData.accountHolderName || 'Beneficiary'}
+            ngnPerUsdt={trackerData.ngnPerUsdt}
+            initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
+            walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}
+            language={language}
+            onDone={() => {
+              setTrackerData(null);
+              setCurrentTab('home');
             }}
-          >
-            <div>
-              <strong>{t.privacyTitle}:</strong> {t.privacyText}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowPrivacy(false)}
-              aria-label="Close privacy note"
-              className="gc-hit"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                font: '800 13px Inter',
-                cursor: 'pointer',
-                padding: '2px 6px',
-                color: '#111',
-                flex: 'none',
-              }}
-            >
-              ✕
-            </button>
+          />
+        ) : pendingSwapResult && !pendingQuote ? (
+          <PendingPayoutCard
+            txHash={pendingSwapResult.txHash}
+            usdtReceived={pendingSwapResult.usdtReceived}
+            onRetry={handleFinishPendingPayout}
+            errorMessage={swapError}
+            language={language}
+          />
+        ) : debugView === 'cashout' || currentTab === 'cashout' ? (
+          <CashOutCard
+            balanceG={balanceG}
+            onInitiateCashOut={handleInitiateCashOut}
+            language={language}
+          />
+        ) : debugView === 'review' || currentTab === 'claim' ? (
+          <ClaimCard
+            isVerified={true}
+            entitlementG={123.48}
+            onClaimSuccess={handleClaimSuccess}
+            language={language}
+          />
+        ) : debugView === 'processing' ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-10">
+            <div className="w-12 h-12 border-2 border-[#111] rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-[#111] font-bold text-sm">Processing payment...</p>
           </div>
-        </div>
-      )}
+        ) : debugView === 'success' ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-10">
+            <div className="w-12 h-12 border-2 border-[#111] rounded-full bg-[#63f2b4] flex items-center justify-center mx-auto mb-4">
+              <span className="text-[#111] font-bold text-xs">✓</span>
+            </div>
+            <h2 className="text-[#111] font-bold text-xl mb-2">Success</h2>
+            <p className="text-[#666] text-sm text-center">Your payout has been completed successfully.</p>
+          </div>
+        ) : (
+          <ReadinessCard
+            balanceG={balanceG}
+            dailyClaimG={123.48}
+            onCashOutClick={() => setCurrentTab('cashout')}
+            onClaimClick={() => setCurrentTab('claim')}
+            language={language}
+            isStale={balanceIsStale}
+          />
+        )}
+      </div>
 
-      {/* Confirmation Modal */}
-      {pendingQuote && (
-        <ConfirmModal
-          isOpen={true}
-          onClose={() => { setPendingQuote(null); setPendingSwapResult(null); }}
-          onConfirm={handleConfirmSwap}
-          onRefresh={handleRefreshQuote}
-          onRetryPayout={pendingSwapResult ? handleRetryPayout : undefined}
-          quote={pendingQuote.quote}
-          amountG={pendingQuote.amountG}
-          slippageBps={pendingQuote.slippageBps}
-          language={language}
-          bankName={pendingQuote.bankName}
-          accountNumber={pendingQuote.accountNumber}
-          accountHolderName={pendingQuote.accountHolderName}
-          ngnPerUsdt={pendingQuote.ngnPerUsdt}
-          errorMessage={swapError}
-          hasConfirmedSwap={!!pendingSwapResult}
-        />
-      )}
-
-      {/* ── Global Footer Bar (all breakpoints) ── */}
-      <footer className="flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4">
-        <span className="font-semibold text-[#111]">{t.footerText}</span>
-        <div className="flex items-center gap-4">
-          <a
-            href={BLOCKSCOUT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
-          >
-            {t.contractLinkText}
-          </a>
-          <span className="text-[#111] font-semibold">·</span>
-          <a
-            href="https://gooddollar.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
-          >
-            {t.goodDollarLinkText}
-          </a>
-          <span className="text-[#111] font-semibold">·</span>
-          <a
-            href="https://paycrest.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
-          >
-            {t.paycrestLinkText}
-          </a>
-        </div>
-      </footer>
+      {/* ── Bottom Navigation ── */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[calc(28rem-2rem)] bg-white border-2 border-[#111] rounded-full p-1 flex justify-between shadow-[4px_4px_0px_#111] z-50">
+        <button
+          type="button"
+          onClick={() => setCurrentTab('home')}
+          className={`flex flex-col items-center gap-1 text-xs ${currentTab === 'home' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+        >
+          Home
+        </button>
+        <button
+          type="button"
+          onClick={() => setCurrentTab('cashout')}
+          className={`flex flex-col items-center gap-1 text-xs ${currentTab === 'cashout' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+        >
+          Cash out
+        </button>
+        <button
+          type="button"
+          onClick={() => setCurrentTab('history')}
+          className={`flex flex-col items-center gap-1 text-xs ${currentTab === 'history' ? 'font-bold text-[#111]' : 'text-[#666]'}`}
+        >
+          History
+        </button>
+      </nav>
     </div>
   );
 }
