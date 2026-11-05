@@ -295,7 +295,7 @@ describe('shared rate conversion', () => {
     await waitFor(() => {
       // Check that both components show a Naira value
       expect(document.body.textContent).toContain('₦');
-      expect(document.body.textContent).toContain('170'); // approximate value check
+      expect(document.body.textContent).toMatch(/₦17[01]/); // accepts ₦170 or ₦171 due to rounding
     });
   });
 

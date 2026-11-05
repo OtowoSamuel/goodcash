@@ -120,6 +120,20 @@ export interface Translations {
   reviewCashOut: string;
   rateUnavailableTryAgain: string;
   estimateFinalAmountNote: string;
+
+  // Step 4b keys (English-only; other languages fall back via getTranslations)
+  stepReview: string;
+  stepSwap: string;
+  stepOrder: string;
+  stepDone: string;
+  reviewLabel: string;
+  confirmButton: string;
+  confirming: string;
+  swapAlreadyConfirmed: string;
+  swapFailed: string;
+  retryPayout: string;
+  retryingPayout: string;
+  refreshQuote: string;
 }
 
 /** Merge English defaults with the selected language so all keys are present. */
@@ -241,6 +255,18 @@ export const translations: Record<Language, Partial<Translations>> = {
     reviewCashOut: 'Review cash out',
     rateUnavailableTryAgain: 'Rate unavailable, try again',
     estimateFinalAmountNote: 'Estimate. Final amount is set by our payout partner when the order is created.',
+    stepReview: 'Review',
+    stepSwap: 'Swap',
+    stepOrder: 'Create Order',
+    stepDone: 'Done',
+    reviewLabel: 'Review',
+    confirmButton: 'Confirm',
+    confirming: 'Confirming...',
+    swapAlreadyConfirmed: 'Swap already confirmed',
+    swapFailed: 'Swap failed',
+    retryPayout: 'Retry payout (swap already confirmed)',
+    retryingPayout: 'Retrying payout…',
+    refreshQuote: 'Refresh quote',
   },
   pcm: {
     appName: 'GoodCash',
