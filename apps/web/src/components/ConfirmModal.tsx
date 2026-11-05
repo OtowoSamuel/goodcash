@@ -153,7 +153,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                       step.status === 'completed'
                         ? 'bg-[#10B981]/20 text-[#6EE7B7] ring-1 ring-[#10B981]/40'
                         : step.status === 'active'
-                        ? 'bg-[#7C3AED]/20 text-[#C4B5FD] ring-2 ring-[#7C3AED] shadow-[0_0_12px_rgba(124,58,237,0.4)]'
+                        ? 'animate-pulse animate-pulse bg-[#7C3AED]/20 text-[#C4B5FD] ring-2 ring-[#7C3AED] shadow-[0_0_12px_rgba(124,58,237,0.4)]'
                         : step.status === 'error'
                         ? 'bg-[#EF4444]/20 text-[#FCA5A5] ring-1 ring-[#EF4444]/40'
                         : 'bg-[#2D204A] text-[#A39BBE]'
