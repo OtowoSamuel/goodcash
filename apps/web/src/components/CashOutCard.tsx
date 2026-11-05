@@ -298,7 +298,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
           );
         }}
         disabled={!canReview}
-        className={`gc-btn gc-btn--primary w-full mt-4 ${canReview ? '' : 'opacity-50 cursor-not-allowed'}`}
+        className={`gc-btn w-full mt-4 ${!canReview ? 'gc-btn--dis opacity-50 cursor-not-allowed' : ''}`}
       >
         {rateError ? t.rateUnavailableTryAgain : t.reviewCashOut}
       </button>
