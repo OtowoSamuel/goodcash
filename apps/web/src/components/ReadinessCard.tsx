@@ -93,7 +93,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   return (
     <>
       {/* ── Balance card ────────────────────────────────────────────── */}
-      <div className="gc-card px-4 flex flex-col gap-4">
+      <div className="gc-card">
         <div className="gc-coin">G$</div>
         <div className="gc-lab">{t.yourBalance}</div>
         <div className="gc-big gc-big--home-desktop">{formatG(balanceG)}</div>
@@ -112,7 +112,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
       </div>
 
       {/* ── First payout card ───────────────────────────────────────── */}
-      <div className="gc-card px-4 flex flex-col gap-4">
+      <div className="gc-card">
         <div className="gc-lab">{t.firstPayout}</div>
         <div className="gc-sm" style={{ marginTop: '2px' }}>
           {t.minimumCashOutAbout.replace('{naira}', minNaira)}
@@ -120,7 +120,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
       </div>
 
       {/* ── Claim card ──────────────────────────────────────────────── */}
-      <div className="gc-card px-4 flex flex-col gap-4">
+      <div className="gc-card">
         <div className="gc-lab">{t.todayClaim}</div>
         {cs?.isLoading ? (
           <div style={{ height: '42px', background: '#ede6ff', borderRadius: '8px', marginTop: '4px' }} />
