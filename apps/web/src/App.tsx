@@ -670,15 +670,15 @@ export function App({
                     </span>
                   )}
                 </div>
-                <div className="gc-row">
+                <div className="gc-row border-b border-dashed border-[#A39BBE] pt-2 pb-2">
                   <span>GoodDollar contribution (10%)</span>
-                  <span className="gc-mark">−100 G$</span>
+                  <span className="bg-[#ffd23f] px-1 py-0.5 rounded font-medium">−100 G$</span>
                 </div>
-                <div className="gc-row">
+                <div className="gc-row border-b border-dashed border-[#A39BBE] pt-2 pb-2">
                   <span>Network fee</span>
                   <span>under $0.001</span>
                 </div>
-                <div className="gc-row">
+                <div className="gc-row pt-2 pb-2">
                   <span>You get at least</span>
                   <span>
                     {pendingQuote?.quote
