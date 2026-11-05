@@ -833,6 +833,20 @@ export function App({
 
       {/* ── Mobile Shell ── */}
       <div className="flex flex-col md:hidden w-full min-h-screen bg-[#d4c5fb] pb-24 relative">
+        {/* Debug Panel - Only visible in development */}
+        {isDemoMode && (
+          <div className="fixed top-2 right-2 z-[100] bg-black/80 text-white p-2 rounded-lg text-xs">
+            <div className="font-bold mb-1">Debug Views:</div>
+            <div className="flex flex-col gap-1">
+              <button onClick={() => setMobileView('home')} className="bg-white/20 px-2 py-1 rounded hover:bg-white/30">Home</button>
+              <button onClick={() => setMobileView('cashout')} className="bg-white/20 px-2 py-1 rounded hover:bg-white/30">Cash Out</button>
+              <button onClick={() => setMobileView('review')} className="bg-white/20 px-2 py-1 rounded hover:bg-white/30">Review</button>
+              <button onClick={() => setMobileView('processing')} className="bg-white/20 px-2 py-1 rounded hover:bg-white/30">Processing</button>
+              <button onClick={() => setMobileView('success')} className="bg-white/20 px-2 py-1 rounded hover:bg-white/30">Success</button>
+            </div>
+          </div>
+        )}
+        
         {mobileView === 'cashout' ? (
           <MobileCashOut
             balanceG={balanceG}
