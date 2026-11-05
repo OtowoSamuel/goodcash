@@ -135,7 +135,7 @@ export const translations: Record<Language, Partial<Translations>> = {
     paycrestLinkText: 'Paycrest',
     privacyLinkText: 'Privacy',
     privacyTitle: 'Privacy',
-    privacyText: 'GoodCash does not track your identity or store personal information. All swap transactions take place directly on Celo blockchain.',
+    privacyText: 'Wallet addresses are pseudonymous personal data. GoodCash analytics are wallet-level only and never include bank details, names, phone numbers, or raw partner responses. Swaps happen on Celo; the naira payout is handled by our payout partner.',
   },
   pcm: {
     appName: 'GoodCash',

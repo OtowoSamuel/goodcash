@@ -186,13 +186,31 @@ describe('Step 2b shell and i18n', () => {
     expect(desktopNav.querySelectorAll('button')[0]).toHaveTextContent('Home');
   });
 
-  it('renders no text containing "licensed", "0.1129" or "18s"', () => {
+  it('renders no "licensed", "0.1129" or "18s" on any tab; privacy note contains "pseudonymous"', () => {
     storageMock.clear();
     render(<App />);
 
+    // Home tab
     expect(screen.queryByText(/licensed/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/0\.1129/)).not.toBeInTheDocument();
     expect(screen.queryByText(/18s/)).not.toBeInTheDocument();
+
+    // Cash out tab
+    fireEvent.click(screen.getAllByRole('button', { name: /Cash Out/i })[0]);
+    expect(screen.queryByText(/licensed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0\.1129/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/18s/)).not.toBeInTheDocument();
+
+    // History tab
+    fireEvent.click(screen.getAllByRole('button', { name: /History/i })[0]);
+    expect(screen.queryByText(/licensed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0\.1129/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/18s/)).not.toBeInTheDocument();
+
+    // Privacy note contains "pseudonymous"
+    const privacyButtons = screen.getAllByRole('button', { name: /privacy/i });
+    fireEvent.click(privacyButtons[0]);
+    expect(screen.getByText(/pseudonymous/i)).toBeInTheDocument();
   });
 });
 
