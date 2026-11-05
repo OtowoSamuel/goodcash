@@ -152,6 +152,20 @@ export interface Translations {
   viewTransactionReceipt: string;
   doneButton: string;
 
+  // Step 10 keys (English-only; other languages fall back via getTranslations)
+  miniPayBlockedTitle: string;
+  miniPayBlockedBody1: string;
+  miniPayBlockedBody2: string;
+  copyGoodCashLink: string;
+  linkCopied: string;
+  openInBrowser: string;
+  loadingRate: string;
+  loadingSwap: string;
+  errorRateUnavailable: string;
+  errorSwapFailed: string;
+  errorNetworkFailure: string;
+  errorTransactionRejected: string;
+  retryAction: string;
 }
 /** Merge English defaults with the selected language so all keys are present. */
 export function getTranslations(lang: Language): Translations {
@@ -300,6 +314,21 @@ export const translations: Record<Language, Partial<Translations>> = {
 
     noCashOutsYet: 'No cash outs yet. Your first one will show up here.',
     noMatchingTransactions: 'No transactions match this filter.',
+
+    // Step 10 keys (English-only; other languages fall back via getTranslations)
+    miniPayBlockedTitle: 'MiniPay does not support G$',
+    miniPayBlockedBody1: 'GoodCash needs a wallet that can hold G$ and complete the claim flow. MiniPay does not support G$ and cannot be used for this product.',
+    miniPayBlockedBody2: 'We do not connect the MiniPay wallet, do not show your address, and we do not run any claim or swap flow inside MiniPay.',
+    copyGoodCashLink: 'Copy GoodCash link',
+    linkCopied: 'Link copied',
+    openInBrowser: 'Open in browser',
+    loadingRate: 'Loading rate…',
+    loadingSwap: 'Executing swap…',
+    errorRateUnavailable: 'Rate unavailable. Try again.',
+    errorSwapFailed: 'Swap failed. Try again.',
+    errorNetworkFailure: 'Network failure. Check your connection.',
+    errorTransactionRejected: 'Transaction rejected.',
+    retryAction: 'Retry',
   },
   pcm: {
     appName: 'GoodCash',

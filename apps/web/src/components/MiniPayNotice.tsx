@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
+import type { Language } from '../lib/i18n';
+import { getTranslations } from '../lib/i18n';
 import { copyCurrentUrl } from '../lib/mobile';
 
-export const MiniPayNotice: React.FC = () => {
+export const MiniPayNotice: React.FC<{ language: Language }> = ({ language }) => {
   const [copied, setCopied] = useState(false);
+  const t = getTranslations(language);
 
   const handleCopyLink = async () => {
     const succeeded = await copyCurrentUrl();
@@ -18,33 +21,33 @@ export const MiniPayNotice: React.FC = () => {
         Browser required
       </div>
 
-      <h2 className="text-2xl font-bold text-white">MiniPay does not support G$</h2>
-      <p className="mt-3 text-sm leading-6 text-white/75">
-        GoodCash needs a wallet that can hold G$ and complete the claim flow. MiniPay does not support G$ and cannot be used for this product.
+      <h2 className="text-2xl font-bold text-white">{t.miniPayBlockedTitle}</h2>
+      <p className="mt-3 text-sm leading-6 text-white/75" aria-live="polite">
+        {t.miniPayBlockedBody1}
       </p>
-      <p className="mt-3 text-sm leading-6 text-white/75">
-        We do not connect the MiniPay wallet, do not show your address, and we do not run any claim or swap flow inside MiniPay.
+      <p className="mt-3 text-sm leading-6 text-white/75" aria-live="polite">
+        {t.miniPayBlockedBody2}
       </p>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
           onClick={handleCopyLink}
-          className="inline-flex items-center justify-center rounded-xl bg-[#7b39fc] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#7b39fc]/30 transition hover:bg-[#8c4eff]"
+          className="gc-hit inline-flex items-center justify-center rounded-xl bg-[#7b39fc] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#7b39fc]/30 transition hover:bg-[#8c4eff] focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
         >
-          {copied ? 'Link copied' : 'Copy GoodCash link'}
+          {copied ? t.linkCopied : t.copyGoodCashLink}
         </button>
         <a
           href={typeof window !== 'undefined' ? window.location.href : '/'}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:border-white/25 hover:text-white"
+          className="gc-hit inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:border-white/25 hover:text-white focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
         >
-          Open in browser
+          {t.openInBrowser}
         </a>
       </div>
 
-      <div className="mt-5 rounded-xl border border-white/10 bg-[#120e20]/50 p-3 text-xs text-white/60">
+      <div className="mt-5 rounded-xl border border-white/10 bg-[#120e20]/50 p-3 text-xs text-white/60" aria-live="polite">
         No wallet address is displayed or copied here. If you want to continue, open this page in a regular browser with a Celo wallet that supports G$.
       </div>
     </div>

@@ -526,7 +526,7 @@ export function App({
       <div className="relative min-h-screen w-full bg-[#120e20] text-white flex flex-col items-center justify-center px-4 py-10 font-sans">
         <div className="absolute inset-0 bg-gradient-to-b from-[#120e20] via-[#18122c] to-[#0e0a1a]" />
         <div className="relative z-10 w-full max-w-2xl">
-          <MiniPayNotice />
+          <MiniPayNotice language={language} />
         </div>
       </div>
     );
