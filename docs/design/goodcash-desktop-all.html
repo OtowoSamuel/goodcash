@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoodCash desktop: all tabs</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f5fa;--card:#fff;--ink:#1a1530;--mute:#6b6585;--line:#e4e1ee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14101f;--card:#1e182f;--ink:#f1eefb;--mute:#a49fbd;--line:#322b49}}
+:root[data-theme="dark"]{--bg:#14101f;--card:#1e182f;--ink:#f1eefb;--mute:#a49fbd;--line:#322b49}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 Inter,system-ui,sans-serif}
+.w{max-width:1000px;margin:0 auto;padding:24px 16px 56px}
+h1{font:800 26px 'Bricolage Grotesque',sans-serif;margin:0}p{color:var(--mute);font-size:14px;margin:6px 0}
+.cap{font:700 12px Inter;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);margin:26px 0 8px}
+.scr{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.dt{--pu:#7b39fc;--ye:#ffd23f;--mi:#8cf0c0;width:900px;height:580px;background:#cdb8ff;color:#111;font-family:'Bricolage Grotesque',sans-serif;display:flex;flex-direction:column;overflow:hidden}
+.bar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:2.5px solid #111;background:#fff}
+.logo{font:800 22px 'Bricolage Grotesque'}
+.nav{display:flex;gap:6px}.nav span{font:800 13px 'Bricolage Grotesque';padding:7px 16px;border-radius:99px;border:2px solid transparent}.nav .on{background:var(--pu);color:#fff;border-color:#111}
+.chip{font:600 12px Inter;background:#fff;border:2.5px solid #111;border-radius:99px;padding:5px 12px;box-shadow:3px 3px 0 #111}
+.main{flex:1;display:flex;justify-content:center;gap:28px;padding:24px 28px 0}
+.col{width:420px;display:flex;flex-direction:column;gap:12px}
+.side{width:340px;display:flex;flex-direction:column;gap:12px}
+.card{background:#fff;border:2.5px solid #111;border-radius:18px;box-shadow:5px 5px 0 #111;padding:14px 18px;position:relative}
+.lab{font:700 11px 'Bricolage Grotesque';text-transform:uppercase;letter-spacing:.04em}
+.big{font:800 44px/1 'Bricolage Grotesque';font-variant-numeric:tabular-nums}
+.sm{font-size:13px;font-weight:600}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pill{font:800 12px 'Bricolage Grotesque';background:#ede6ff;border:2px solid #111;border-radius:99px;padding:3px 10px}
+.pill.y{background:var(--ye)}.pill.w{background:#fff}.pill.m{background:var(--mi)}.pill.on{background:var(--pu);color:#fff}
+.chips{display:flex;gap:6px;margin-top:8px}
+.btn{height:54px;border-radius:16px;background:var(--pu);color:#fff;border:2.5px solid #111;box-shadow:5px 5px 0 #111;font:800 16px 'Bricolage Grotesque';display:flex;align-items:center;justify-content:center}
+.cost .row{padding:7px 0;font-size:13px;font-weight:600;border-bottom:2px dashed #cfc3ee}.cost .row:last-child{border:0}
+.mark{background:var(--ye);padding:0 4px;border-radius:5px}
+.hist{display:flex;flex-direction:column;gap:6px}
+.foot{padding:12px 28px;font:600 12px Inter;display:flex;justify-content:space-between;border-top:2.5px solid #111;background:#fff}
+.why{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px;font-size:13px;color:var(--mute)}.why b{color:var(--ink)}
+.st{display:flex;gap:10px;margin-top:8px;align-items:flex-start}.st b{width:26px;height:26px;border-radius:50%;background:var(--ye);border:2.5px solid #111;display:flex;align-items:center;justify-content:center;font:800 12px Inter;flex:none}
+.pb{height:20px;border:2.5px solid #111;border-radius:99px;background:#fff;overflow:hidden;margin:10px 0 6px}.pb i{display:block;width:29%;height:100%;background:var(--pu)}
+.coin{position:absolute;right:16px;top:14px;width:46px;height:46px;border-radius:50%;background:var(--ye);border:2.5px solid #111;display:flex;align-items:center;justify-content:center;font:800 14px "Bricolage Grotesque";transform:rotate(12deg);box-shadow:2px 2px 0 #111}
+.sticker{position:absolute;right:-6px;bottom:-12px;background:var(--ye);border:2.5px solid #111;border-radius:10px;padding:1px 9px;font:800 13px "Bricolage Grotesque";transform:rotate(-5deg)}
+.btn.off{background:#e9e3f7;color:#6b5f8a;box-shadow:none}
+</style>
+</head>
+<body>
+<div class="w">
+<h1>GoodCash desktop: Home, Cash out and History</h1>
+<p>One file with all three tabs, in the Option 2 layout (app column plus info panel). The right panel changes with the tab. Sample numbers.</p>
+
+<div class="cap">Home tab</div>
+<div class="scr"><div class="dt">
+<div class="bar"><span class="logo">GoodCash</span><div class="nav"><span class="on">Home</span><span>Cash out</span><span>History</span></div><span class="chip">0xafDe…8cb6</span></div>
+<div class="main"><div class="col">
+<div class="card"><div class="coin">G$</div><div class="lab">Your balance</div><div class="big" style="font-size:52px">1,297.5</div><div class="sm">about ₦203 after fees</div><div class="pb"><i></i></div><div class="sm">3,177 G$ to go</div><div class="sticker">29%</div></div>
+<div class="card"><div class="lab">First payout</div><div class="sm" style="margin-top:2px">Minimum cash out is about ₦690.</div></div>
+<div class="btn off">Cash out opens at 4,474 G$</div></div>
+<div class="side">
+<div class="card"><div class="lab">How it works</div>
+<div class="st"><b>1</b><span class="sm">Swap your G$ to USDT on Celo.</span></div>
+<div class="st"><b>2</b><span class="sm">We send it to a licensed payout partner.</span></div>
+<div class="st"><b>3</b><span class="sm">Naira lands in your bank account.</span></div></div>
+<div class="card"><div class="lab">What it costs</div><div class="sm" style="margin-top:4px">10% goes to the GoodDollar reserve. The network fee is under $0.001. You see every number before you confirm.</div></div>
+<div class="card" style="background:var(--mi)"><div class="lab">Stay safe</div><div class="sm" style="margin-top:4px">Never share your seed phrase. GoodCash will never message you first. Contract 0xA433…c407 ↗</div></div>
+</div></div>
+<div class="foot"><span>GoodCash © 2026 · Non-custodial Celo router</span><span>Contract · GoodDollar · Paycrest</span></div>
+</div></div>
+<div class="why"><b>Desktop difference:</b> the right panel explains how it works, what it costs and how to stay safe. The main button is greyed out with the reason until the balance reaches the minimum, then turns purple and says Cash out.</div>
+
+<div class="cap">Cash out tab</div>
+<div class="scr"><div class="dt">
+<div class="bar"><span class="logo">GoodCash</span><div class="nav"><span>Home</span><span class="on">Cash out</span><span>History</span></div><span class="chip">0xafDe…8cb6</span></div>
+<div class="main"><div class="col">
+<div class="card"><div class="row"><span class="lab">You give</span><span class="pill w">Balance 1,420.98 G$</span></div>
+<div class="row" style="margin-top:4px"><div class="big">1,000</div><span class="pill y">G$</span></div>
+<div class="chips"><span class="pill w">25%</span><span class="pill w">50%</span><span class="pill w">75%</span><span class="pill on">MAX</span></div></div>
+<div class="card" style="background:var(--mi)"><div class="lab">You receive about</div><div class="row"><div class="big">₦164</div><span class="pill w">NGN</span></div><div class="sm">at least 0.1129 USDT</div></div>
+<div class="card row"><span class="lab">Price protection</span><div style="display:flex;gap:6px"><span class="pill on">1%</span><span class="pill w">2%</span><span class="pill w">3%</span></div></div>
+<div class="btn">Review</div></div>
+<div class="side">
+<div class="card cost"><div class="row"><span class="lab">What you’ll pay</span><span class="pill m">Refreshes in 18s</span></div>
+<div class="row"><span>GoodDollar contribution (10%)</span><span class="mark">−100 G$</span></div><div class="row"><span>Network fee</span><span>under $0.001</span></div><div class="row"><span>You get at least</span><span>0.1129 USDT</span></div></div>
+<div class="card"><div class="lab">Route</div><div class="sm" style="margin-top:4px">GoodDollar reserve → Uniswap → payout partner. <u>Details</u></div></div>
+<div class="card" style="background:var(--ye)"><div class="lab">Good to know</div><div class="sm" style="margin-top:4px">Naira payouts need at least about $0.51 worth of G$. Arrival time depends on the payout partner.</div></div>
+</div></div>
+<div class="foot"><span>GoodCash © 2026 · Non-custodial Celo router</span><span>Contract · GoodDollar · Paycrest</span></div>
+</div></div>
+<div class="why"><b>Desktop difference:</b> no number keypad (type the amount). The costs appear live on the right, so people see them before they press Review. Review, Status and Success open inside the same 420px column.</div>
+
+<div class="cap">History tab</div>
+<div class="scr"><div class="dt">
+<div class="bar"><span class="logo">GoodCash</span><div class="nav"><span>Home</span><span>Cash out</span><span class="on">History</span></div><span class="chip">0xafDe…8cb6</span></div>
+<div class="main"><div class="col">
+<div class="row"><span class="logo" style="font-size:20px">History</span><div style="display:flex;gap:6px"><span class="pill on">All</span><span class="pill w">On its way</span><span class="pill w">Paid</span></div></div>
+<div class="card"><div class="row"><div><div class="big" style="font-size:26px">1,000 G$ → ₦156</div><div class="sm" style="margin-top:2px">4 Nov 2026 · 0.1141 USDT</div></div><span class="pill m">Paid</span></div><div class="sm" style="margin-top:8px">Receipt 0x1f73…e705 ↗</div></div>
+<div class="card"><div class="row"><div><div class="big" style="font-size:26px">2,500 G$ → ₦391</div><div class="sm" style="margin-top:2px">5 Nov 2026 · 0.2852 USDT</div></div><span class="pill y">On its way</span></div><div class="sm" style="margin-top:8px">Receipt 0x8a20…b317 ↗</div></div>
+<div class="card" style="border-style:dashed;box-shadow:none;background:transparent"><div class="sm">Empty state: “No cash outs yet. Your first one will show up here.”</div></div>
+</div>
+<div class="side">
+<div class="card cost"><div class="lab" style="margin-bottom:2px">Your totals</div><div class="row"><span>Cash outs</span><span>2</span></div><div class="row"><span>G$ cashed out</span><span>3,500 G$</span></div><div class="row"><span>Naira received so far</span><span>₦156</span></div></div>
+<div class="card"><div class="lab">What the statuses mean</div>
+<div class="st"><b>1</b><span class="sm"><u>On its way</u>: swapped, waiting for the payout partner.</span></div>
+<div class="st"><b>2</b><span class="sm"><u>Paid</u>: naira sent to your bank account.</span></div></div>
+<div class="card" style="background:var(--mi)"><div class="lab">Receipts</div><div class="sm" style="margin-top:4px">Every cash out has an on-chain receipt you can check on the Celo explorer.</div></div>
+</div></div>
+<div class="foot"><span>GoodCash © 2026 · Non-custodial Celo router</span><span>Contract · GoodDollar · Paycrest</span></div>
+</div></div>
+<div class="why"><b>Desktop difference:</b> filters across the top, and totals on the right. Each row opens the Status timeline in the same column. The dotted card shows the empty state.</div>
+</div>
+</body>
+</html>
