@@ -25,7 +25,6 @@ import {
   type OffRampStatus,
 } from '../lib/useOffRamp';
 import { MIN_NET_USDT_REQUIRED } from '../lib/rate';
-import type { Language } from '../lib/i18n';
 
 // Status colour helpers
 function statusColor(s: OffRampStatus): string {
@@ -42,7 +41,6 @@ interface OffRampCardProps {
   swapTxHash: string;
   /** User's Celo wallet (used as refund address) */
   walletAddress: string;
-  language: Language;
   onDone: () => void;
 }
 
@@ -190,7 +188,7 @@ export const OffRampCard: React.FC<OffRampCardProps> = ({
 
         {/* Legal / KYC notice */}
         <div className="bg-amber-500/10 border border-amber-400/30 rounded-xl px-4 py-3 mb-6 text-xs text-amber-200 font-sans leading-relaxed">
-          <strong>Privacy note:</strong> Your bank details are sent securely to Paycrest (the licensed off-ramp provider) and are <strong>not stored</strong> by GoodCash. Wallet addresses and bank details are personal data under NDPA 2023.
+          <strong>Privacy note:</strong> Your bank details are sent securely to Paycrest (the payout partner) and are <strong>not stored</strong> by GoodCash. Wallet addresses and bank details are personal data under NDPA 2023.
         </div>
 
         {/* Bank form */}
@@ -282,7 +280,7 @@ export const OffRampCard: React.FC<OffRampCardProps> = ({
 
         {/* Partner notice */}
         <p className="mt-4 text-center text-[11px] text-white/35 font-sans">
-          Payout powered by Paycrest — a licensed stablecoin off-ramp. Minimum payout $
+          Payout powered by Paycrest — a payout partner. Minimum payout $
           {MIN_NET_USDT_REQUIRED.toFixed(2)} USDT.
         </p>
       </div>

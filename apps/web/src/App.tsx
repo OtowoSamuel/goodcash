@@ -8,6 +8,8 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { CashOutTracker } from './components/CashOutTracker';
 import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
 import type { Language } from './lib/i18n';
+import { getTranslations } from './lib/i18n';
+import { BLOCKSCOUT_URL } from './components/SafetyBanner';
 import { getNetQuote, type QuoteResult } from './lib/quote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
@@ -142,6 +144,12 @@ export function App({
     }
     return null;
   });
+
+  // Privacy note toggle (desktop + mobile footer link)
+  const [showPrivacy, setShowPrivacy] = useState(false);
+
+  // Active translations shortcut
+  const t = getTranslations(language);
 
   // Sync active tracker to localStorage: store ONLY orderId and txHash (zero bank details)
   useEffect(() => {
@@ -612,32 +620,32 @@ export function App({
           {currentTab === 'home' && (
             <>
               <div className="gc-card">
-                <div className="gc-lab">How it works</div>
+                <div className="gc-lab">{t.howItWorks}</div>
                 <div className="gc-st">
-                  <b>1</b>
-                  <span className="gc-sm">Swap your G$ to USDT on Celo.</span>
+                  <b className="gc-st__num">1</b>
+                  <span className="gc-sm">{t.howItWorksStep1}</span>
                 </div>
                 <div className="gc-st">
-                  <b>2</b>
-                  <span className="gc-sm">We send it to a licensed payout partner.</span>
+                  <b className="gc-st__num">2</b>
+                  <span className="gc-sm">{t.howItWorksStep2}</span>
                 </div>
                 <div className="gc-st">
-                  <b>3</b>
-                  <span className="gc-sm">Naira lands in your bank account.</span>
+                  <b className="gc-st__num">3</b>
+                  <span className="gc-sm">{t.howItWorksStep3}</span>
                 </div>
               </div>
               <div className="gc-card">
-                <div className="gc-lab">What it costs</div>
+                <div className="gc-lab">{t.whatItCostsPanel}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  10% goes to the GoodDollar reserve. The network fee is under $0.001. You see every number before you confirm.
+                  {t.whatItCostsExplanation}
                 </div>
               </div>
               <div className="gc-card gc-card--mint">
-                <div className="gc-lab">Stay safe</div>
+                <div className="gc-lab">{t.staySafe}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  Never share your seed phrase. GoodCash will never message you first.{' '}
+                  {t.staySafeText}{' '}
                   <a
-                    href="https://celo.blockscout.com/address/0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407"
+                    href={BLOCKSCOUT_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="gc-inter"
@@ -652,35 +660,17 @@ export function App({
 
           {currentTab === 'cashout' && (
             <>
-              <div className="gc-card gc-cost">
-                <div className="gc-row">
-                  <span className="gc-lab">What you’ll pay</span>
-                  <span className="gc-pill gc-pill--mint">Refreshes in 18s</span>
-                </div>
-                <div className="gc-row">
-                  <span>GoodDollar contribution (10%)</span>
-                  <span className="gc-mark">−100 G$</span>
-                </div>
-                <div className="gc-row">
-                  <span>Network fee</span>
-                  <span>under $0.001</span>
-                </div>
-                <div className="gc-row">
-                  <span>You get at least</span>
-                  <span>0.1129 USDT</span>
-                </div>
-              </div>
               <div className="gc-card">
-                <div className="gc-lab">Route</div>
+                <div className="gc-lab">{t.routeTitle}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  GoodDollar reserve → Uniswap → payout partner.{' '}
-                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Details</span>
+                  {t.routeExplanation}{' '}
+                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>{t.details}</span>
                 </div>
               </div>
               <div className="gc-card gc-card--yellow">
-                <div className="gc-lab">Good to know</div>
+                <div className="gc-lab">{t.goodToKnowTitle}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  Naira payouts need at least about $0.51 worth of G$. Arrival time depends on the payout partner.
+                  {t.goodToKnowText}
                 </div>
               </div>
             </>
@@ -689,48 +679,79 @@ export function App({
           {currentTab === 'history' && (
             <>
               <div className="gc-card gc-cost">
-                <div className="gc-lab" style={{ marginBottom: '2px' }}>Your totals</div>
+                <div className="gc-lab" style={{ marginBottom: '2px' }}>{t.yourTotals}</div>
                 <div className="gc-row">
-                  <span>Cash outs</span>
+                  <span>{t.totalCashOuts}</span>
                   <span>{history.length}</span>
                 </div>
                 <div className="gc-row">
-                  <span>G$ cashed out</span>
+                  <span>{t.totalGSwapped}</span>
                   <span>
                     {history.reduce((sum, item) => sum + (item.amountInG || 0), 0).toLocaleString()} G$
                   </span>
                 </div>
                 <div className="gc-row">
-                  <span>Naira received so far</span>
-                  <span>
-                    ₦
-                    {history
-                      .reduce((sum, item) => sum + (item.nairaAmount || 0), 0)
-                      .toLocaleString()}
-                  </span>
+                  <span>{t.totalNairaReceived}</span>
+                  <span>-</span>
                 </div>
               </div>
               <div className="gc-card">
-                <div className="gc-lab">What the statuses mean</div>
+                <div className="gc-lab">{t.whatStatusesMean}</div>
                 <div className="gc-st">
-                  <b>1</b>
-                  <span className="gc-sm"><u>On its way</u>: swapped, waiting for the payout partner.</span>
+                  <b className="gc-st__num">1</b>
+                  <span className="gc-sm"><u>On its way</u>: {t.statusOnItsWayExplanation.replace(/^[^:]*:\s*/, '')}</span>
                 </div>
                 <div className="gc-st">
-                  <b>2</b>
-                  <span className="gc-sm"><u>Paid</u>: naira sent to your bank account.</span>
+                  <b className="gc-st__num">2</b>
+                  <span className="gc-sm"><u>Paid</u>: {t.statusPaidExplanation.replace(/^[^:]*:\s*/, '')}</span>
                 </div>
               </div>
               <div className="gc-card gc-card--mint">
-                <div className="gc-lab">Receipts</div>
+                <div className="gc-lab">{t.receiptsTitle}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  Every cash out has an on-chain receipt you can check on the Celo explorer.
+                  {t.receiptsExplanation}
                 </div>
               </div>
             </>
           )}
         </aside>
       </main>
+
+      {/* Privacy Note / Modal (toggled by Privacy link on desktop and mobile) */}
+      {showPrivacy && (
+        <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto 10px', padding: '0 14px' }}>
+          <div
+            className="gc-note"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+            }}
+          >
+            <div>
+              <strong>{t.privacyTitle}:</strong> {t.privacyText}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPrivacy(false)}
+              aria-label="Close privacy note"
+              className="gc-hit"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                font: '800 13px Inter',
+                cursor: 'pointer',
+                padding: '2px 6px',
+                color: '#111',
+                flex: 'none',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal */}
       {pendingQuote && (
@@ -753,25 +774,83 @@ export function App({
         />
       )}
 
+      {/* ── Mobile Footer Line (below 900px) ── */}
+      <footer
+        className="gc-mobile-only"
+        style={{
+          padding: '6px 14px 12px',
+          fontSize: '11px',
+          fontWeight: 600,
+          color: '#444',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '12px',
+          marginTop: '4px',
+        }}
+      >
+        <a
+          href={BLOCKSCOUT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: '#111', textDecoration: 'none' }}
+        >
+          {t.contractLinkText}
+        </a>
+        <span>·</span>
+        <button
+          type="button"
+          onClick={() => setShowPrivacy((v) => !v)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            fontSize: '11px',
+            fontWeight: 600,
+            color: '#111',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+          }}
+        >
+          {t.privacyLinkText}
+        </button>
+      </footer>
+
       {/* ── Desktop Footer (900px and up) ── */}
       <footer className="gc-desktop-only gc-foot">
-        <span>GoodCash © 2026 · Non-custodial Celo router</span>
+        <span>{t.footerText}</span>
         <div style={{ display: 'flex', gap: '16px' }}>
           <a
-            href="https://celo.blockscout.com/address/0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407"
+            href={BLOCKSCOUT_URL}
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: '#111', textDecoration: 'none' }}
           >
-            Contract
+            {t.contractLinkText}
           </a>
+          <button
+            type="button"
+            onClick={() => setShowPrivacy((v) => !v)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#111',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+            }}
+          >
+            {t.privacyLinkText}
+          </button>
           <a
             href="https://gooddollar.org"
             target="_blank"
             rel="noopener noreferrer"
             style={{ color: '#111', textDecoration: 'none' }}
           >
-            GoodDollar
+            {t.goodDollarLinkText}
           </a>
           <a
             href="https://paycrest.io"
@@ -779,7 +858,7 @@ export function App({
             rel="noopener noreferrer"
             style={{ color: '#111', textDecoration: 'none' }}
           >
-            Paycrest
+            {t.paycrestLinkText}
           </a>
         </div>
       </footer>

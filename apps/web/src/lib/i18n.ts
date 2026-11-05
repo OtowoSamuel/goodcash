@@ -28,9 +28,52 @@ export interface Translations {
   priceImpactWarning: string;
   continueToNaira: string;
   verifiedContract: string;
+
+  // Step 2b keys (English-only; other languages fall back via getTranslations)
+  navHome: string;
+  navCashOut: string;
+  navHistory: string;
+  connectWallet: string;
+  connectedWallet: string;
+  disconnect: string;
+  browserOnly: string;
+  howItWorks: string;
+  howItWorksStep1: string;
+  howItWorksStep2: string;
+  howItWorksStep3: string;
+  whatItCostsPanel: string;
+  whatItCostsExplanation: string;
+  staySafe: string;
+  staySafeText: string;
+  routeTitle: string;
+  routeExplanation: string;
+  details: string;
+  goodToKnowTitle: string;
+  goodToKnowText: string;
+  yourTotals: string;
+  totalCashOuts: string;
+  totalGSwapped: string;
+  totalNairaReceived: string;
+  whatStatusesMean: string;
+  statusOnItsWayExplanation: string;
+  statusPaidExplanation: string;
+  receiptsTitle: string;
+  receiptsExplanation: string;
+  footerText: string;
+  contractLinkText: string;
+  goodDollarLinkText: string;
+  paycrestLinkText: string;
+  privacyLinkText: string;
+  privacyTitle: string;
+  privacyText: string;
 }
 
-export const translations: Record<Language, Translations> = {
+/** Merge English defaults with the selected language so all keys are present. */
+export function getTranslations(lang: Language): Translations {
+  return { ...translations.en, ...translations[lang] } as Translations;
+}
+
+export const translations: Record<Language, Partial<Translations>> = {
   en: {
     appName: 'GoodCash',
     tagline: 'Non-Custodial Router v1.0',
@@ -39,7 +82,7 @@ export const translations: Record<Language, Translations> = {
     heroHeadlinePost: 'hassle-free',
     heroSubtext:
       'Direct on-chain routing from daily UBI (G$) to Celo USDT and Naira. Non-custodial, verified smart contracts, transparent 10% reserve contribution.',
-    safetyBanner: 'Never share your seed phrase. GoodCash will never DM you first.',
+    safetyBanner: 'Never share your seed phrase. GoodCash will never message you first.',
     claimUbi: 'Claim Daily G$',
     cashOutNow: 'Cash Out G$',
     balanceLabel: 'Your GoodDollar Balance',
@@ -56,6 +99,43 @@ export const translations: Record<Language, Translations> = {
     priceImpactWarning: 'Price impact exceeds 10%. Swap is blocked to protect your funds.',
     continueToNaira: 'Continue to Naira Off-Ramp',
     verifiedContract: 'Verified Contract: 0xA433...c407',
+
+    navHome: 'Home',
+    navCashOut: 'Cash out',
+    navHistory: 'History',
+    connectWallet: 'Connect wallet',
+    connectedWallet: 'Connected wallet',
+    disconnect: 'Disconnect',
+    browserOnly: 'Browser only',
+    howItWorks: 'How it works',
+    howItWorksStep1: 'Swap your G$ to USDT on Celo.',
+    howItWorksStep2: 'We send it to a payout partner.',
+    howItWorksStep3: 'Naira lands in your bank account.',
+    whatItCostsPanel: 'What it costs',
+    whatItCostsExplanation: '10% goes to the GoodDollar reserve. You see every number before you confirm.',
+    staySafe: 'Stay safe',
+    staySafeText: 'Never share your seed phrase. GoodCash will never message you first.',
+    routeTitle: 'Route',
+    routeExplanation: 'GoodDollar reserve → Uniswap → payout partner.',
+    details: 'Details',
+    goodToKnowTitle: 'Good to know',
+    goodToKnowText: `Naira payouts need at least about $${minUsdt} worth of G$. Arrival time depends on the payout partner.`,
+    yourTotals: 'Your totals',
+    totalCashOuts: 'Cash outs',
+    totalGSwapped: 'G$ cashed out',
+    totalNairaReceived: 'Naira received so far',
+    whatStatusesMean: 'What the statuses mean',
+    statusOnItsWayExplanation: 'On its way: swapped, waiting for the payout partner.',
+    statusPaidExplanation: 'Paid: naira sent to your bank account.',
+    receiptsTitle: 'Receipts',
+    receiptsExplanation: 'Every cash out has an on-chain receipt you can check on the Celo explorer.',
+    footerText: 'GoodCash © 2026 · Non-custodial Celo router',
+    contractLinkText: 'Contract',
+    goodDollarLinkText: 'GoodDollar',
+    paycrestLinkText: 'Paycrest',
+    privacyLinkText: 'Privacy',
+    privacyTitle: 'Privacy',
+    privacyText: 'GoodCash does not track your identity or store personal information. All swap transactions take place directly on Celo blockchain.',
   },
   pcm: {
     appName: 'GoodCash',

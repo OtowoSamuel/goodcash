@@ -91,7 +91,8 @@ describe('Step 1 home validation', () => {
     expect(screen.queryByText(/Cash out your GoodDollar/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/New\b/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/dune\.com/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/privacy/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pseudonymous personal data/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /privacy/i }).length).toBeGreaterThanOrEqual(1);
 
     const primaryAction = screen.getByRole('button', { name: /Claim today's G\$/i });
     expect(primaryAction).toBeInTheDocument();
@@ -124,6 +125,74 @@ describe('Step 1 home validation', () => {
     );
 
     expect(screen.getAllByText(`₦${rate.netNaira.toFixed(2)}`)).toHaveLength(2);
+  });
+});
+
+describe('Step 2b shell and i18n', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders exactly three nav items: Home, Cash out, History', () => {
+    storageMock.clear();
+    render(<App />);
+
+    // Desktop nav
+    const desktopNav = screen.getByLabelText('Main Navigation Desktop');
+    const desktopItems = desktopNav.querySelectorAll('button');
+    expect(desktopItems).toHaveLength(3);
+    expect(desktopItems[0]).toHaveTextContent('Home');
+    expect(desktopItems[1]).toHaveTextContent('Cash out');
+    expect(desktopItems[2]).toHaveTextContent('History');
+
+    // Mobile nav also has exactly 3 items
+    const mobileNav = screen.getByLabelText('Main Navigation Mobile');
+    expect(mobileNav.querySelectorAll('button')).toHaveLength(3);
+  });
+
+  it('dismisses the safety banner when the close control is clicked', () => {
+    storageMock.clear();
+    render(<App />);
+
+    // Safety text appears in both the mobile banner and the desktop side panel
+    expect(screen.getAllByText(/Never share your seed phrase/i).length).toBeGreaterThanOrEqual(1);
+    // The dismiss button only exists in the mobile SafetyBanner component
+    fireEvent.click(screen.getByRole('button', { name: /dismiss safety notice/i }));
+    // After dismissing, the SafetyBanner (and its dismiss button) is gone
+    expect(screen.queryByRole('button', { name: /dismiss safety notice/i })).not.toBeInTheDocument();
+  });
+
+  it('updates the language selector and keeps nav labels rendering', () => {
+    storageMock.clear();
+    render(<App />);
+
+    // Two selectors exist (desktop + mobile); both should stay in sync
+    const selects = screen.getAllByLabelText('Select language');
+    expect(selects).toHaveLength(2);
+    expect(selects[0]).toHaveValue('en');
+
+    // Switch to Hausa via the desktop selector
+    fireEvent.change(selects[0], { target: { value: 'ha' } });
+    expect(selects[0]).toHaveValue('ha');
+    expect(selects[1]).toHaveValue('ha');
+
+    // Nav label still renders correctly (English fallback for new keys)
+    const desktopNav = screen.getByLabelText('Main Navigation Desktop');
+    expect(desktopNav.querySelectorAll('button')[0]).toHaveTextContent('Home');
+
+    // Switch back to English
+    fireEvent.change(selects[0], { target: { value: 'en' } });
+    expect(selects[0]).toHaveValue('en');
+    expect(desktopNav.querySelectorAll('button')[0]).toHaveTextContent('Home');
+  });
+
+  it('renders no text containing "licensed", "0.1129" or "18s"', () => {
+    storageMock.clear();
+    render(<App />);
+
+    expect(screen.queryByText(/licensed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0\.1129/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/18s/)).not.toBeInTheDocument();
   });
 });
 

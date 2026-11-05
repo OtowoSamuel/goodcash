@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { Language } from '../lib/i18n';
+import { getTranslations } from '../lib/i18n';
 
 interface SafetyBannerProps {
   language: Language;
@@ -8,8 +9,9 @@ interface SafetyBannerProps {
 export const ROUTER_ADDRESS = '0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407';
 export const BLOCKSCOUT_URL = `https://celo.blockscout.com/address/${ROUTER_ADDRESS}`;
 
-export const SafetyBanner: React.FC<SafetyBannerProps> = () => {
+export const SafetyBanner: React.FC<SafetyBannerProps> = ({ language }) => {
   const [isDismissed, setIsDismissed] = useState(false);
+  const t = getTranslations(language);
 
   if (isDismissed) return null;
 
@@ -25,7 +27,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = () => {
         }}
       >
         <span>
-          Never share your seed phrase. GoodCash will never message you first.{' '}
+          {t.staySafeText}{' '}
           <a
             href={BLOCKSCOUT_URL}
             target="_blank"

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { Language } from '../lib/i18n';
+import { getTranslations } from '../lib/i18n';
 import { ROUTER_ADDRESS, BLOCKSCOUT_URL } from './SafetyBanner';
 
 export interface NavbarProps {
@@ -20,17 +21,20 @@ export const Navbar: React.FC<NavbarProps> = ({
   walletAddress,
   onConnectWallet,
   onDisconnectWallet,
+  language,
+  onSelectLanguage,
   isMiniPayBlocked = false,
   isDemoMode = false,
 }) => {
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const t = getTranslations(language);
 
   const shortenAddress = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 
   const tabs: Array<{ key: 'home' | 'cashout' | 'history'; label: string }> = [
-    { key: 'home', label: 'Home' },
-    { key: 'cashout', label: 'Cash out' },
-    { key: 'history', label: 'History' },
+    { key: 'home', label: t.navHome },
+    { key: 'cashout', label: t.navCashOut },
+    { key: 'history', label: t.navHistory },
   ];
 
   const handleWalletClick = () => {
@@ -40,6 +44,29 @@ export const Navbar: React.FC<NavbarProps> = ({
       onConnectWallet();
     }
   };
+
+  const languageSelector = (
+    <select
+      value={language}
+      onChange={(e) => onSelectLanguage(e.target.value as Language)}
+      aria-label="Select language"
+      className="gc-pill gc-pill--white gc-hit"
+      style={{
+        cursor: 'pointer',
+        fontSize: '11px',
+        fontWeight: 700,
+        padding: '2px 8px',
+        outline: 'none',
+        height: '28px',
+      }}
+    >
+      <option value="en">EN</option>
+      <option value="pcm">PCM</option>
+      <option value="ha">HA</option>
+      <option value="yo">YO</option>
+      <option value="ig">IG</option>
+    </select>
+  );
 
   return (
     <>
@@ -79,65 +106,69 @@ export const Navbar: React.FC<NavbarProps> = ({
           })}
         </nav>
 
-        {/* Right wallet chip */}
-        <div style={{ position: 'relative' }}>
-          <button
-            type="button"
-            onClick={handleWalletClick}
-            className="gc-chip gc-hit"
-            style={{ cursor: 'pointer' }}
-          >
-            {isMiniPayBlocked
-              ? 'Browser only'
-              : walletAddress
-              ? shortenAddress(walletAddress)
-              : 'Connect wallet'}
-          </button>
+        {/* Right actions: language selector and wallet chip */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {languageSelector}
 
-          {walletMenuOpen && walletAddress && (
-            <div
-              className="gc-card"
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 'calc(100% + 8px)',
-                width: '240px',
-                zIndex: 50,
-                padding: '10px 12px',
-                textAlign: 'left',
-              }}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={handleWalletClick}
+              className="gc-chip gc-hit"
+              style={{ cursor: 'pointer' }}
             >
-              <div className="gc-lab" style={{ color: '#666', marginBottom: '4px' }}>
-                Connected wallet
-              </div>
+              {isMiniPayBlocked
+                ? t.browserOnly
+                : walletAddress
+                ? shortenAddress(walletAddress)
+                : t.connectWallet}
+            </button>
+
+            {walletMenuOpen && walletAddress && (
               <div
-                className="gc-inter"
-                style={{ fontSize: '11px', wordBreak: 'break-all', marginBottom: '10px' }}
-              >
-                {walletAddress}
-              </div>
-              <a
-                href={`https://celo.blockscout.com/address/${walletAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="gc-sm"
-                style={{ display: 'block', color: 'var(--gc-pu)', marginBottom: '8px' }}
-              >
-                View on Blockscout ↗
-              </a>
-              <button
-                type="button"
-                onClick={() => {
-                  onDisconnectWallet();
-                  setWalletMenuOpen(false);
+                className="gc-card"
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 'calc(100% + 8px)',
+                  width: '240px',
+                  zIndex: 50,
+                  padding: '10px 12px',
+                  textAlign: 'left',
                 }}
-                className="gc-btn gc-btn--white gc-hit"
-                style={{ height: '36px', fontSize: '13px' }}
               >
-                Disconnect
-              </button>
-            </div>
-          )}
+                <div className="gc-lab" style={{ color: '#666', marginBottom: '4px' }}>
+                  {t.connectedWallet}
+                </div>
+                <div
+                  className="gc-inter"
+                  style={{ fontSize: '11px', wordBreak: 'break-all', marginBottom: '10px' }}
+                >
+                  {walletAddress}
+                </div>
+                <a
+                  href={`https://celo.blockscout.com/address/${walletAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gc-sm"
+                  style={{ display: 'block', color: 'var(--gc-pu)', marginBottom: '8px' }}
+                >
+                  View on Blockscout ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDisconnectWallet();
+                    setWalletMenuOpen(false);
+                  }}
+                  className="gc-btn gc-btn--white gc-hit"
+                  style={{ height: '36px', fontSize: '13px' }}
+                >
+                  {t.disconnect}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -159,55 +190,59 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        <div style={{ position: 'relative' }}>
-          <button
-            type="button"
-            onClick={handleWalletClick}
-            className="gc-chip gc-hit"
-            style={{ cursor: 'pointer' }}
-          >
-            {isMiniPayBlocked
-              ? 'Browser only'
-              : walletAddress
-              ? shortenAddress(walletAddress)
-              : 'Connect'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {languageSelector}
 
-          {walletMenuOpen && walletAddress && (
-            <div
-              className="gc-card"
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 'calc(100% + 8px)',
-                width: '220px',
-                zIndex: 50,
-                padding: '10px 12px',
-                textAlign: 'left',
-              }}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={handleWalletClick}
+              className="gc-chip gc-hit"
+              style={{ cursor: 'pointer' }}
             >
-              <div className="gc-lab" style={{ color: '#666', marginBottom: '4px' }}>
-                Connected
-              </div>
+              {isMiniPayBlocked
+                ? t.browserOnly
+                : walletAddress
+                ? shortenAddress(walletAddress)
+                : t.connectWallet}
+            </button>
+
+            {walletMenuOpen && walletAddress && (
               <div
-                className="gc-inter"
-                style={{ fontSize: '11px', wordBreak: 'break-all', marginBottom: '8px' }}
-              >
-                {walletAddress}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  onDisconnectWallet();
-                  setWalletMenuOpen(false);
+                className="gc-card"
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 'calc(100% + 8px)',
+                  width: '220px',
+                  zIndex: 50,
+                  padding: '10px 12px',
+                  textAlign: 'left',
                 }}
-                className="gc-btn gc-btn--white gc-hit"
-                style={{ height: '34px', fontSize: '12px' }}
               >
-                Disconnect
-              </button>
-            </div>
-          )}
+                <div className="gc-lab" style={{ color: '#666', marginBottom: '4px' }}>
+                  {t.connectedWallet}
+                </div>
+                <div
+                  className="gc-inter"
+                  style={{ fontSize: '11px', wordBreak: 'break-all', marginBottom: '8px' }}
+                >
+                  {walletAddress}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDisconnectWallet();
+                    setWalletMenuOpen(false);
+                  }}
+                  className="gc-btn gc-btn--white gc-hit"
+                  style={{ height: '34px', fontSize: '12px' }}
+                >
+                  {t.disconnect}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
