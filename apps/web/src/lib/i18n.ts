@@ -145,8 +145,14 @@ export interface Translations {
   receipt: string;
   noCashOutsYet: string;
   noMatchingTransactions: string;
-}
 
+  // Step 8 keys (English-only; other languages fall back via getTranslations)
+  nairaDelivered: string;
+  paidToYourBank: string;
+  viewTransactionReceipt: string;
+  doneButton: string;
+
+}
 /** Merge English defaults with the selected language so all keys are present. */
 export function getTranslations(lang: Language): Translations {
   return { ...translations.en, ...translations[lang] } as Translations;
@@ -285,6 +291,13 @@ export const translations: Record<Language, Partial<Translations>> = {
     statusOnItsWay: 'On its way',
     statusUnknown: 'Unknown',
     receipt: 'Receipt',
+
+    // Step 8 keys
+    nairaDelivered: 'Naira Delivered!',
+    paidToYourBank: 'paid to your bank',
+    viewTransactionReceipt: 'Receipt',
+    doneButton: 'Done',
+
     noCashOutsYet: 'No cash outs yet. Your first one will show up here.',
     noMatchingTransactions: 'No transactions match this filter.',
   },

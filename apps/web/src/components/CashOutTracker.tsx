@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Language } from '../lib/i18n';
+import { getTranslations } from '../lib/i18n';
 
 import {
   useOffRamp,
@@ -56,6 +57,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   initialFailureState = null,
   delayedTimeoutMinutes = 5,
   onDone,
+  language,
 }) => {
   const {
     order: hookOrder,
@@ -63,6 +65,9 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     createOrder,
     pollOnce,
   } = useOffRamp();
+
+  // Translations
+  const t = language ? getTranslations(language) : undefined;
 
   // Internal state
   const [copied, setCopied] = useState(false);
@@ -400,6 +405,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
             </div>
           )}
 
+
           {activeFailure === 'refunded' && (
             <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-red-200">
               <div className="flex items-center gap-2 mb-2 font-bold text-base text-red-300">
@@ -603,45 +609,42 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
               </div>
             </div>
           )}
-
-          {/* STEP 4: Done */}
           {currentStep === 4 && (
-            <div className="space-y-5">
-              <div className="bg-[#1B122E]/80 border border-emerald-500/40 rounded-2xl p-6 text-center">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-400/40 flex items-center justify-center text-3xl mx-auto mb-4">
-                  ✓
+            <div className="gc-card--mint p-6 sm:p-8 bg-[#120D1D] rounded-2xl border border-[#2D204A]">
+              <div className="text-center mb-6">
+                <div className="gc-big text-4xl sm:text-5xl font-extrabold font-manrope text-white mb-2">
+                  {t?.nairaDelivered || 'Naira Delivered!'}
                 </div>
-                <h3 className="text-2xl font-bold font-manrope text-white mb-1">Naira Delivered!</h3>
-                <p className="text-xs text-emerald-300 font-sans mb-5">
-                  The payout has been settled and delivered directly to your bank account.
-                </p>
-
-                {/* Bank Reference */}
-                <div className="bg-[#120D1D] rounded-xl p-4 border border-emerald-500/20 text-left text-xs space-y-2 mb-6">
-                  <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                    <span className="text-white/50">Bank Reference:</span>
-                    <span className="font-mono font-bold text-emerald-400 select-all">{bankReference}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-white/50">Account:</span>
-                    <span className="text-white">{bankName} ({accountNumber})</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-white/50">Account Holder:</span>
-                    <span className="text-white">{accountHolderName}</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onDone}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-cabin font-bold text-sm shadow-lg shadow-emerald-500/20 transition"
-                >
-                  Done
-                </button>
+                <p className="text-white/60 mb-3">{t?.paidToYourBank || 'paid to your bank'}</p>
               </div>
+              <div className="bg-[#1B122E]/80 rounded-xl p-4 border border-white/5 mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-white/50">Bank Reference:</span>
+                  <span className="font-mono text-white">{bankReference || 'PAY-NGN-' + txHash.slice(2, 8).toUpperCase()}</span>
+                </div>
+                <p className="text-xs text-white/60">Transaction receipt</p>
+              </div>
+              <div className="flex justify-center mb-6">
+                <a
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-[#7C3AED] hover:bg-[#8B5CF6] text-white font-cabin font-bold text-sm py-2.5 px-6 rounded-xl transition focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+                >
+                  View on Explorer
+                </a>
+              </div>
+              <button
+                type="button"
+                onClick={onDone}
+                className="gc-hit w-full py-3.5 px-6 rounded-xl bg-black hover:bg-black/90 text-white font-cabin font-bold text-sm shadow-lg transition focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+              >
+                {t?.doneButton || 'Done'}
+              </button>
             </div>
           )}
+
+
         </div>
       )}
 
