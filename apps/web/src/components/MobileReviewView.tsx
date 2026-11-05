@@ -15,6 +15,8 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
   onBack,
   onConfirm,
 }) => {
+  const exitContributionG = Math.floor(amountG * 0.1);
+
   return (
     <div className="fixed inset-0 bg-[#d4c5fb] z-40 flex flex-col pt-6 px-4">
       {/* Header */}
@@ -23,9 +25,9 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           type="button"
           onClick={onBack}
           aria-label="Back to cash out"
-          className="border-2 border-[#111] bg-white rounded-xl w-10 h-10 flex items-center justify-center shadow-[2px_2px_0px_#111] font-black text-lg z-10"
+          className="bg-white border-2 border-[#111] rounded-xl w-10 h-10 flex items-center justify-center shadow-[2px_2px_0px_#111] font-bold text-xl z-10"
         >
-          ←
+          ‹
         </button>
         <span className="text-2xl font-black absolute left-1/2 -translate-x-1/2 text-[#111]">
           Review
@@ -34,81 +36,77 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
       </header>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col gap-3 mb-24">
-        {/* YOU GIVE card */}
-        <div className="bg-white border-2 border-[#111] rounded-2xl shadow-[4px_4px_0px_#111] p-4">
+      <div className="flex-1 flex flex-col gap-3 mb-24 overflow-y-auto">
+        {/* Top Card: YOU GET ABOUT */}
+        <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111]">
           <div className="font-extrabold text-xs tracking-wide text-[#111] mb-2">
-            YOU GIVE
+            YOU GET ABOUT
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-4xl font-black text-[#111] tabular-nums">
-              {amountG.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-            </span>
-            <span className="border-2 border-[#111] bg-[#ffd23f] rounded-full px-4 py-1.5 font-extrabold text-base text-[#111]">
-              G$
-            </span>
+          <div className="gc-big text-[#111] mb-2">
+            ₦{Math.round(nairaEstimate).toLocaleString()}
+          </div>
+          <div className="text-sm font-medium text-[#666]">
+            for {amountG.toLocaleString()} G$ · at least {usdtEstimate.toFixed(4)} USDT
           </div>
         </div>
 
-        {/* YOU RECEIVE ABOUT card */}
-        <div className="bg-[#63f2b4] border-2 border-[#111] rounded-2xl shadow-[4px_4px_0px_#111] p-4">
-          <div className="font-extrabold text-xs tracking-wide text-[#111] mb-1">
-            YOU RECEIVE ABOUT
+        {/* Second Card: PAID TO */}
+        <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111] flex items-center justify-between">
+          <div>
+            <div className="font-extrabold text-xs tracking-wide text-[#111] mb-1">
+              PAID TO
+            </div>
+            <div className="text-sm font-medium text-[#111]">
+              Your bank account
+            </div>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-4xl font-black text-[#111]">
-              ₦{Math.round(nairaEstimate).toLocaleString()}
-            </span>
-            <span className="border-2 border-[#111] bg-white rounded-full px-4 py-1.5 font-extrabold text-base text-[#111]">
-              NGN
-            </span>
-          </div>
-          <div className="font-bold text-sm text-[#111] mt-1">
-            at least {usdtEstimate.toFixed(4)} USDT
-          </div>
+          <button
+            type="button"
+            className="bg-white border-2 border-[#111] rounded-full px-4 py-1.5 font-bold text-sm text-[#111] shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+          >
+            Add ›
+          </button>
         </div>
 
-        {/* What you'll pay breakdown */}
-        <div className="bg-white border-2 border-[#111] rounded-2xl shadow-[4px_4px_0px_#111] p-4">
-          <div className="font-extrabold text-xs tracking-wide text-[#111] mb-3">
-            WHAT YOU'LL PAY
-          </div>
-          
-          <div className="flex justify-between items-center py-2 border-b-2 border-dashed border-[#d4c5fb]">
-            <span className="text-sm font-medium text-[#111]">GoodDollar contribution (10%)</span>
-            <span className="bg-[#ffd23f] border-2 border-[#111] rounded-full px-3 py-0.5 font-extrabold text-sm text-[#111]">
-              −{Math.floor(amountG * 0.1)} G$
+        {/* Third Card: Breakdown */}
+        <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111] flex flex-col">
+          {/* Row 1: GoodDollar contribution */}
+          <div className="flex justify-between items-center py-2.5 border-b-2 border-dashed border-gray-300">
+            <span className="text-sm font-medium text-[#111]">
+              GoodDollar contribution (10%)
+            </span>
+            <span className="bg-[#ffd23f] border-2 border-[#111] px-2 py-0.5 rounded-md font-bold text-xs text-[#111]">
+              −{exitContributionG} G$
             </span>
           </div>
 
-          <div className="flex justify-between items-center py-2 border-b-2 border-dashed border-[#d4c5fb]">
+          {/* Row 2: Network fee */}
+          <div className="flex justify-between items-center py-2.5 border-b-2 border-dashed border-gray-300">
             <span className="text-sm font-medium text-[#111]">Network fee</span>
-            <span className="text-sm font-bold text-[#111]">under $0.001</span>
+            <span className="text-sm font-medium text-[#111]">under $0.001</span>
           </div>
 
-          <div className="flex justify-between items-center pt-2">
-            <span className="text-sm font-bold text-[#111]">You get at least</span>
-            <span className="text-sm font-black text-[#111]">{usdtEstimate.toFixed(4)} USDT</span>
+          {/* Row 3: Price protection */}
+          <div className="flex justify-between items-center pt-2.5">
+            <span className="text-sm font-medium text-[#111]">Price protection</span>
+            <span className="text-sm font-medium text-[#111]">1%</span>
           </div>
         </div>
 
-        {/* Route info card */}
-        <div className="bg-[#eae2ff] border-2 border-[#111] rounded-2xl shadow-[4px_4px_0px_#111] p-4">
-          <div className="font-extrabold text-xs tracking-wide text-[#111] mb-1">
-            ROUTE
-          </div>
-          <div className="text-sm font-medium text-[#111]">
-            GoodDollar Reserve → Uniswap V3 → Paycrest
-          </div>
+        {/* Fourth Card: Notice Box */}
+        <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111]">
+          <p className="text-sm font-medium text-[#111]">
+            Quote refreshes in 18s. Arrival time depends on the payout partner.
+          </p>
         </div>
       </div>
 
-      {/* Sticky Confirm button */}
+      {/* Bottom Action Button */}
       <div className="fixed bottom-6 left-4 right-4">
         <button
           type="button"
           onClick={onConfirm}
-          className="w-full py-4 text-xl font-black rounded-2xl border-2 border-[#111] shadow-[4px_4px_0px_#111] text-white bg-[#7b39fc] hover:bg-[#8b4aff] active:scale-[0.98] transition-transform"
+          className="gc-btn gc-btn--primary w-full py-4 text-xl font-black text-white bg-[#7b39fc] hover:bg-[#8b4aff] border-2 border-[#111] rounded-2xl shadow-[4px_4px_0px_#111] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none transition-all"
         >
           Confirm cash out
         </button>
