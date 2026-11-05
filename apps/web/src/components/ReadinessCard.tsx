@@ -207,16 +207,13 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
         </div>
       )}
 
-      {/* ── Spacer (mobile: pushes button to bottom) ────────────────── */}
-      <div className="gc-sp" />
-
       {/* ── Main button ─────────────────────────────────────────────── */}
       {minimumReached ? (
-        <button type="button" onClick={onCashOutClick} className="gc-btn gc-hit">
+        <button type="button" onClick={onCashOutClick} className="gc-btn gc-hit w-full">
           {t.cashOut}
         </button>
       ) : (
-        <button type="button" disabled className="gc-btn gc-btn--dis gc-hit">
+        <button type="button" disabled className="gc-btn gc-btn--dis gc-hit w-full">
           {t.cashOutOpensAt.replace('{n}', Math.ceil(rate.remainingG).toLocaleString())}
         </button>
       )}

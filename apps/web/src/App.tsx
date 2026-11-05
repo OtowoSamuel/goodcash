@@ -726,6 +726,15 @@ export function App({
         </aside>
       </main>
 
+      {/* Privacy toggle link */}
+      <button
+        type="button"
+        onClick={() => setShowPrivacy((v) => !v)}
+        className="text-[#111] font-semibold text-sm underline hover:text-[#111]/80 mb-4 ml-4"
+      >
+        Privacy
+      </button>
+
       {/* Privacy Note / Modal (toggled by Privacy link on desktop and mobile) */}
       {showPrivacy && (
         <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto 10px', padding: '0 14px' }}>
@@ -783,89 +792,33 @@ export function App({
         />
       )}
 
-      {/* ── Mobile Footer Line (below 900px) ── */}
-      <footer
-        className="gc-mobile-only"
-        style={{
-          padding: '6px 14px 12px',
-          fontSize: '11px',
-          fontWeight: 600,
-          color: '#444',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '12px',
-          marginTop: '4px',
-        }}
-      >
-        <a
-          href={BLOCKSCOUT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: '#111', textDecoration: 'none' }}
-        >
-          {t.contractLinkText}
-        </a>
-        <span>·</span>
-        <button
-          type="button"
-          onClick={() => setShowPrivacy((v) => !v)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            padding: 0,
-            fontSize: '11px',
-            fontWeight: 600,
-            color: '#111',
-            cursor: 'pointer',
-            textDecoration: 'underline',
-          }}
-        >
-          {t.privacyLinkText}
-        </button>
-      </footer>
-
-      {/* ── Desktop Footer (900px and up) ── */}
-      <footer className="gc-desktop-only gc-foot">
-        <span>{t.footerText}</span>
-        <div style={{ display: 'flex', gap: '16px' }}>
+      {/* ── Global Footer Bar (all breakpoints) ── */}
+      <footer className="flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4">
+        <span className="font-semibold text-[#111]">{t.footerText}</span>
+        <div className="flex items-center gap-4">
           <a
             href={BLOCKSCOUT_URL}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#111', textDecoration: 'none' }}
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
           >
             {t.contractLinkText}
           </a>
-          <button
-            type="button"
-            onClick={() => setShowPrivacy((v) => !v)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              padding: 0,
-              fontSize: '12px',
-              fontWeight: 600,
-              color: '#111',
-              cursor: 'pointer',
-              textDecoration: 'underline',
-            }}
-          >
-            {t.privacyLinkText}
-          </button>
+          <span className="text-[#111] font-semibold">·</span>
           <a
             href="https://gooddollar.org"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#111', textDecoration: 'none' }}
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
           >
             {t.goodDollarLinkText}
           </a>
+          <span className="text-[#111] font-semibold">·</span>
           <a
             href="https://paycrest.io"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#111', textDecoration: 'none' }}
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
           >
             {t.paycrestLinkText}
           </a>
