@@ -227,6 +227,10 @@ button {
   background: var(--gc-ye);
 }
 
+.gc-card--ye {
+  background: var(--gc-ye);
+}
+
 /* Dashed / empty-state card */
 .gc-card--dashed {
   border-style: dashed;
