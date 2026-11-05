@@ -119,4 +119,26 @@ describe('HistoryCard', () => {
     expect(receiptLink).toHaveAttribute('href', 'https://celo.blockscout.com/tx/0x1234567890abcdef');
     expect(receiptLink).toHaveAttribute('target', '_blank');
   });
+
+  it('shows "Status unknown" when order status is undefined/unrecognized', () => {
+    const unknownHistory: SwapHistoryItem[] = [
+      {
+        id: '1',
+        txHash: '0x1234567890abcdef',
+        timestamp: Date.now(),
+        amountInG: 1000,
+        amountOutUsdt: 0.114,
+        route: 'Reserve → USDT',
+        steps: {
+          swapped: 'completed',
+          sentToPartner: 'pending',
+          paidInNaira: 'pending',
+        },
+      },
+    ];
+
+    render(<HistoryCard history={unknownHistory} onCashOutClick={() => {}} language="en" ngnPerUsdt={1500} />);
+
+    expect(screen.getByText(/Status unknown/i)).toBeInTheDocument();
+  });
 });

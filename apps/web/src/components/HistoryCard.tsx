@@ -117,21 +117,21 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
         <button
           type="button"
           onClick={() => setCurrentFilter('all')}
-          className={`gc-pill ${currentFilter === 'all' ? 'gc-pill--on' : ''}`}
+          className={`gc-pill gc-hit ${currentFilter === 'all' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
         >
           {t.filterAll || 'All'}
         </button>
         <button
           type="button"
           onClick={() => setCurrentFilter('onItsWay')}
-          className={`gc-pill gc-pill--ye ${currentFilter === 'onItsWay' ? 'gc-pill--on' : ''}`}
+          className={`gc-pill gc-pill--ye gc-hit ${currentFilter === 'onItsWay' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
         >
           {t.filterOnItsWay || 'On its way'}
         </button>
         <button
           type="button"
           onClick={() => setCurrentFilter('paid')}
-          className={`gc-pill gc-pill--mint ${currentFilter === 'paid' ? 'gc-pill--on' : ''}`}
+          className={`gc-pill gc-pill--mint gc-hit ${currentFilter === 'paid' ? 'gc-pill--on' : ''} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
         >
           {t.filterPaid || 'Paid'}
         </button>
@@ -184,12 +184,12 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                 </div>
 
                 {/* Receipt Link */}
-                <a
-                  href={`https://celo.blockscout.com/tx/${item.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-mono text-[#8B5CF6] hover:text-[#C4B5FD] hover:underline"
-                >
+              <a
+                href={`https://celo.blockscout.com/tx/${item.txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-mono text-[#8B5CF6] hover:text-[#C4B5FD] hover:underline gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+              >
                   {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
                 </a>
               </div>

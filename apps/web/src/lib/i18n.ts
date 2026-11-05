@@ -289,7 +289,7 @@ export const translations: Record<Language, Partial<Translations>> = {
     filterPaid: 'Paid',
     statusPaid: 'Paid',
     statusOnItsWay: 'On its way',
-    statusUnknown: 'Unknown',
+    statusUnknown: 'Status unknown',
     receipt: 'Receipt',
 
     // Step 8 keys

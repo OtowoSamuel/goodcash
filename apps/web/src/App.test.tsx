@@ -581,3 +581,53 @@ describe('Swap succeeded but order creation failed — retry payout flow', () =>
     });
   });
 });
+
+describe('History totals', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    storageMock.clear();
+  });
+
+  it('calculates totals metrics from stored history', () => {
+    storageMock.setItem('goodcash_history', JSON.stringify([
+      {
+        id: '1',
+        txHash: '0x1234567890abcdef',
+        timestamp: Date.now(),
+        amountInG: 1000,
+        amountOutUsdt: 0.114,
+        route: 'Reserve → USDT',
+        orderId: 'order-1',
+        nairaAmount: 171,
+      },
+      {
+        id: '2',
+        txHash: '0xfedcba0987654321',
+        timestamp: Date.now() - 86400000,
+        amountInG: 500,
+        amountOutUsdt: 0.057,
+        route: 'Reserve → USDT',
+        orderId: 'order-2',
+        nairaAmount: 85,
+      },
+    ]));
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { sell: { rate: 1500 } } }),
+      })
+    );
+
+    render(<App />);
+
+    // Navigate to history tab (desktop nav)
+    fireEvent.click(screen.getAllByRole('button', { name: /History/i })[0]);
+
+    // Total cash outs count
+    expect(screen.getByText('Cash outs')).toBeInTheDocument();
+    expect(screen.getByText('1,500 G$')).toBeInTheDocument(); // Total G$ swapped
+    expect(screen.getByText('₦256')).toBeInTheDocument(); // Total Naira received (171 + 85 = 256)
+  });
+});
