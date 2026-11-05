@@ -163,7 +163,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             <button
               key={pct}
               type="button"
-              className={`border-2 border-[#111] rounded-full px-4 py-1 font-medium hover:bg-gray-100 ${slippagePercent === pct ? 'bg-[#7b39fc] text-white' : ''}`}
+              className={`border-2 border-[#111] rounded-full px-4 py-1 font-medium transition-colors ${slippagePercent === pct ? 'bg-[#7b39fc] text-white' : 'bg-white text-[#111] hover:bg-gray-100'}`}
               onClick={() => handleQuickPercent(pct)}
             >
               {pct === 100 ? t.maxButton : `${pct}%`}
@@ -196,7 +196,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             <button
               key={val}
               type="button"
-              className={`border-2 rounded-full px-4 py-1 font-medium ${slippagePercent === val ? 'border-[#7C3AED] bg-[#7b39fc] text-white' : 'border-[#111] text-[#111]'}`}
+              className={`border-2 border-[#111] rounded-full px-4 py-1 font-medium transition-colors ${slippagePercent === val ? 'bg-[#7b39fc] text-white' : 'bg-white text-[#111] hover:bg-gray-100'}`}
               onClick={() => setSlippagePercent(val)}
             >
               {val}%
