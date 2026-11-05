@@ -42,52 +42,66 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
 
         {/* Vertical Stepper Card */}
         <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111]">
-          <div className="border-l-2 border-[#111] ml-3 pl-6 flex flex-col gap-6">
+          <div className="relative flex flex-col">
             {/* Step 1: Done */}
-            <div className="relative">
-              <span className="w-4 h-4 rounded-full bg-[#7b39fc] border-2 border-[#111] -ml-[33px] absolute top-1 z-10" />
-              <div className="font-bold text-base text-[#111]">Swapped to USDT</div>
-              <div className="text-xs font-semibold text-gray-600">
-                Done · {amountG.toLocaleString()} G$ → {usdtAmount} USDT
+            <div className="relative flex items-start gap-4 pb-6">
+              <div className="relative flex flex-col items-center">
+                <div className="w-5 h-5 rounded-full border-2 border-[#111] bg-[#7b39fc] z-10" />
+                <div className="w-0.5 bg-[#111] h-full absolute top-5" />
+              </div>
+              <div className="flex-1 pt-0.5">
+                <div className="font-bold text-base text-[#111]">Swapped to USDT</div>
+                <div className="text-xs font-semibold text-gray-600">
+                  Done · {amountG.toLocaleString()} G$ → {usdtAmount} USDT
+                </div>
               </div>
             </div>
 
             {/* Step 2: In progress */}
-            <div className="relative">
-              <span className="w-4 h-4 rounded-full bg-[#ffd23f] border-2 border-[#111] -ml-[33px] absolute top-1 z-10" />
-              <div className="font-bold text-base text-[#111]">Sent to payout partner</div>
-              <div className="text-xs font-semibold text-gray-600">In progress</div>
+            <div className="relative flex items-start gap-4 pb-6">
+              <div className="relative flex flex-col items-center">
+                <div className="w-5 h-5 rounded-full border-2 border-[#111] bg-[#ffd23f] z-10" />
+                <div className="w-0.5 bg-[#c4b5fd] h-full absolute top-5" />
+              </div>
+              <div className="flex-1 pt-0.5">
+                <div className="font-bold text-base text-[#111]">Sent to payout partner</div>
+                <div className="text-xs font-semibold text-gray-600">In progress</div>
+              </div>
             </div>
 
             {/* Step 3: Waiting */}
-            <div className="relative">
-              <span className="w-4 h-4 rounded-full bg-white border-2 border-[#111] -ml-[33px] absolute top-1 z-10" />
-              <div className="font-bold text-base text-[#111]">Naira in your bank</div>
-              <div className="text-xs font-semibold text-gray-600">Waiting</div>
+            <div className="relative flex items-start gap-4">
+              <div className="relative flex flex-col items-center">
+                <div className="w-5 h-5 rounded-full border-2 border-[#111] bg-white z-10" />
+              </div>
+              <div className="flex-1 pt-0.5">
+                <div className="font-bold text-base text-[#111]">Naira in your bank</div>
+                <div className="text-xs font-semibold text-gray-600">Waiting</div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Details Breakdown Card */}
-        <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111] flex flex-col">
+        <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111]">
           <span className="text-xs font-bold uppercase text-[#111] tracking-wider block mb-3">
             DETAILS
           </span>
           
           {/* Row 1: You gave */}
-          <div className="flex justify-between items-center py-2.5 border-b-2 border-dashed border-gray-300">
+          <div className="border-b-2 border-dashed border-[#d4c5fb] py-3 flex justify-between items-center">
             <span className="font-bold text-sm text-[#111]">You gave</span>
             <span className="font-bold text-sm text-[#111]">{amountG.toLocaleString()} G$</span>
           </div>
 
           {/* Row 2: You get about */}
-          <div className="flex justify-between items-center py-2.5 border-b-2 border-dashed border-gray-300">
+          <div className="border-b-2 border-dashed border-[#d4c5fb] py-3 flex justify-between items-center">
             <span className="font-bold text-sm text-[#111]">You get about</span>
             <span className="font-bold text-sm text-[#111]">₦{Math.round(nairaEstimate).toLocaleString()}</span>
           </div>
 
           {/* Row 3: Receipt */}
-          <div className="flex justify-between items-center pt-2.5">
+          <div className="pt-3 flex justify-between items-center">
             <span className="font-bold text-sm text-[#111]">Receipt</span>
             <a
               href={`https://celoscan.io/tx/${txHash}`}
