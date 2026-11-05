@@ -526,27 +526,49 @@ button {
   border-color: #111;
 }
 
-/* ── Desktop layout ──────────────────────────────────────────── */
+/* ── Responsive layout ───────────────────────────────────────── */
 .gc-main {
   flex: 1;
   display: flex;
-  justify-content: center;
-  gap: 28px;
-  padding: 24px 28px 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
 }
 
 .gc-col {
-  width: 420px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .gc-main {
+    flex-direction: row;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px 28px 0;
+  }
+  .gc-col {
+    width: 420px;
+    margin: 0;
+    gap: 12px;
+  }
+}
+
+.gc-side {
+  display: none;
+  width: 340px;
   flex-direction: column;
   gap: 12px;
 }
 
-.gc-side {
-  width: 340px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+@media (min-width: 900px) {
+  .gc-side {
+    display: flex;
+  }
 }
 
 /* ── Desktop footer ──────────────────────────────────────────── */

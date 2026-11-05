@@ -524,25 +524,8 @@ export function App({
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-[#120e20] text-white flex flex-col font-sans overflow-x-hidden">
-      {/* HTML5 Full-screen Background Video */}
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="fixed inset-0 w-full h-full object-cover z-0 pointer-events-none opacity-45"
-      >
-        <source
-          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260210_031346_d87182fb-b0af-4273-84d1-c6fd17d6bf0f.mp4"
-          type="video/mp4"
-        />
-      </video>
-
-      {/* Subtle radial backdrop tint */}
-      <div className="fixed inset-0 bg-gradient-to-b from-[#120e20]/80 via-[#18122c]/85 to-[#0e0a1a]/95 z-0 pointer-events-none" />
-
-      {/* Top Navbar Component */}
+    <div className="gc">
+      {/* ── Top Navbar (Desktop bar-top + Mobile top row + Mobile bottom nav) ── */}
       <Navbar
         currentTab={currentTab}
         onSelectTab={(tab) => {
@@ -558,14 +541,15 @@ export function App({
         isDemoMode={isDemoMode}
       />
 
-      {/* Main Content Shell */}
-      <main className="relative z-10 flex-1 flex flex-col items-center justify-start pb-20">
-        {/* Safety Banner */}
-        <SafetyBanner language={language} />
+      {/* ── Main Responsive Content Area ── */}
+      <main className="gc-main">
+        {/* Mobile Safety Banner */}
+        <div className="gc-mobile-only" style={{ width: '100%', maxWidth: '420px', margin: '0 auto' }}>
+          <SafetyBanner language={language} />
+        </div>
 
-        {/* Core Screen Container */}
-        <div className="w-full max-w-4xl px-4 mt-4">
-          {/* Unified Tracker Screen replaces success card and split offramp card */}
+        {/* Primary Screen Column (Mobile full / Desktop 420px) */}
+        <div className="gc-col">
           {trackerData ? (
             <CashOutTracker
               txHash={trackerData.txHash}
@@ -592,16 +576,14 @@ export function App({
               language={language}
             />
           ) : currentTab === 'home' ? (
-            <div className="space-y-6">
-              <ReadinessCard
-                balanceG={balanceG}
-                dailyClaimG={123.48}
-                onCashOutClick={() => setCurrentTab('cashout')}
-                onClaimClick={() => setCurrentTab('claim')}
-                language={language}
-                isStale={balanceIsStale}
-              />
-            </div>
+            <ReadinessCard
+              balanceG={balanceG}
+              dailyClaimG={123.48}
+              onCashOutClick={() => setCurrentTab('cashout')}
+              onClaimClick={() => setCurrentTab('claim')}
+              language={language}
+              isStale={balanceIsStale}
+            />
           ) : currentTab === 'cashout' ? (
             <CashOutCard
               balanceG={balanceG}
@@ -624,6 +606,130 @@ export function App({
             />
           ) : null}
         </div>
+
+        {/* Right Info Panel (Desktop only: 340px) */}
+        <aside className="gc-side">
+          {currentTab === 'home' && (
+            <>
+              <div className="gc-card">
+                <div className="gc-lab">How it works</div>
+                <div className="gc-st">
+                  <b>1</b>
+                  <span className="gc-sm">Swap your G$ to USDT on Celo.</span>
+                </div>
+                <div className="gc-st">
+                  <b>2</b>
+                  <span className="gc-sm">We send it to a licensed payout partner.</span>
+                </div>
+                <div className="gc-st">
+                  <b>3</b>
+                  <span className="gc-sm">Naira lands in your bank account.</span>
+                </div>
+              </div>
+              <div className="gc-card">
+                <div className="gc-lab">What it costs</div>
+                <div className="gc-sm" style={{ marginTop: '4px' }}>
+                  10% goes to the GoodDollar reserve. The network fee is under $0.001. You see every number before you confirm.
+                </div>
+              </div>
+              <div className="gc-card gc-card--mint">
+                <div className="gc-lab">Stay safe</div>
+                <div className="gc-sm" style={{ marginTop: '4px' }}>
+                  Never share your seed phrase. GoodCash will never message you first.{' '}
+                  <a
+                    href="https://celo.blockscout.com/address/0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gc-inter"
+                    style={{ color: '#111', textDecoration: 'underline' }}
+                  >
+                    Contract 0xA433…c407 ↗
+                  </a>
+                </div>
+              </div>
+            </>
+          )}
+
+          {currentTab === 'cashout' && (
+            <>
+              <div className="gc-card gc-cost">
+                <div className="gc-row">
+                  <span className="gc-lab">What you’ll pay</span>
+                  <span className="gc-pill gc-pill--mint">Refreshes in 18s</span>
+                </div>
+                <div className="gc-row">
+                  <span>GoodDollar contribution (10%)</span>
+                  <span className="gc-mark">−100 G$</span>
+                </div>
+                <div className="gc-row">
+                  <span>Network fee</span>
+                  <span>under $0.001</span>
+                </div>
+                <div className="gc-row">
+                  <span>You get at least</span>
+                  <span>0.1129 USDT</span>
+                </div>
+              </div>
+              <div className="gc-card">
+                <div className="gc-lab">Route</div>
+                <div className="gc-sm" style={{ marginTop: '4px' }}>
+                  GoodDollar reserve → Uniswap → payout partner.{' '}
+                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Details</span>
+                </div>
+              </div>
+              <div className="gc-card gc-card--yellow">
+                <div className="gc-lab">Good to know</div>
+                <div className="gc-sm" style={{ marginTop: '4px' }}>
+                  Naira payouts need at least about $0.51 worth of G$. Arrival time depends on the payout partner.
+                </div>
+              </div>
+            </>
+          )}
+
+          {currentTab === 'history' && (
+            <>
+              <div className="gc-card gc-cost">
+                <div className="gc-lab" style={{ marginBottom: '2px' }}>Your totals</div>
+                <div className="gc-row">
+                  <span>Cash outs</span>
+                  <span>{history.length}</span>
+                </div>
+                <div className="gc-row">
+                  <span>G$ cashed out</span>
+                  <span>
+                    {history.reduce((sum, item) => sum + (item.amountInG || 0), 0).toLocaleString()} G$
+                  </span>
+                </div>
+                <div className="gc-row">
+                  <span>Naira received so far</span>
+                  <span>
+                    ₦
+                    {history
+                      .reduce((sum, item) => sum + (item.nairaAmount || 0), 0)
+                      .toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div className="gc-card">
+                <div className="gc-lab">What the statuses mean</div>
+                <div className="gc-st">
+                  <b>1</b>
+                  <span className="gc-sm"><u>On its way</u>: swapped, waiting for the payout partner.</span>
+                </div>
+                <div className="gc-st">
+                  <b>2</b>
+                  <span className="gc-sm"><u>Paid</u>: naira sent to your bank account.</span>
+                </div>
+              </div>
+              <div className="gc-card gc-card--mint">
+                <div className="gc-lab">Receipts</div>
+                <div className="gc-sm" style={{ marginTop: '4px' }}>
+                  Every cash out has an on-chain receipt you can check on the Celo explorer.
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
       </main>
 
       {/* Confirmation Modal */}
@@ -647,36 +753,34 @@ export function App({
         />
       )}
 
-      {/* Minimal Footer */}
-      <footer className="relative z-10 w-full py-6 text-center text-xs text-white/40 border-t border-white/5 font-manrope">
-        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <span>GoodCash © 2026 • Non-Custodial Celo Mainnet Router</span>
-          <div className="flex items-center gap-4">
-            <a
-              href="https://celo.blockscout.com/address/0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-purple-300 transition-colors"
-            >
-              Contract
-            </a>
-            <a
-              href="https://gooddollar.org"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-purple-300 transition-colors"
-            >
-              GoodDollar
-            </a>
-            <a
-              href="https://paycrest.io"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-purple-300 transition-colors"
-            >
-              Paycrest
-            </a>
-          </div>
+      {/* ── Desktop Footer (900px and up) ── */}
+      <footer className="gc-desktop-only gc-foot">
+        <span>GoodCash © 2026 · Non-custodial Celo router</span>
+        <div style={{ display: 'flex', gap: '16px' }}>
+          <a
+            href="https://celo.blockscout.com/address/0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#111', textDecoration: 'none' }}
+          >
+            Contract
+          </a>
+          <a
+            href="https://gooddollar.org"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#111', textDecoration: 'none' }}
+          >
+            GoodDollar
+          </a>
+          <a
+            href="https://paycrest.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#111', textDecoration: 'none' }}
+          >
+            Paycrest
+          </a>
         </div>
       </footer>
     </div>
