@@ -306,6 +306,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
           );
         }}
         disabled={!canReview}
+        aria-label="Review cash out"
         className={`gc-btn gc-btn--primary w-full mt-4 py-4 text-xl font-bold opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
       >
         Review

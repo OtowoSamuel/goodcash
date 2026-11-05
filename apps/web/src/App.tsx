@@ -6,6 +6,8 @@ import { ClaimCard } from './components/ClaimCard';
 import { CashOutCard } from './components/CashOutCard';
 import { MobileCashOut } from './components/MobileCashOut';
 import { MobileReviewView } from './components/MobileReviewView';
+import { MobileProcessingView } from './components/MobileProcessingView';
+import { MobileSuccessView } from './components/MobileSuccessView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { CashOutTracker } from './components/CashOutTracker';
 import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
@@ -863,6 +865,28 @@ export function App({
               setMobileView('processing');
             }}
           />
+        ) : mobileView === 'processing' ? (
+          <MobileProcessingView
+            amountG={pendingQuote?.amountG ?? 1000}
+            nairaEstimate={(() => {
+              const usdtOut = pendingQuote?.quote?.usdtOut ?? 0n;
+              const ngnPerUsdt = pendingQuote?.ngnPerUsdt ?? 1452.6;
+              return (Number(usdtOut) / 1e6) * ngnPerUsdt;
+            })()}
+            txHash={trackerData?.txHash}
+            onClose={() => setMobileView('home')}
+            onBackToHome={() => setMobileView('home')}
+          />
+        ) : mobileView === 'success' ? (
+          <MobileSuccessView
+            nairaEstimate={(() => {
+              const usdtOut = pendingQuote?.quote?.usdtOut ?? 0n;
+              const ngnPerUsdt = pendingQuote?.ngnPerUsdt ?? 1452.6;
+              return (Number(usdtOut) / 1e6) * ngnPerUsdt;
+            })()}
+            onClose={() => setMobileView('home')}
+            onViewTransaction={() => setMobileView('processing')}
+          />
         ) : (
           <>
             {/* Mobile Header */}
@@ -880,29 +904,14 @@ export function App({
 
             {/* Mobile Content */}
             <div className="flex flex-col gap-4 px-4">
-              {mobileView === 'processing' ? (
-                <div className="flex-1 flex flex-col items-center justify-center py-10">
-                  <div className="w-12 h-12 border-2 border-[#111] rounded-full animate-spin mx-auto mb-4" />
-                  <p className="text-[#111] font-bold text-sm">Processing payment...</p>
-                </div>
-              ) : mobileView === 'success' ? (
-                <div className="flex-1 flex flex-col items-center justify-center py-10">
-                  <div className="w-12 h-12 border-2 border-[#111] rounded-full bg-[#63f2b4] flex items-center justify-center mx-auto mb-4">
-                    <span className="text-[#111] font-bold text-xs">✓</span>
-                  </div>
-                  <h2 className="text-[#111] font-bold text-xl mb-2">Success</h2>
-                  <p className="text-[#666] text-sm text-center">Your payout has been completed successfully.</p>
-                </div>
-              ) : (
-                <ReadinessCard
-                  balanceG={balanceG}
-                  dailyClaimG={123.48}
-                  onCashOutClick={() => setMobileView('cashout')}
-                  onClaimClick={() => setCurrentTab('claim')}
-                  language={language}
-                  isStale={balanceIsStale}
-                />
-              )}
+              <ReadinessCard
+                balanceG={balanceG}
+                dailyClaimG={123.48}
+                onCashOutClick={() => setMobileView('cashout')}
+                onClaimClick={() => setCurrentTab('claim')}
+                language={language}
+                isStale={balanceIsStale}
+              />
             </div>
 
             {/* Bottom Navigation */}
