@@ -558,7 +558,7 @@ export function App({
         </div>
 
         {/* Primary Screen Column (Mobile full / Desktop 420px) */}
-        <div className="gc-col">
+        <div className="gc-col overflow-y-auto">
           {trackerData ? (
             <CashOutTracker
               txHash={trackerData.txHash}

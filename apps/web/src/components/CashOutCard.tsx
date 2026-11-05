@@ -115,6 +115,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const handleQuickPercent = (pct: number) => {
     const calculated = Math.floor((balanceG * pct) / 100);
     setInputAmountG(calculated.toString());
+    setSlippagePercent(pct);
   };
 
   const amountNumber = parseFloat(inputAmountG) || 0;
