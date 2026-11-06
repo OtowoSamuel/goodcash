@@ -22,9 +22,11 @@ export const MobileSuccessView: React.FC<MobileSuccessViewProps> = ({
       >
         {/* Success hero */}
         <div className="gc-hero">
-          <i className="gc-c1" style={{ width: '62px', height: '62px', left: '100px', top: '60px' }} />
-          <i className="gc-c1" style={{ width: '40px', height: '40px', left: '160px', top: '112px' }} />
-          <i className="gc-c1" style={{ width: '28px', height: '28px', left: '62px', top: '116px' }} />
+          <div className="absolute left-1/2 top-0 w-[138px] -translate-x-1/2">
+            <i className="gc-c1" style={{ width: '62px', height: '62px', left: '38px', top: '60px' }} />
+            <i className="gc-c1" style={{ width: '40px', height: '40px', left: '98px', top: '112px' }} />
+            <i className="gc-c1" style={{ width: '28px', height: '28px', left: '0px', top: '116px' }} />
+          </div>
         </div>
 
         {/* Success card, overlapping the hero by 6px */}
