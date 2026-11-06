@@ -52,31 +52,31 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
   };
 
   return (
-    <div className="panel-card w-full rounded-[28px] p-5 sm:p-6">
+    <div className="w-full rounded-3xl border-4 border-[#111] bg-white p-6 shadow-[8px_8px_0px_#111]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[#A39BBE]">Swap confirmed</p>
-          <h2 className="mt-1 text-2xl font-semibold text-white">Finish your payout</h2>
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#111]">Swap confirmed</p>
+          <h2 className="mt-1 text-2xl font-black text-[#111]">Finish your payout</h2>
         </div>
-        <span className="rounded-full border border-[#10B981]/40 bg-[#10B981]/10 px-2.5 py-1 text-[11px] font-medium text-[#6EE7B7]">
+        <span className="rounded-full border-2 border-[#111] bg-[#63f2b4] px-3 py-1 text-[11px] font-black uppercase text-[#111]">
           {usdtReceived.toFixed(6)} USDT
         </span>
       </div>
 
-      <p className="mt-3 text-sm text-[#A39BBE]">
+      <p className="mt-3 text-sm font-bold text-[#111]">
         Your G$ was already swapped. Re-enter your bank details to create the payout order. These details are used
         for this request only and are never stored.
       </p>
 
-      <div className="mt-4 rounded-2xl border border-[#2D204A] bg-[#120D1D] p-4">
-        <div className="flex items-center justify-between gap-3 border-b border-[#2D204A] pb-3 text-sm text-[#E5E7EB]">
+      <div className="mt-4 rounded-2xl border-2 border-[#111] bg-white p-4 shadow-[4px_4px_0px_#111]">
+        <div className="flex items-center justify-between gap-3 border-b-2 border-dashed border-gray-300 pb-3 text-sm font-bold text-[#111]">
           <span>Bank</span>
           <select
             aria-label="Bank"
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
-            className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-2 text-sm text-[#E5E7EB] outline-none"
+            className="rounded-xl border-2 border-[#111] bg-white px-3 py-2 text-sm font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none"
           >
             <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
             {institutions.map((bank) => (
@@ -86,7 +86,7 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
         </div>
 
         <div className="mt-3 space-y-2">
-          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account number</label>
+          <label className="block text-[11px] font-black uppercase tracking-[0.12em] text-[#111]">Account number</label>
           <input
             type="text"
             inputMode="numeric"
@@ -94,53 +94,53 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
             value={accountIdentifier}
             onChange={(e) => setAccountIdentifier(e.target.value)}
             placeholder="Enter 10 digits"
-            className="w-full rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white outline-none placeholder:text-[#A39BBE]"
+            className="w-full rounded-xl border-2 border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none placeholder:text-gray-400"
           />
         </div>
 
         <div className="mt-3 space-y-2">
-          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account name</label>
+          <label className="block text-[11px] font-black uppercase tracking-[0.12em] text-[#111]">Account name</label>
           <div
             aria-live="polite"
-            className="min-h-[48px] rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white"
+            className="min-h-[48px] rounded-xl border-2 border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] shadow-[2px_2px_0px_#111]"
           >
-            {verificationStatus === 'loading' && <span className="text-[#A39BBE]">Verifying with Paycrest…</span>}
-            {verificationStatus === 'idle' && <span className="text-[#A39BBE]">Enter a 10-digit account number</span>}
-            {verificationStatus === 'error' && <span className="text-[#FCA5A5]">{verificationError}</span>}
-            {verificationStatus === 'verified' && accountName && <span className="font-semibold">{accountName}</span>}
+            {verificationStatus === 'loading' && <span className="text-gray-500">Verifying with Paycrest…</span>}
+            {verificationStatus === 'idle' && <span className="text-gray-500">Enter a 10-digit account number</span>}
+            {verificationStatus === 'error' && <span className="text-red-600">{verificationError}</span>}
+            {verificationStatus === 'verified' && accountName && <span className="font-black">{accountName}</span>}
           </div>
           {verificationStatus === 'verified' && accountName && (
-            <label className="flex items-start gap-2 text-xs text-[#D9D0F4]">
+            <label className="flex items-start gap-2 text-xs font-bold text-[#111]">
               <input
                 type="checkbox"
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-[#7C3AED]"
+                className="mt-0.5 h-4 w-4 accent-[#7b39fc]"
               />
               I confirm this is my account name
             </label>
           )}
-          {institutionsError && <p className="text-xs text-[#FCA5A5]">{institutionsError}</p>}
+          {institutionsError && <p className="text-xs font-bold text-red-600">{institutionsError}</p>}
         </div>
       </div>
 
       {errorMessage && (
-        <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
-          <span className="font-semibold text-red-100">Payout failed: </span>
+        <div className="mt-3 rounded-xl border-2 border-[#111] bg-[#ff6b6b] p-3.5 text-xs font-bold text-white shadow-[3px_3px_0px_#111]">
+          <span className="font-black">Payout failed: </span>
           {errorMessage}
         </div>
       )}
 
-      <p className="mt-3 break-all text-[11px] text-[#A39BBE]">Swap tx: {txHash}</p>
+      <p className="mt-3 break-all text-[11px] font-bold text-gray-500">Swap tx: {txHash}</p>
 
       <button
         type="button"
         onClick={handleRetry}
         disabled={!canRetry || isRetrying}
-        className={`mt-4 w-full rounded-2xl px-4 py-3.5 text-base font-semibold transition ${
+        className={`mt-4 w-full rounded-2xl border-2 border-[#111] px-4 py-3.5 text-base font-black shadow-[4px_4px_0px_#111] transition ${
           canRetry && !isRetrying
-            ? 'bg-[#7C3AED] text-white shadow-[0_20px_34px_rgba(124,58,237,0.22)] hover:bg-[#8B5CF6]'
-            : 'cursor-not-allowed border border-[#2D204A] bg-[#1B122E] text-[#A39BBE]'
+            ? 'bg-[#7b39fc] text-white hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_#111]'
+            : 'cursor-not-allowed bg-gray-200 text-gray-400'
         }`}
       >
         {isRetrying ? 'Retrying payout…' : 'Retry payout'}
