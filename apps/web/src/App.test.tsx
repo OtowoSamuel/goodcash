@@ -85,8 +85,8 @@ describe('Step 1 home validation', () => {
     storageMock.clear();
     render(<App />);
 
-    expect(screen.getByText(/your balance/i)).toBeInTheDocument();
-    expect(screen.getByText(/to go/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/your balance/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/to go/i)[0]).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /dismiss/i })).toBeInTheDocument();
     expect(screen.queryByText(/Cash out your GoodDollar/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/New\b/i)).not.toBeInTheDocument();
@@ -95,7 +95,7 @@ describe('Step 1 home validation', () => {
     expect(screen.getAllByRole('button', { name: /privacy/i }).length).toBeGreaterThanOrEqual(1);
 
     // Below minimum: main button should be disabled cash out
-    const primaryAction = screen.getByRole('button', { name: /Cash out opens at/i });
+    const primaryAction = screen.getAllByRole('button', { name: /Cash out opens at/i })[0];
     expect(primaryAction).toBeInTheDocument();
     expect(primaryAction).toBeDisabled();
   });

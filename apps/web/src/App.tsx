@@ -507,7 +507,8 @@ export function App({
       clearPendingPayout();
       setPendingSwapResult(null);
       setPendingQuote(null);
-      setCurrentTab('home');
+      // Stay on cashout tab to show the tracker
+      // setCurrentTab('home');
     } catch (retryErr: unknown) {
       const msg = retryErr instanceof Error ? retryErr.message : 'Retry failed';
       setSwapError(`Retry payout failed: ${msg}`);
@@ -658,9 +659,6 @@ export function App({
               <div className="gc-card">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-bold uppercase text-[#111]">WHAT YOU'LL PAY</h3>
-                  <div className="bg-[#63f2b4] border-2 border-[#111] rounded-full px-3 py-1 font-bold text-sm text-[#111]">
-                    Refreshes in 18s
-                  </div>
                 </div>
                 <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
                   <span>GoodDollar contribution (10%)</span>
