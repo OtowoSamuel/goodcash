@@ -836,8 +836,8 @@ export function App({
         />
       )}
 
-      <footer className="mt-auto flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4">
-        <span className="font-semibold text-[#111]">{t.footerText}</span>
+      <footer className="gc-foot mt-auto w-full">
+        <span className="text-[#111]">{t.footerText}</span>
         <div className="flex items-center gap-4">
           <a
             href={BLOCKSCOUT_URL}
