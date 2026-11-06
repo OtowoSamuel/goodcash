@@ -14,7 +14,7 @@ export const Hero: React.FC<HeroProps> = ({ onCashOutClick, onClaimClick, langua
   return (
     <div className="relative w-full flex flex-col items-center text-center pt-8 pb-12 px-6 z-10">
       {/* Tagline Pill */}
-      <div className="inline-flex items-center gap-2.5 h-[38px] px-3.5 rounded-[10px] bg-[rgba(85,80,110,0.4)] backdrop-blur-md border border-[rgba(164,132,215,0.5)] shadow-lg shadow-purple-950/40 mb-6">
+      <div className="inline-flex items-center gap-2.5 h-[38px] px-3.5 rounded-[10px] bg-[rgba(85,80,110,0.4)] backdrop-blur-md border border-[rgba(205,184,255,0.5)] shadow-lg shadow-purple-950/40 mb-6">
         <span className="bg-[#7b39fc] text-white text-[11px] font-cabin font-bold px-2 py-0.5 rounded-[6px] tracking-wide uppercase">
           New
         </span>

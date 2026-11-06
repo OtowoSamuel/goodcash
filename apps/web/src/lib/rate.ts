@@ -128,6 +128,11 @@ export function getCashoutRate(gAmount: number, dailyClaimG = 123.48, ngnPerUsdt
   };
 }
 
+export function getBalanceProgressPercent(gAmount: number): number {
+  const { netUsdt } = getCashoutRate(gAmount);
+  return Math.min(100, Math.round((netUsdt / MIN_NET_USDT_REQUIRED) * 100));
+}
+
 export function formatNaira(naira: number): string {
   return '₦' + Math.round(naira).toLocaleString();
 }

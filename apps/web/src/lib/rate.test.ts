@@ -7,7 +7,7 @@ import { CashOutCard } from '../components/CashOutCard';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ReadinessCard } from '../components/ReadinessCard';
 import { getNetQuote } from './quote';
-import { getCashoutRate } from './rate';
+import { getBalanceProgressPercent, getCashoutRate, MIN_NET_USDT_REQUIRED } from './rate';
 
 describe('shared rate conversion', () => {
   const fakeNgnRate = 1500;
@@ -119,6 +119,24 @@ describe('shared rate conversion', () => {
     expect(above.minimumReached).toBe(true);
     expect(below.remainingUsdt).toBeCloseTo(0.51 - below.netUsdt, 8);
     expect(above.remainingUsdt).toBe(0);
+  });
+
+  describe('balance progress', () => {
+    const perG = getCashoutRate(1000).netUsdtPerG;
+
+    it('shows 29 when the balance is worth 29% of the minimum', () => {
+      const amount = (0.29 * MIN_NET_USDT_REQUIRED) / perG;
+      expect(getBalanceProgressPercent(amount)).toBe(29);
+    });
+
+    it('caps at 100 when the balance is above the minimum', () => {
+      const amount = (2 * MIN_NET_USDT_REQUIRED) / perG;
+      expect(getBalanceProgressPercent(amount)).toBe(100);
+    });
+
+    it('shows 0 when the balance is 0', () => {
+      expect(getBalanceProgressPercent(0)).toBe(0);
+    });
   });
 
   it('keeps the G$ minimum identical across different NGN rates', () => {

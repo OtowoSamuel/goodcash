@@ -94,7 +94,7 @@ export function App({
 
   const [balanceG, setBalanceG] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_g') : null;
-    return cached ? parseFloat(cached) : IS_DEMO_MODE ? 50000 : 1297.5;
+    return cached ? parseFloat(cached) : IS_DEMO_MODE ? 50000 : 0;
   });
   const [balanceUpdatedAt, setBalanceUpdatedAt] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_updated_at') : null;
@@ -913,13 +913,13 @@ export function App({
           />
         ) : mobileView === 'review' ? (
           <MobileReviewView
-            amountG={pendingQuote?.amountG ?? 1000}
-            nairaEstimate={(() => {
-              const usdtOut = pendingQuote?.quote?.usdtOut ?? 0n;
-              const ngnPerUsdt = pendingQuote?.ngnPerUsdt ?? 1452.6;
-              return (Number(usdtOut) / 1e6) * ngnPerUsdt;
-            })()}
-            usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : 0.1129}
+            amountG={pendingQuote?.amountG ?? null}
+            nairaEstimate={
+              pendingQuote?.quote && pendingQuote.ngnPerUsdt
+                ? (Number(pendingQuote.quote.usdtOut) / 1e6) * pendingQuote.ngnPerUsdt
+                : null
+            }
+            usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
             onBack={() => setMobileView('cashout')}
             onConfirm={() => {
               handleConfirmSwap();
@@ -932,23 +932,24 @@ export function App({
           />
         ) : mobileView === 'processing' ? (
           <MobileProcessingView
-            amountG={pendingQuote?.amountG ?? 1000}
-            nairaEstimate={(() => {
-              const usdtOut = pendingQuote?.quote?.usdtOut ?? 0n;
-              const ngnPerUsdt = pendingQuote?.ngnPerUsdt ?? 1452.6;
-              return (Number(usdtOut) / 1e6) * ngnPerUsdt;
-            })()}
+            amountG={pendingQuote?.amountG ?? null}
+            nairaEstimate={
+              pendingQuote?.quote && pendingQuote.ngnPerUsdt
+                ? (Number(pendingQuote.quote.usdtOut) / 1e6) * pendingQuote.ngnPerUsdt
+                : null
+            }
+            usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
             txHash={trackerData?.txHash}
             onClose={() => setMobileView('home')}
             onBackToHome={() => setMobileView('home')}
           />
         ) : mobileView === 'success' ? (
           <MobileSuccessView
-            nairaEstimate={(() => {
-              const usdtOut = pendingQuote?.quote?.usdtOut ?? 0n;
-              const ngnPerUsdt = pendingQuote?.ngnPerUsdt ?? 1452.6;
-              return (Number(usdtOut) / 1e6) * ngnPerUsdt;
-            })()}
+            nairaEstimate={
+              pendingQuote?.quote && pendingQuote.ngnPerUsdt
+                ? (Number(pendingQuote.quote.usdtOut) / 1e6) * pendingQuote.ngnPerUsdt
+                : null
+            }
             onClose={() => setMobileView('home')}
             onViewTransaction={() => setMobileView('processing')}
           />

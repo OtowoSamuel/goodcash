@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
-import { getCashoutRate, MIN_NET_USDT_REQUIRED } from '../lib/rate';
+import { getBalanceProgressPercent, getCashoutRate, MIN_NET_USDT_REQUIRED } from '../lib/rate';
 import type { SwapHistoryItem } from './HistoryCard';
 
 /** Subset of the useClaim hook state needed by the Home claim card. */
@@ -68,7 +68,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
 }) => {
   const t = getTranslations('en');
   const rate = getCashoutRate(balanceG, dailyClaimG, ngnPerUsdt);
-  const percent = Math.min(100, Math.round((rate.netUsdt / MIN_NET_USDT_REQUIRED) * 100));
+  const percent = getBalanceProgressPercent(balanceG);
   const minimumReached = rate.minimumReached;
 
   // Naira display helpers

@@ -650,7 +650,8 @@ describe('dev mock gates', () => {
 
     render(<App />);
 
-    expect(screen.getAllByText('1,297.5').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('0.0').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('1,297.5')).not.toBeInTheDocument();
     expect(screen.queryByText('50,000')).not.toBeInTheDocument();
   });
 });
