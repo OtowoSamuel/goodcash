@@ -836,40 +836,40 @@ export function App({
         />
       )}
 
-      <footer className="mt-auto flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4">
-        <span className="font-semibold text-[#111]">{t.footerText}</span>
+      <footer className="mt-auto flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4 text-xs">
+        <span className="font-bold text-[#111]">{t.footerText}</span>
         <div className="flex items-center gap-4">
           <a
             href={BLOCKSCOUT_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
           >
             {t.contractLinkText}
           </a>
-          <span className="text-[#111] font-semibold">·</span>
+          <span className="text-[#111] font-bold">·</span>
           <a
             href="https://gooddollar.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
           >
             {t.goodDollarLinkText}
           </a>
-          <span className="text-[#111] font-semibold">·</span>
+          <span className="text-[#111] font-bold">·</span>
           <a
             href="https://paycrest.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-semibold"
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
           >
             {t.paycrestLinkText}
           </a>
-          <span className="text-[#111] font-semibold">·</span>
+          <span className="text-[#111] font-bold">·</span>
           <button
             type="button"
             onClick={() => setShowPrivacy((v) => !v)}
-            className="text-[#111] hover:text-[#111]/80 font-semibold bg-transparent border-none p-0 cursor-pointer"
+            className="text-[#111] hover:text-[#111]/80 font-bold bg-transparent border-none p-0 cursor-pointer"
           >
             {t.privacyLinkText}
           </button>
