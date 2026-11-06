@@ -35,11 +35,13 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const t = getTranslations(language);
 
   const [inputAmountG, setInputAmountG] = useState<string>('1000');
+  const [quickPercent, setQuickPercent] = useState<number | null>(null);
   const [slippagePercent, setSlippagePercent] = useState<number>(1);
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(30);
   const [ngnPerUsdt, setNgnPerUsdt] = useState<number | null>(initialNgnRate);
   const [rateError, setRateError] = useState<string | null>(null);
+  const [showBankDetails, setShowBankDetails] = useState<boolean>(false);
 
   const {
     institutions,
@@ -120,7 +122,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const handleQuickPercent = (pct: number) => {
     const calculated = Math.floor((balanceG * pct) / 100);
     setInputAmountG(calculated.toString());
-    setSlippagePercent(pct);
+    setQuickPercent(pct);
   };
 
   const amountNumber = parseFloat(inputAmountG.replace(/,/g, '')) || 0;
@@ -142,13 +144,13 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
     <>
       {/* YOU GIVE Card */}
       <div className="gc-card">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-[#111] font-black uppercase text-xs">{t.youGiveG}</span>
-          <div className="border-2 border-[#111] rounded-full px-3 py-1 font-medium">
+        <div className="gc-row">
+          <span className="gc-lab">{t.youGiveG}</span>
+          <span className="gc-pill gc-pill--white">
             Balance {balanceG.toLocaleString()} G$
-          </div>
+          </span>
         </div>
-        <div className="flex justify-between items-center w-full overflow-hidden mb-6 gap-4">
+        <div className="gc-row" style={{ marginTop: '4px' }}>
           <input
             type="text"
             inputMode="decimal"
@@ -157,21 +159,29 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             onChange={(e) => {
               const rawValue = e.target.value.replace(/[^0-9]/g, '');
               const numericValue = parseInt(rawValue, 10) || 0;
+              setQuickPercent(null);
               setInputAmountG(numericValue.toLocaleString('en-US'));
             }}
             placeholder="0"
-            className="w-full min-w-0 flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 p-0 text-5xl font-black text-[#111] appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            className="gc-big"
+            style={{
+              width: '100%',
+              minWidth: 0,
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              padding: 0,
+            }}
           />
-          <div className="bg-[#ffd23f] border-2 border-[#111] rounded-full px-3 py-1 font-bold text-sm shrink-0">
-            G$
-          </div>
+          <span className="gc-pill gc-pill--yellow">G$</span>
         </div>
-        <div className="flex gap-2 justify-between">
+        <div className="gc-chips">
           {[25, 50, 75, 100].map((pct) => (
             <button
               key={pct}
               type="button"
-              className={`border-2 border-[#111] rounded-full px-4 py-1 font-medium transition-colors ${slippagePercent === pct ? 'bg-[#7b39fc] text-white' : 'bg-white text-[#111] hover:bg-gray-100'}`}
+              className={`gc-pill gc-hit ${quickPercent === pct ? 'gc-pill--on' : 'gc-pill--white'}`}
               onClick={() => handleQuickPercent(pct)}
             >
               {pct === 100 ? t.maxButton : `${pct}%`}
@@ -182,44 +192,59 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
 
       {/* YOU RECEIVE ABOUT Card */}
       <div className="gc-card gc-card--mint">
-        <span className="text-[#111] font-black uppercase text-xs">{t.youReceiveAbout}</span>
-        <div className="flex justify-between items-center">
-          <div className="gc-big text-[#111]">
+        <span className="gc-lab">{t.youReceiveAbout}</span>
+        <div className="gc-row">
+          <div className="gc-big">
             {Number.isFinite(rate.netNaira) ? formatNaira(rate.netNaira) : t.nairaUnavailable}
           </div>
-          <div className="bg-[#fff] border-2 border-[#111] rounded-full px-3 py-1 font-bold">
-            NGN
-          </div>
+          <span className="gc-pill gc-pill--white">NGN</span>
         </div>
-        <div className="text-[#111] text-sm mt-2">{t.estimateFinalAmountNote}</div>
-        {rateError && <div className="text-[#FCA5A5] text-xs mt-2">{rateError}</div>}
+        <div className="gc-sm" style={{ marginTop: '2px' }}>{t.estimateFinalAmountNote}</div>
+        {rateError && (
+          <div className="gc-sm" style={{ color: '#b91c1c', marginTop: '2px' }}>
+            {rateError}
+          </div>
+        )}
       </div>
 
       {/* PRICE PROTECTION Card */}
       <div className="gc-card">
-        <div className="flex justify-between items-center">
-          <span className="text-[#111] font-black uppercase text-xs">{t.priceProtection}</span>
-          <div className="flex gap-2">
-          {[1, 2, 3].map((val) => (
-            <button
-              key={val}
-              type="button"
-              className={`border-2 border-[#111] rounded-full px-4 py-1 font-medium transition-colors ${slippagePercent === val ? 'bg-[#7b39fc] text-white' : 'bg-white text-[#111] hover:bg-gray-100'}`}
-              onClick={() => setSlippagePercent(val)}
-            >
-              {val}%
-            </button>
-          ))}
+        <div className="gc-row">
+          <span className="gc-lab">{t.priceProtection}</span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {[1, 2, 3].map((val) => (
+              <button
+                key={val}
+                type="button"
+                className={`border-2 border-[#111] rounded-full px-4 py-1 font-medium transition-colors ${slippagePercent === val ? 'bg-[#7b39fc] text-white' : 'bg-white text-[#111] hover:bg-gray-100'}`}
+                onClick={() => setSlippagePercent(val)}
+              >
+                {val}%
+              </button>
+            ))}
           </div>
         </div>
-        <div className="mt-2 text-xs text-[#666]">Quote refreshes in {secondsRemaining}s</div>
+        <div className="gc-sm" style={{ marginTop: '6px', color: '#333' }}>
+          Quote refreshes in {secondsRemaining}s
+        </div>
       </div>
 
-      {/* Bank Details Section */}
-      <div className="gc-card mt-4">
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-sm font-bold text-[#111] uppercase tracking-wider">Bank Details</span>
-          <label className="hidden sm:block text-sm text-[#A39BBE]" htmlFor="bank-select">
+      {/* Review CTA — opens bank details */}
+      {!showBankDetails && (
+        <button
+          type="button"
+          onClick={() => setShowBankDetails(true)}
+          className="gc-btn gc-hit w-full"
+        >
+          Review
+        </button>
+      )}
+
+      {/* Bank Details — revealed by the Review CTA */}
+      <div className={`gc-card ${showBankDetails ? '' : 'hidden'}`}>
+        <div className="gc-row" style={{ marginBottom: '8px' }}>
+          <span className="gc-lab">Bank details</span>
+          <label className="gc-sm" htmlFor="bank-select">
             Bank
           </label>
           <select
@@ -228,7 +253,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
-            className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-2 text-sm text-[#E5E7EB] outline-none"
+            className="rounded-xl border-2 border-[#111] bg-white px-3 py-2 text-sm text-[#111] outline-none"
           >
             <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
             {institutions.map((bank) => (
@@ -236,47 +261,52 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             ))}
           </select>
         </div>
-        <div className="mt-3 space-y-2">
-          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account number</label>
+        <div style={{ marginTop: '12px' }}>
+          <label className="gc-lab" htmlFor="account-number">Account number</label>
           <input
+            id="account-number"
             type="text"
             inputMode="numeric"
             value={accountIdentifier}
             onChange={(e) => setAccountIdentifier(e.target.value)}
             placeholder="10-digit account number"
-            className="w-full rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white outline-none placeholder:text-[#A39BBE]"
+            className="w-full rounded-xl border-2 border-[#111] bg-white px-3 py-3 text-base text-[#111] outline-none placeholder:text-[#666]"
+            style={{ marginTop: '4px' }}
           />
         </div>
-        <div className="mt-3 space-y-2">
-          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account name</label>
-          <div className="min-h-[48px] rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white">
-            {verificationStatus === 'loading' && <span className="text-[#A39BBE]">Verifying with Paycrest…</span>}
-            {verificationStatus === 'idle' && <span className="text-[#A39BBE]">Enter a 10-digit account number</span>}
-            {verificationStatus === 'error' && <span className="text-[#FCA5A5]">{verificationError}</span>}
+        <div style={{ marginTop: '12px' }}>
+          <label className="gc-lab">Account name</label>
+          <div
+            className="min-h-[48px] rounded-xl border-2 border-[#111] bg-white px-3 py-3 text-base text-[#111]"
+            style={{ marginTop: '4px' }}
+          >
+            {verificationStatus === 'loading' && <span className="text-[#666]">Verifying with Paycrest…</span>}
+            {verificationStatus === 'idle' && <span className="text-[#666]">Enter a 10-digit account number</span>}
+            {verificationStatus === 'error' && <span className="text-[#b91c1c]">{verificationError}</span>}
             {verificationStatus === 'verified' && accountName && <span className="font-semibold">{accountName}</span>}
           </div>
           {verificationStatus === 'verified' && accountName && (
-            <label className="flex items-start gap-2 text-xs text-[#D9D0F4]">
+            <label className="gc-sm" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '8px' }}>
               <input
                 type="checkbox"
                 name="confirmAccountName"
                 value="yes"
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-[#7C3AED]"
+                className="mt-0.5 h-4 w-4 accent-[#7b39fc]"
               />
               I confirm this is my account name
             </label>
           )}
-          {institutionsError && <p className="text-xs text-[#FCA5A5]">{institutionsError}</p>}
+          {institutionsError && <p className="gc-sm" style={{ color: '#b91c1c' }}>{institutionsError}</p>}
         </div>
-        <div className="mt-4 flex items-center justify-between border-t border-[#2D204A] pt-3 text-sm text-[#E5E7EB]">
-          <span>Exit contribution</span>
-          <span className="font-semibold text-[#FCA5A5]">−{rate.exitContributionG.toFixed(0)} G$</span>
+        <div className="gc-row" style={{ marginTop: '12px', borderTop: '2px dashed #cfc3ee', paddingTop: '10px' }}>
+          <span className="gc-sm">Exit contribution</span>
+          <span className="gc-pill gc-pill--yellow">−{rate.exitContributionG.toFixed(0)} G$</span>
         </div>
       </div>
 
-      {/* Review Button */}
+      {/* Final action — submits the cash out for review */}
       <button
         type="button"
         onClick={() => {
@@ -294,9 +324,9 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
         }}
         disabled={!canReview}
         aria-label="Review cash out"
-        className={`gc-btn gc-btn--primary w-full mt-4 py-4 text-xl font-bold opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+        className={showBankDetails ? `gc-btn gc-hit w-full ${!canReview ? 'gc-btn--dis' : ''}` : 'hidden'}
       >
-        Review
+        Review cash out
       </button>
     </>
   );

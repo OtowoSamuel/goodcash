@@ -53,7 +53,7 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
   const canReview = amountG > 0 && amountG <= maxG;
 
   return (
-    <div className="fixed inset-0 bg-[#d4c5fb] z-40 flex flex-col pt-6 px-4">
+    <div className="fixed inset-0 bg-[#d4c5fb] z-40 flex flex-col overflow-y-auto pt-6 px-4">
       {/* Header */}
       <header className="flex items-center justify-between mb-6 relative">
         <button

@@ -124,8 +124,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm">
-      <div className="bg-[#d4c5fb] border-4 border-[#111] rounded-3xl p-6 shadow-[8px_8px_0px_#111] max-w-lg w-full text-[#111]">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/30 backdrop-blur-sm">
+      <div className="flex min-h-full items-center justify-center px-4 py-6">
+        <div className="bg-[#d4c5fb] border-4 border-[#111] rounded-3xl p-6 shadow-[8px_8px_0px_#111] max-w-lg w-full text-[#111]">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -272,6 +273,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             ? t.swapAlreadyConfirmed || 'Swap confirmed'
             : t.confirmButton || 'Confirm'}
         </button>
+        </div>
       </div>
     </div>
   );

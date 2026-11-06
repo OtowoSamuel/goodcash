@@ -745,39 +745,11 @@ button {
   }
 }
 
-/* ── Desktop container & layout fix ──────────────────────────── */
+/* ── Desktop layout flow ─────────────────────────────────────── */
 @media (min-width: 900px) {
   .gc {
-    height: 580px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-  }
-
-  .gc-main {
-    flex: 1;
-    padding: 24px 28px 0;
-  }
-
-  .gc-foot {
-    margin-top: auto;
-    border-top: 2.5px solid #111;
-    background: #fff;
-  }
-}
-
-/* ── Desktop container & layout fix ──────────────────────────── */
-@media (min-width: 900px) {
-  .gc {
-    height: 580px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .gc-main {
-    flex: 1;
-    padding: 24px 28px 0;
   }
 
   .gc-foot {
