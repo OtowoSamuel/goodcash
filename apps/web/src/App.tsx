@@ -156,6 +156,13 @@ export function App({
 
   const t = getTranslations(language);
 
+  // Auto-navigate to cashout tab if there's a pending payout on mount
+  useEffect(() => {
+    if (pendingSwapResult && currentTab === 'home') {
+      setCurrentTab('cashout');
+    }
+  }, []); // Only run on mount
+
   useEffect(() => {
     if (typeof localStorage !== 'undefined') {
       if (trackerData && (trackerData.orderId || trackerData.txHash)) {
@@ -543,32 +550,7 @@ export function App({
         </div>
 
         <div className="gc-col">
-          {trackerData ? (
-            <CashOutTracker
-              txHash={trackerData.txHash}
-              usdtReceived={trackerData.usdtReceived}
-              amountGSwapped={trackerData.amountGSwapped}
-              bankName={trackerData.bankName || 'Bank Payout'}
-              accountNumber={trackerData.accountNumber || '••••••••'}
-              accountHolderName={trackerData.accountHolderName || 'Beneficiary'}
-              ngnPerUsdt={trackerData.ngnPerUsdt}
-              initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
-              walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}
-              language={language}
-              onDone={() => {
-                setTrackerData(null);
-                setCurrentTab('home');
-              }}
-            />
-          ) : pendingSwapResult && !pendingQuote ? (
-            <PendingPayoutCard
-              txHash={pendingSwapResult.txHash}
-              usdtReceived={pendingSwapResult.usdtReceived}
-              onRetry={handleFinishPendingPayout}
-              errorMessage={swapError}
-              language={language}
-            />
-          ) : currentTab === 'home' ? (
+          {currentTab === 'home' ? (
             <ReadinessCard
               balanceG={balanceG}
               dailyClaimG={123.48}
@@ -578,11 +560,40 @@ export function App({
               isStale={balanceIsStale}
             />
           ) : currentTab === 'cashout' ? (
-            <CashOutCard
-              balanceG={balanceG}
-              onInitiateCashOut={handleInitiateCashOut}
-              language={language}
-            />
+            <>
+              {trackerData ? (
+                <CashOutTracker
+                  txHash={trackerData.txHash}
+                  usdtReceived={trackerData.usdtReceived}
+                  amountGSwapped={trackerData.amountGSwapped}
+                  bankName={trackerData.bankName || 'Bank Payout'}
+                  accountNumber={trackerData.accountNumber || '••••••••'}
+                  accountHolderName={trackerData.accountHolderName || 'Beneficiary'}
+                  ngnPerUsdt={trackerData.ngnPerUsdt}
+                  initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
+                  walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}
+                  language={language}
+                  onDone={() => {
+                    setTrackerData(null);
+                    setCurrentTab('home');
+                  }}
+                />
+              ) : pendingSwapResult && !pendingQuote ? (
+                <PendingPayoutCard
+                  txHash={pendingSwapResult.txHash}
+                  usdtReceived={pendingSwapResult.usdtReceived}
+                  onRetry={handleFinishPendingPayout}
+                  errorMessage={swapError}
+                  language={language}
+                />
+              ) : (
+                <CashOutCard
+                  balanceG={balanceG}
+                  onInitiateCashOut={handleInitiateCashOut}
+                  language={language}
+                />
+              )}
+            </>
           ) : currentTab === 'claim' ? (
             <ClaimCard
               isVerified={true}
