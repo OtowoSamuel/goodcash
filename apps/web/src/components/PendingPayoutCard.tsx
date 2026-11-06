@@ -6,6 +6,7 @@ interface PendingPayoutCardProps {
   txHash: string;
   usdtReceived: number;
   onRetry: (bankCode: string, bankName: string, accountNumber: string, accountHolderName: string) => Promise<void>;
+  onCancel?: () => void;
   errorMessage?: string | null;
   language: Language;
 }
@@ -14,6 +15,7 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
   txHash,
   usdtReceived,
   onRetry,
+  onCancel,
   errorMessage,
   language: _language,
 }) => {
@@ -145,6 +147,17 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
       >
         {isRetrying ? 'Retrying payout…' : 'Retry payout'}
       </button>
+
+      {/* Cancel Button */}
+      {onCancel && (
+        <button
+          onClick={onCancel}
+          type="button"
+          className="text-sm font-bold text-gray-600 hover:text-[#111] underline block mx-auto mt-4 text-center cursor-pointer"
+        >
+          Cancel and start new cash out
+        </button>
+      )}
     </div>
   );
 };

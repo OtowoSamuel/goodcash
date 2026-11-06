@@ -587,6 +587,7 @@ export function App({
                     // Clear from localStorage
                     if (typeof localStorage !== 'undefined') {
                       localStorage.removeItem('goodcash_active_tracker');
+                      localStorage.removeItem('goodcash_pending_payout');
                     }
                     // Stay on cashout tab to show standard CashOutCard
                   }}
@@ -596,6 +597,15 @@ export function App({
                   txHash={pendingSwapResult.txHash}
                   usdtReceived={pendingSwapResult.usdtReceived}
                   onRetry={handleFinishPendingPayout}
+                  onCancel={() => {
+                    setTrackerData(null);
+                    setPendingSwapResult(null);
+                    setPendingQuote(null);
+                    if (typeof localStorage !== 'undefined') {
+                      localStorage.removeItem('goodcash_active_tracker');
+                      localStorage.removeItem('goodcash_pending_payout');
+                    }
+                  }}
                   errorMessage={swapError}
                   language={language}
                 />
