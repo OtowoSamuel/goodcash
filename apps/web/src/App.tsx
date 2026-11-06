@@ -584,12 +584,15 @@ export function App({
                     setPendingSwapResult(null);
                     setPendingQuote(null);
                     clearPendingPayout();
-                    // Clear from localStorage
+                    // Clear ALL stale localStorage entries
                     if (typeof localStorage !== 'undefined') {
                       localStorage.removeItem('goodcash_active_tracker');
                       localStorage.removeItem('goodcash_pending_payout');
+                      localStorage.removeItem('goodcash_pending_swap');
                     }
-                    // Stay on cashout tab to show standard CashOutCard
+                    // Reset to standard cash out view
+                    setCurrentTab('cashout');
+                    setMobileView('home');
                   }}
                 />
               ) : pendingSwapResult && !pendingQuote ? (
@@ -598,13 +601,19 @@ export function App({
                   usdtReceived={pendingSwapResult.usdtReceived}
                   onRetry={handleFinishPendingPayout}
                   onCancel={() => {
+                    // Clear all tracker state
                     setTrackerData(null);
                     setPendingSwapResult(null);
                     setPendingQuote(null);
+                    // Clear ALL stale localStorage entries
                     if (typeof localStorage !== 'undefined') {
                       localStorage.removeItem('goodcash_active_tracker');
                       localStorage.removeItem('goodcash_pending_payout');
+                      localStorage.removeItem('goodcash_pending_swap');
                     }
+                    // Reset to standard cash out view
+                    setCurrentTab('cashout');
+                    setMobileView('home');
                   }}
                   errorMessage={swapError}
                   language={language}

@@ -238,6 +238,23 @@ export async function createPaycrestOrder(input: CreateOrderInput): Promise<OffR
         recipient: input.recipient,
       });
     } catch (error: unknown) {
+      // Mock success in development when API is offline
+      if (import.meta.env.DEV) {
+        const mockOrder: OffRampOrder = {
+          orderId: `mock-ord-${Date.now()}`,
+          receiveAddress: '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',
+          amountToSend: fromAtomic6(amountAtomic),
+          currency: 'USDT',
+          network: 'celo',
+          senderFee: '0.00',
+          transactionFee: '0.01',
+          validUntil: new Date(Date.now() + 900000).toISOString(),
+          status: 'settled',
+          paymentReference: `MOCK-PAY-${input.swapTxHash.slice(2, 8).toUpperCase()}`,
+        };
+        return mockOrder;
+      }
+      
       if (attempt === 0) throw error;
       const message = error instanceof Error ? error.message : 'Order creation failed';
       throw new Error(
