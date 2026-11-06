@@ -631,3 +631,26 @@ describe('History totals', () => {
     expect(screen.getByText('₦256')).toBeInTheDocument(); // Total Naira received (171 + 85 = 256)
   });
 });
+
+describe('dev mock gates', () => {
+  afterEach(() => {
+    storageMock.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('does not apply the demo 50,000 G$ balance mock when demo mode is off', () => {
+    storageMock.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { sell: { rate: 1500 } } }),
+      })
+    );
+
+    render(<App />);
+
+    expect(screen.getAllByText('1,297.5').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('50,000')).not.toBeInTheDocument();
+  });
+});

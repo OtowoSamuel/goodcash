@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { PAYCREST_FEE_RESERVE_USDT, createPaycrestOrder, paycrestOrderAmount } from './useOffRamp';
+import {
+  PAYCREST_FEE_RESERVE_USDT,
+  createPaycrestOrder,
+  paycrestOrderAmount,
+  useBankAccountVerification,
+} from './useOffRamp';
 
 // Paycrest docs: providerAccount.amountToTransfer =
 // amount + senderFee + transactionFee.
@@ -103,5 +109,54 @@ describe('createPaycrestOrder fee overflow', () => {
 
     await expect(createPaycrestOrder(baseInput(0.55))).rejects.toThrow(/0\.50/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('dev mock gates (demo mode off)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('createPaycrestOrder does not return a mock order when the orders API fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('orders api down');
+    }));
+
+    await expect(createPaycrestOrder(baseInput(0.55))).rejects.toThrow('orders api down');
+  });
+
+  it('useBankAccountVerification does not fall back to mock banks when the institutions API fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('institutions down');
+    }));
+
+    const { result } = renderHook(() => useBankAccountVerification('NGN'));
+
+    await waitFor(() => expect(result.current.institutionsLoading).toBe(false));
+    expect(result.current.institutions).toEqual([]);
+    expect(result.current.institutionsError).toContain('institutions down');
+  });
+
+  it('useBankAccountVerification does not fall back to a mock account name when verification fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/institutions/')) {
+        return new Response(
+          JSON.stringify({ institutions: [{ name: 'Zenith Bank', code: 'ZENITHB0001', type: 'bank' }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      throw new Error('verify down');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useBankAccountVerification('NGN'));
+    await waitFor(() => expect(result.current.institutions.length).toBe(1));
+
+    act(() => result.current.setInstitutionCode('ZENITHB0001'));
+    act(() => result.current.setAccountIdentifier('1234567890'));
+
+    await waitFor(() => expect(result.current.verificationStatus).toBe('error'));
+    expect(result.current.accountName).toBeNull();
   });
 });

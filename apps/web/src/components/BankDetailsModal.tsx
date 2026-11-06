@@ -18,7 +18,6 @@ export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({
   const [bankName, setBankName] = useState(initialBank || '');
   const [accountNumber, setAccountNumber] = useState(initialAccountNumber || '');
   const [accountName, setAccountName] = useState<string | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
 
   const handleBankChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setBankName(e.target.value);
@@ -98,7 +97,6 @@ export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({
             onChange={handleAccountNumberChange}
             placeholder="10-digit account number"
             className="w-full rounded-xl border-2 border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isValidating}
           />
           {accountName && (
             <div className="mt-2 text-sm text-[#666]">

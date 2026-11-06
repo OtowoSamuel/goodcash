@@ -2,11 +2,9 @@ import React, { useState, useEffect } from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
 import { getNetQuote, type QuoteResult, MAX_PRICE_IMPACT_BPS } from '../lib/quote';
-import { fetchPaycrestRate, getCashoutRate, formatNaira, MIN_NET_USDT_REQUIRED } from '../lib/rate';
-import { useBankDetails } from '../lib/useBankDetails';
+import { fetchPaycrestRate, getCashoutRate, formatNaira } from '../lib/rate';
 import type { BankDetailsState } from '../lib/useBankDetails';
 import { useBankAccountVerification } from '../lib/useOffRamp';
-import { BankDetailsModal } from './BankDetailsModal';
 
 interface CashOutCardProps {
   balanceG: number;
@@ -44,12 +42,6 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const [rateError, setRateError] = useState<string | null>(null);
 
   const {
-    bankDetails,
-    setBankDetails,
-    clearBankDetails,
-  } = useBankDetails();
-
-  const {
     institutions,
     institutionsLoading,
     institutionsError,
@@ -64,8 +56,6 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
     confirmed,
     setConfirmed,
   } = useBankAccountVerification('NGN');
-
-  const [openBankDetailsModal, setOpenBankDetailsModal] = useState(false);
 
   // Fetch NGN rate on mount
   useEffect(() => {
@@ -141,8 +131,12 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const isRateUnavailable = rate.rateUnavailable || Boolean(rateError);
   const isValidAmount = amountNumber > 0 && !isOverBalance && !isHighImpact && !isBelowMinimum && !isRateUnavailable;
 
+  const isBankValid = institutionCode.trim().length > 0;
+  const isAccountNumberValid = /^\d{10}$/.test(accountIdentifier);
+  const isAccountHolderValid = verificationStatus === 'verified' && Boolean(accountName);
+  const isBankDetailsValid = isBankValid && isAccountNumberValid && isAccountHolderValid && confirmed;
   const slippageBps = slippagePercent * 100;
-  const canReview = isValidAmount && quote !== null && !isRateUnavailable;
+  const canReview = isValidAmount && quote !== null && !isRateUnavailable && isBankDetailsValid;
 
   return (
     <>
@@ -218,6 +212,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
           ))}
           </div>
         </div>
+        <div className="mt-2 text-xs text-[#666]">Quote refreshes in {secondsRemaining}s</div>
       </div>
 
       {/* Bank Details Section */}
@@ -252,36 +247,33 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             className="w-full rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white outline-none placeholder:text-[#A39BBE]"
           />
         </div>
-        {verificationStatus === 'idle' && (
-          <p className="text-sm text-[#666]">
-            Enter a 10-digit account number
-          </p>
-        )}
-        {bankDetails.bankName ? (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-[#666] font-medium">{bankDetails.bankName}</span>
-            <span className="text-sm text-[#666] font-medium">••••••••</span>
+        <div className="mt-3 space-y-2">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account name</label>
+          <div className="min-h-[48px] rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white">
+            {verificationStatus === 'loading' && <span className="text-[#A39BBE]">Verifying with Paycrest…</span>}
+            {verificationStatus === 'idle' && <span className="text-[#A39BBE]">Enter a 10-digit account number</span>}
+            {verificationStatus === 'error' && <span className="text-[#FCA5A5]">{verificationError}</span>}
+            {verificationStatus === 'verified' && accountName && <span className="font-semibold">{accountName}</span>}
           </div>
-        ) : (
-          <p className="text-sm text-[#666]">
-            Add your bank details to receive Naira payouts
-          </p>
-        )}
-        {accountName && verificationStatus === 'verified' && (
-          <div className="mt-3">
-            <label className="flex items-center gap-2 text-sm text-[#666]">
+          {verificationStatus === 'verified' && accountName && (
+            <label className="flex items-start gap-2 text-xs text-[#D9D0F4]">
               <input
                 type="checkbox"
                 name="confirmAccountName"
                 value="yes"
                 checked={confirmed}
-                onChange={() => setConfirmed(true)}
-                className="rounded border-[#2D204A] p-1"
+                onChange={(e) => setConfirmed(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#7C3AED]"
               />
-              Confirm this is my account name
+              I confirm this is my account name
             </label>
-          </div>
-        )}
+          )}
+          {institutionsError && <p className="text-xs text-[#FCA5A5]">{institutionsError}</p>}
+        </div>
+        <div className="mt-4 flex items-center justify-between border-t border-[#2D204A] pt-3 text-sm text-[#E5E7EB]">
+          <span>Exit contribution</span>
+          <span className="font-semibold text-[#FCA5A5]">−{rate.exitContributionG.toFixed(0)} G$</span>
+        </div>
       </div>
 
       {/* Review Button */}
@@ -289,36 +281,23 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
         type="button"
         onClick={() => {
           if (!quote || !canReview) return;
-          if (!bankDetails.bankName) {
-            setOpenBankDetailsModal(true);
-            return;
-          }
           onInitiateCashOut(
             quote,
             amountNumber,
             slippageBps,
-            undefined,  // bankName - will be collected in next step
-            undefined,  // accountNumber
-            undefined,  // accountHolderName
+            selectedInstitution?.name ?? '',
+            accountIdentifier,
+            accountName ?? undefined,
             ngnPerUsdt,
-            undefined   // bankCode
+            institutionCode
           );
         }}
-        disabled={!isValidAmount || !confirmed}
+        disabled={!canReview}
         aria-label="Review cash out"
         className={`gc-btn gc-btn--primary w-full mt-4 py-4 text-xl font-bold opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
       >
         Review
       </button>
-
-      {/* Bank Details Modal */}
-      <BankDetailsModal
-        isOpen={openBankDetailsModal}
-        onClose={() => setOpenBankDetailsModal(false)}
-        onSave={setBankDetails}
-        initialBank={bankDetails.bankName}
-        initialAccountNumber={bankDetails.accountNumber}
-      />
     </>
   );
 };

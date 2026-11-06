@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MiniPayNotice } from './MiniPayNotice';
-import type { Language } from '../lib/i18n';
 
 describe('MiniPayNotice', () => {
   it('renders MiniPay blocked screen with restricted environment message', () => {

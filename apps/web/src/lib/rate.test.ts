@@ -261,8 +261,6 @@ describe('shared rate conversion', () => {
     );
 
     const amount = 1000;
-    const rate = getCashoutRate(amount, 123.48, fakeNgnRate);
-    const formattedValue = `₦${rate.netNaira.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
 
     render(
       React.createElement(
@@ -289,8 +287,6 @@ describe('shared rate conversion', () => {
         })
       )
     );
-
-    const escapedValue = formattedValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     await waitFor(() => {
       // Check that both components show a Naira value

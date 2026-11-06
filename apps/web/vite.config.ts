@@ -4,7 +4,11 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define:
+    mode === 'test'
+      ? { 'import.meta.env.VITE_ENABLE_DEMO': JSON.stringify('false') }
+      : {},
   plugins: [
     react(),
     VitePWA({
@@ -86,4 +90,4 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
   },
-});
+}));

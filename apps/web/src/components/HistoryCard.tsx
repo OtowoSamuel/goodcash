@@ -38,7 +38,7 @@ function formatDisplayDate(timestamp: number): string {
   return `${day} ${month} ${year}`;
 }
 
-export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClick, language, ngnPerUsdt = null }) => {
+export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClick: _onCashOutClick, language, ngnPerUsdt = null }) => {
   const t = getTranslations(language);
   const [currentFilter, setCurrentFilter] = useState<FilterType>('all');
   const [orderStatuses, setOrderStatuses] = React.useState<
@@ -134,7 +134,6 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
       ) : (
         <div className="space-y-3">
           {filteredHistory.map((item) => {
-            const liveOrder = item.orderId ? orderStatuses[item.orderId] : undefined;
             const estimatedNaira =
               item.nairaAmount ?? (ngnPerUsdt && ngnPerUsdt > 0 ? getCashoutRate(item.amountInG, 123.48, ngnPerUsdt).netNaira : null);
             const status = getItemStatus(item);

@@ -434,15 +434,20 @@ export function useBankAccountVerification(currency = 'NGN'): BankAccountVerific
         setInstitutions(list);
         setInstitutionsError(null);
       })
-      .catch((e: unknown) => {
+      .catch((error: unknown) => {
         if (cancelled) return;
-        // Fallback to mock banks for development/testing
-        const mockBanks: BankInstitution[] = [
-          { name: 'Test Bank (Mock)', code: 'TESTBANK001', type: 'bank' },
-          { name: 'Demo Bank (Mock)', code: 'DEMOBANK001', type: 'bank' },
-        ];
-        setInstitutions(mockBanks);
-        setInstitutionsError(null);
+        if (IS_DEMO_MODE) {
+          // Fallback to mock banks only when demo mode is explicitly enabled.
+          const mockBanks: BankInstitution[] = [
+            { name: 'Test Bank (Mock)', code: 'TESTBANK001', type: 'bank' },
+            { name: 'Demo Bank (Mock)', code: 'DEMOBANK001', type: 'bank' },
+          ];
+          setInstitutions(mockBanks);
+          setInstitutionsError(null);
+        } else {
+          setInstitutions([]);
+          setInstitutionsError(error instanceof Error ? error.message : 'Could not load banks');
+        }
       })
       .finally(() => {
         if (!cancelled) setInstitutionsLoading(false);
@@ -477,12 +482,18 @@ export function useBankAccountVerification(currency = 'NGN'): BankAccountVerific
           setAccountName(name);
           setVerificationStatus('verified');
         })
-        .catch((e: unknown) => {
+        .catch((error: unknown) => {
           if (cancelled) return;
-          // Fallback to mock account for development/testing
-          setAccountName('Test User (Mock Account)');
-          setVerificationStatus('verified');
-          setVerificationError(null);
+          if (IS_DEMO_MODE) {
+            // Fallback to a mock account only when demo mode is explicitly enabled.
+            setAccountName('Test User (Mock Account)');
+            setVerificationStatus('verified');
+            setVerificationError(null);
+          } else {
+            setAccountName(null);
+            setVerificationStatus('error');
+            setVerificationError(error instanceof Error ? error.message : 'Could not verify account name');
+          }
         });
     }, 350);
 

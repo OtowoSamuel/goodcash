@@ -11,7 +11,6 @@ import { MobileSuccessView } from './components/MobileSuccessView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { CashOutTracker } from './components/CashOutTracker';
 import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
-import { useBankDetails } from './lib/useBankDetails';
 import type { BankDetailsState } from './lib/useBankDetails';
 import type { Language } from './lib/i18n';
 import { getTranslations } from './lib/i18n';
@@ -165,7 +164,7 @@ export function App({
     if (pendingSwapResult && currentTab === 'home') {
       setCurrentTab('cashout');
     }
-  }, []); // Only run on mount
+  }, [pendingSwapResult, currentTab]); // Auto-resume a pending payout
 
   useEffect(() => {
     if (typeof localStorage !== 'undefined') {
@@ -374,6 +373,9 @@ export function App({
         txHash: realTxHash,
         usdtReceived: realUsdtReceived,
         amountGSwapped: amountG,
+        bankName: pendingQuote.bankName || '',
+        accountNumber: pendingQuote.accountNumber || '',
+        accountHolderName: pendingQuote.accountHolderName || '',
         ngnPerUsdt: pendingQuote.ngnPerUsdt ?? null,
         orderId: order.orderId,
         initialOrder: order,
@@ -568,9 +570,9 @@ export function App({
                   txHash={trackerData.txHash}
                   usdtReceived={trackerData.usdtReceived}
                   amountGSwapped={trackerData.amountGSwapped}
-                  bankName='Bank Payout'
-                  accountNumber='••••••••'
-                  accountHolderName='Beneficiary'
+                  bankName={trackerData.bankName ?? ''}
+                  accountNumber={trackerData.accountNumber ?? ''}
+                  accountHolderName={trackerData.accountHolderName ?? ''}
                   ngnPerUsdt={trackerData.ngnPerUsdt}
                   initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
                   walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}

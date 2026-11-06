@@ -27,7 +27,6 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
     bankDetails,
     setBankDetails,
     clearBankDetails,
-    isValid,
   } = useBankDetails();
 
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
