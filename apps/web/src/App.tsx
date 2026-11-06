@@ -99,6 +99,8 @@ export function App({
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_updated_at') : null;
     return cached ? Number(cached) : Date.now();
   });
+  const [activeCashOutAmount, setActiveCashOutAmount] = useState<string>('');
+  const [savedBankDetails, setSavedBankDetails] = useState<any>(null);
 
   const [history, setHistory] = useState<SwapHistoryItem[]>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_history') : null;
@@ -623,6 +625,10 @@ export function App({
                   balanceG={balanceG}
                   onInitiateCashOut={handleInitiateCashOut}
                   language={language}
+                  activeCashOutAmount={activeCashOutAmount}
+                  setActiveCashOutAmount={setActiveCashOutAmount}
+                  savedBankDetails={savedBankDetails}
+                  setSavedBankDetails={setSavedBankDetails}
                 />
               )}
             </>
@@ -918,6 +924,10 @@ export function App({
               handleConfirmSwap();
               setMobileView('processing');
             }}
+            activeCashOutAmount={activeCashOutAmount}
+            setActiveCashOutAmount={setActiveCashOutAmount}
+            savedBankDetails={savedBankDetails}
+            setSavedBankDetails={setSavedBankDetails}
           />
         ) : mobileView === 'processing' ? (
           <MobileProcessingView

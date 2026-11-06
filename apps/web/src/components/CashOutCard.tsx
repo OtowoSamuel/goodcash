@@ -20,6 +20,10 @@ interface CashOutCardProps {
   ) => void;
   language: Language;
   ngnPerUsdt?: number | null;
+  activeCashOutAmount?: string;
+  setActiveCashOutAmount?: (amount: string) => void;
+  savedBankDetails?: any;
+  setSavedBankDetails?: (details: any) => void;
 }
 
 export const CashOutCard: React.FC<CashOutCardProps> = ({

@@ -8,6 +8,10 @@ export interface MobileReviewViewProps {
   usdtEstimate: number;
   onBack: () => void;
   onConfirm: () => void;
+  activeCashOutAmount?: string;
+  setActiveCashOutAmount?: (amount: string) => void;
+  savedBankDetails?: any;
+  setSavedBankDetails?: (details: any) => void;
 }
 
 export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
@@ -139,6 +143,15 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           Confirm cash out
         </button>
       </div>
+
+      {/* Bank Details Modal */}
+      {isBankModalOpen && (
+        <BankDetailsModal
+          isOpen={isBankModalOpen}
+          onClose={() => setIsBankModalOpen(false)}
+          onSave={setBankDetails}
+        />
+      )}
     </div>
   );
 };
