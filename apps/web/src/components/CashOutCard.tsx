@@ -4,6 +4,7 @@ import { getTranslations } from '../lib/i18n';
 import { getNetQuote, type QuoteResult, MAX_PRICE_IMPACT_BPS } from '../lib/quote';
 import { fetchPaycrestRate, getCashoutRate, formatNaira, MIN_NET_USDT_REQUIRED } from '../lib/rate';
 import { useBankDetails } from '../lib/useBankDetails';
+import { useBankAccountVerification } from '../lib/useOffRamp';
 import { BankDetailsModal } from './BankDetailsModal';
 
 interface CashOutCardProps {
@@ -46,6 +47,22 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
     setBankDetails,
     clearBankDetails,
   } = useBankDetails();
+
+  const {
+    institutions,
+    institutionsLoading,
+    institutionsError,
+    institutionCode,
+    setInstitutionCode,
+    selectedInstitution,
+    accountIdentifier,
+    setAccountIdentifier,
+    accountName,
+    verificationStatus,
+    verificationError,
+    confirmed,
+    setConfirmed,
+  } = useBankAccountVerification('NGN');
 
   const [openBankDetailsModal, setOpenBankDetailsModal] = useState(false);
 
@@ -206,24 +223,39 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       <div className="gc-card mt-4">
         <div className="flex justify-between items-center mb-3">
           <span className="text-sm font-bold text-[#111] uppercase tracking-wider">Bank Details</span>
-          {bankDetails.bankName ? (
-            <button
-              type="button"
-              onClick={clearBankDetails}
-              className="text-xs text-[#666] hover:text-[#FCA5A5] transition"
-            >
-              Edit
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setOpenBankDetailsModal(true)}
-              className="text-xs text-[#7b39fc] hover:text-[#5A9] transition"
-            >
-              Add
-            </button>
-          )}
+          <label className="hidden sm:block text-sm text-[#A39BBE]" htmlFor="bank-select">
+            Bank
+          </label>
+          <select
+            id="bank-select"
+            aria-label="Bank name"
+            value={institutionCode}
+            onChange={(e) => setInstitutionCode(e.target.value)}
+            disabled={institutionsLoading}
+            className="rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-2 text-sm text-[#E5E7EB] outline-none"
+          >
+            <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
+            {institutions.map((bank) => (
+              <option key={bank.code} value={bank.code}>{bank.name}</option>
+            ))}
+          </select>
         </div>
+        <div className="mt-3 space-y-2">
+          <label className="block text-[11px] uppercase tracking-[0.12em] text-[#A39BBE]">Account number</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={accountIdentifier}
+            onChange={(e) => setAccountIdentifier(e.target.value)}
+            placeholder="10-digit account number"
+            className="w-full rounded-xl border border-[#2D204A] bg-[#1B122E] px-3 py-3 text-base text-white outline-none placeholder:text-[#A39BBE]"
+          />
+        </div>
+        {verificationStatus === 'idle' && (
+          <p className="text-sm text-[#666]">
+            Enter a 10-digit account number
+          </p>
+        )}
         {bankDetails.bankName ? (
           <div className="flex items-center gap-3">
             <span className="text-sm text-[#666] font-medium">{bankDetails.bankName}</span>
