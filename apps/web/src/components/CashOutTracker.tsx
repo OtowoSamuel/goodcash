@@ -37,6 +37,7 @@ export interface CashOutTrackerProps {
 
   // Callbacks
   onDone: () => void;
+  onCancel?: () => void;
   language?: Language;
 }
 
@@ -57,6 +58,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   initialFailureState = null,
   delayedTimeoutMinutes = 5,
   onDone,
+  onCancel,
   language,
 }) => {
   const {
@@ -693,6 +695,16 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Cancel Button */}
+      {onCancel && (
+        <button
+          onClick={onCancel}
+          className="text-sm font-bold text-gray-600 hover:text-[#111] underline block mx-auto mt-4 text-center"
+        >
+          Cancel and start new cash out
+        </button>
+      )}
     </div>
   );
 };

@@ -578,6 +578,18 @@ export function App({
                     setTrackerData(null);
                     setCurrentTab('home');
                   }}
+                  onCancel={() => {
+                    // Clear all tracker state
+                    setTrackerData(null);
+                    setPendingSwapResult(null);
+                    setPendingQuote(null);
+                    clearPendingPayout();
+                    // Clear from localStorage
+                    if (typeof localStorage !== 'undefined') {
+                      localStorage.removeItem('goodcash_active_tracker');
+                    }
+                    // Stay on cashout tab to show standard CashOutCard
+                  }}
                 />
               ) : pendingSwapResult && !pendingQuote ? (
                 <PendingPayoutCard
