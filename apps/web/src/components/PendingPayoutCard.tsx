@@ -78,7 +78,7 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
-            className="rounded-xl border-2 border-[#111] bg-white px-3 py-2 text-sm font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none"
+            className="rounded-xl border-2 border-[#111] bg-white pl-3 pr-12 py-2 text-sm font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
           >
             <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
             {institutions.map((bank) => (

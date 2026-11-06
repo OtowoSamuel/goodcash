@@ -201,7 +201,7 @@ export const OffRampCard: React.FC<OffRampCardProps> = ({
               value={institutionCode}
               onChange={(e) => setInstitutionCode(e.target.value)}
               disabled={institutionsLoading}
-              className="w-full bg-[#18122c] border border-purple-400/20 rounded-xl px-4 py-2.5 text-white text-sm font-sans focus:outline-none focus:ring-1 focus:ring-purple-500 appearance-none"
+              className="w-full bg-[#18122c] border border-purple-400/20 rounded-xl pl-4 pr-12 py-2.5 text-white text-sm font-sans focus:outline-none focus:ring-1 focus:ring-purple-500 appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
             >
               <option value="">{institutionsLoading ? 'Loading banks…' : 'Select your bank…'}</option>
               {institutions.map((b) => (
