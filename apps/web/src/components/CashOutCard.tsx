@@ -73,8 +73,13 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       })
       .catch(() => {
         if (isMounted) {
-          setNgnPerUsdt(null);
-          setRateError(t.rateUnavailableTryAgain);
+          if (IS_DEMO_MODE) {
+            setNgnPerUsdt(1452.6);
+            setRateError(null);
+          } else {
+            setNgnPerUsdt(null);
+            setRateError(t.rateUnavailableTryAgain);
+          }
         }
       });
 
@@ -139,7 +144,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const isAccountHolderValid = verificationStatus === 'verified' && Boolean(accountName);
   const isBankDetailsValid = isBankValid && isAccountNumberValid && isAccountHolderValid && confirmed;
   const slippageBps = slippagePercent * 100;
-  const canReview = isValidAmount && quote !== null && !isRateUnavailable && isBankDetailsValid;
+  const canReview = isBankDetailsValid && quote !== null && (IS_DEMO_MODE || isValidAmount);
 
   return (
     <>
@@ -329,6 +334,22 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       >
         Review cash out
       </button>
+
+      {showBankDetails && !canReview && (
+        <div className="gc-sm" style={{ textAlign: 'center', color: '#b91c1c' }}>
+          {!isBankDetailsValid
+            ? 'Complete and confirm your bank details'
+            : isRateUnavailable
+            ? t.rateUnavailableTryAgain
+            : isOverBalance
+            ? 'Amount exceeds your balance'
+            : isBelowMinimum
+            ? `Minimum cash out is ${Math.ceil(rate.remainingG)} G$`
+            : isHighImpact
+            ? 'Price impact is too high'
+            : 'Enter a valid amount'}
+        </div>
+      )}
     </>
   );
 };

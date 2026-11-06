@@ -94,7 +94,9 @@ export function App({
 
   const [balanceG, setBalanceG] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_g') : null;
-    return cached ? parseFloat(cached) : IS_DEMO_MODE ? 50000 : 0;
+    const parsed = cached !== null ? parseFloat(cached) : NaN;
+    if (Number.isFinite(parsed) && (parsed > 0 || !isDemoMode)) return parsed;
+    return isDemoMode ? 50000 : 0;
   });
   const [balanceUpdatedAt, setBalanceUpdatedAt] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_updated_at') : null;
