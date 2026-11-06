@@ -1,4 +1,5 @@
 import React from 'react';
+import { useBankDetails } from '../lib/useBankDetails';
 
 export interface MobileReviewViewProps {
   amountG: number;
@@ -16,6 +17,16 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
   onConfirm,
 }) => {
   const exitContributionG = Math.floor(amountG * 0.1);
+  const {
+    bankDetails,
+    setBankDetails,
+    clearBankDetails,
+    isValid,
+  } = useBankDetails();
+
+  const displayBankName = bankDetails.bankName
+    ? bankDetails.bankName
+    : 'Your bank account';
 
   return (
     <div className="fixed inset-0 bg-[#d4c5fb] z-40 flex flex-col pt-6 px-4">
@@ -57,15 +68,28 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
               PAID TO
             </div>
             <div className="text-sm font-medium text-[#111]">
-              Your bank account
+              {displayBankName}
             </div>
           </div>
-          <button
-            type="button"
-            className="bg-white border-2 border-[#111] rounded-full px-4 py-1.5 font-bold text-sm text-[#111] shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
-          >
-            Add ›
-          </button>
+          {bankDetails.bankName ? (
+            <>
+              <button
+                type="button"
+                className="bg-white border-2 border-[#111] rounded-full px-4 py-1.5 font-bold text-sm text-[#111] shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+                onClick={clearBankDetails}
+              >
+                Edit
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="bg-white border-2 border-[#111] rounded-full px-4 py-1.5 font-bold text-sm text-[#111] shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+              onClick={() => setBankDetails('', '', null)}
+            >
+              Add ›
+            </button>
+          )}
         </div>
 
         {/* Third Card: Breakdown */}

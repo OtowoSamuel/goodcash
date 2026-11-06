@@ -3,6 +3,8 @@ import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
 import { getNetQuote, type QuoteResult, MAX_PRICE_IMPACT_BPS } from '../lib/quote';
 import { fetchPaycrestRate, getCashoutRate, formatNaira, MIN_NET_USDT_REQUIRED } from '../lib/rate';
+import { useBankDetails } from '../lib/useBankDetails';
+import { BankDetailsModal } from './BankDetailsModal';
 
 interface CashOutCardProps {
   balanceG: number;
@@ -34,6 +36,14 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const [secondsRemaining, setSecondsRemaining] = useState<number>(30);
   const [ngnPerUsdt, setNgnPerUsdt] = useState<number | null>(initialNgnRate);
   const [rateError, setRateError] = useState<string | null>(null);
+
+  const {
+    bankDetails,
+    setBankDetails,
+    clearBankDetails,
+  } = useBankDetails();
+
+  const [openBankDetailsModal, setOpenBankDetailsModal] = useState(false);
 
   // Fetch NGN rate on mount
   useEffect(() => {
@@ -188,6 +198,40 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
         </div>
       </div>
 
+      {/* Bank Details Section */}
+      <div className="gc-card mt-4">
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-sm font-bold text-[#111] uppercase tracking-wider">Bank Details</span>
+          {bankDetails.bankName ? (
+            <button
+              type="button"
+              onClick={clearBankDetails}
+              className="text-xs text-[#666] hover:text-[#FCA5A5] transition"
+            >
+              Edit
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setOpenBankDetailsModal(true)}
+              className="text-xs text-[#7b39fc] hover:text-[#5A9] transition"
+            >
+              Add
+            </button>
+          )}
+        </div>
+        {bankDetails.bankName ? (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[#666] font-medium">{bankDetails.bankName}</span>
+            <span className="text-sm text-[#666] font-medium">••••••••</span>
+          </div>
+        ) : (
+          <p className="text-sm text-[#666]">
+            Add your bank details to receive Naira payouts
+          </p>
+        )}
+      </div>
+
       {/* Review Button */}
       <button
         type="button"
@@ -210,6 +254,15 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       >
         Review
       </button>
+
+      {/* Bank Details Modal */}
+      <BankDetailsModal
+        isOpen={openBankDetailsModal}
+        onClose={() => setOpenBankDetailsModal(false)}
+        onSave={setBankDetails}
+        initialBank={bankDetails.bankName}
+        initialAccountNumber={bankDetails.accountNumber}
+      />
     </>
   );
 };
