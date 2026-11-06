@@ -17,6 +17,7 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
 }) => {
   const displayNaira = nairaEstimate && nairaEstimate > 0 ? nairaEstimate : 164;
   const usdtEstimate = (amountG * 0.0001129).toFixed(4);
+  const shortHash = txHash && txHash.length > 12 ? `${txHash.slice(0, 6)}...${txHash.slice(-4)}` : txHash;
 
   return (
     <div className="fixed inset-0 bg-[#d4c5fb] z-40 flex flex-col md:hidden w-full h-full">
@@ -99,7 +100,7 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
           <div className="flex justify-between items-center pt-3">
             <span className="font-bold text-sm text-[#111]">Receipt</span>
             <span className="font-bold text-sm text-[#111] flex items-center gap-1">
-              {txHash} ↗
+              {shortHash} ↗
             </span>
           </div>
         </div>
