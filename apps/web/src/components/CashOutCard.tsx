@@ -3,6 +3,7 @@ import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
 import { getNetQuote, type QuoteResult, MAX_PRICE_IMPACT_BPS } from '../lib/quote';
 import { fetchPaycrestRate, getCashoutRate, formatNaira } from '../lib/rate';
+import { IS_DEMO_MODE } from '../lib/router';
 import type { BankDetailsState } from '../lib/useBankDetails';
 import { useBankAccountVerification } from '../lib/useOffRamp';
 
@@ -129,7 +130,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const rate = getCashoutRate(amountNumber, 123.48, ngnPerUsdt);
   const isHighImpact = quote ? quote.priceImpactBps > MAX_PRICE_IMPACT_BPS : false;
   const isOverBalance = amountNumber > balanceG;
-  const isBelowMinimum = !rate.minimumReached;
+  const isBelowMinimum = !rate.minimumReached && !IS_DEMO_MODE;
   const isRateUnavailable = rate.rateUnavailable || Boolean(rateError);
   const isValidAmount = amountNumber > 0 && !isOverBalance && !isHighImpact && !isBelowMinimum && !isRateUnavailable;
 
