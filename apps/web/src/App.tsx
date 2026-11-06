@@ -781,14 +781,6 @@ export function App({
         </aside>
       </main>
 
-      <button
-        type="button"
-        onClick={() => setShowPrivacy((v) => !v)}
-        className="text-[#111] font-semibold text-sm underline hover:text-[#111]/80 mb-4 ml-4"
-      >
-        Privacy
-      </button>
-
       {showPrivacy && (
         <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto 10px', padding: '0 14px' }}>
           <div
@@ -873,6 +865,14 @@ export function App({
           >
             {t.paycrestLinkText}
           </a>
+          <span className="text-[#111] font-semibold">·</span>
+          <button
+            type="button"
+            onClick={() => setShowPrivacy((v) => !v)}
+            className="text-[#111] hover:text-[#111]/80 font-semibold bg-transparent border-none p-0 cursor-pointer"
+          >
+            {t.privacyLinkText}
+          </button>
         </div>
       </footer>
       {/* ── End Desktop Layout ── */}
