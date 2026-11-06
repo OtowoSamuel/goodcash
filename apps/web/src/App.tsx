@@ -93,7 +93,7 @@ export function App({
 
   const [balanceG, setBalanceG] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_g') : null;
-    return cached ? parseFloat(cached) : 1297.5;
+    return cached ? parseFloat(cached) : 50000;
   });
   const [balanceUpdatedAt, setBalanceUpdatedAt] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_updated_at') : null;
