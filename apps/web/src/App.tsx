@@ -8,6 +8,7 @@ import { MobileCashOut } from './components/MobileCashOut';
 import { MobileReviewView } from './components/MobileReviewView';
 import { MobileProcessingView } from './components/MobileProcessingView';
 import { MobileSuccessView } from './components/MobileSuccessView';
+import { MobileHistoryView } from './components/MobileHistoryView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { CashOutTracker } from './components/CashOutTracker';
 import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
@@ -82,7 +83,7 @@ export function App({
   walletAddress: initialWalletAddress = '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
 }: AppProps = {}) {
   const [currentTab, setCurrentTab] = useState<'home' | 'cashout' | 'claim' | 'history' | 'offramp'>('home');
-  const [language, setLanguage] = useState<Language>('en');
+  const [language] = useState<Language>('en');
   const [miniPayBlocked, setMiniPayBlocked] = useState<boolean>(() => detectMiniPay());
   const [walletAddress, setWalletAddress] = useState<string | null>(initialWalletAddress);
   const [swapError, setSwapError] = useState<string | null>(null);
@@ -545,7 +546,6 @@ export function App({
         onConnectWallet={handleConnectWallet}
         onDisconnectWallet={handleDisconnectWallet}
         language={language}
-        onSelectLanguage={setLanguage}
         isMiniPayBlocked={miniPayBlocked}
         isDemoMode={isDemoMode}
       />
@@ -555,7 +555,7 @@ export function App({
           <SafetyBanner language={language} />
         </div>
 
-        <div className="gc-col">
+        <div className="gc-col pb-24">
           {currentTab === 'home' ? (
             <ReadinessCard
               balanceG={balanceG}
@@ -955,6 +955,11 @@ export function App({
             onClose={() => setMobileView('home')}
             onViewTransaction={() => setMobileView('processing')}
           />
+        ) : mobileView === 'history' ? (
+          <MobileHistoryView
+            history={history}
+            onClose={() => setMobileView('home')}
+          />
         ) : (
           <>
             {/* Mobile Header */}
@@ -963,7 +968,6 @@ export function App({
                 <span className="font-bold text-[#111] text-xl">GoodCash</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-sm">EN ⌄</span>
                 <button className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-sm">
                   {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
                 </button>
@@ -1004,7 +1008,7 @@ export function App({
               </button>
               <button
                 type="button"
-                onClick={() => setCurrentTab('history')}
+                onClick={() => setMobileView('history')}
                 className="px-4 py-2 font-bold text-[#111]"
               >
                 History

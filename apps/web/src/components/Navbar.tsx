@@ -10,7 +10,6 @@ export interface NavbarProps {
   onConnectWallet: () => void;
   onDisconnectWallet: () => void;
   language: Language;
-  onSelectLanguage: (lang: Language) => void;
   isMiniPayBlocked?: boolean;
   isDemoMode?: boolean;
 }
@@ -22,7 +21,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onConnectWallet,
   onDisconnectWallet,
   language,
-  onSelectLanguage,
   isMiniPayBlocked = false,
   isDemoMode = false,
 }) => {
@@ -44,29 +42,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       onConnectWallet();
     }
   };
-
-  const languageSelector = (
-    <select
-      value={language}
-      onChange={(e) => onSelectLanguage(e.target.value as Language)}
-      aria-label="Select language"
-      className="gc-pill gc-pill--white gc-hit"
-      style={{
-        cursor: 'pointer',
-        fontSize: '11px',
-        fontWeight: 700,
-        padding: '2px 8px',
-        outline: 'none',
-        height: '28px',
-      }}
-    >
-      <option value="en">EN</option>
-      <option value="pcm">PCM</option>
-      <option value="ha">HA</option>
-      <option value="yo">YO</option>
-      <option value="ig">IG</option>
-    </select>
-  );
 
   return (
     <>
@@ -106,10 +81,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           })}
         </nav>
 
-        {/* Right actions: language selector and wallet chip */}
+        {/* Right actions: wallet chip */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {languageSelector}
-
           <div style={{ position: 'relative' }}>
             <button
               type="button"
@@ -191,8 +164,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {languageSelector}
-
           <div style={{ position: 'relative' }}>
             <button
               type="button"

@@ -166,30 +166,6 @@ describe('Step 2b shell and i18n', () => {
     expect(screen.queryByRole('button', { name: /dismiss safety notice/i })).not.toBeInTheDocument();
   });
 
-  it('updates the language selector and keeps nav labels rendering', () => {
-    storageMock.clear();
-    render(<App />);
-
-    // Two selectors exist (desktop + mobile); both should stay in sync
-    const selects = screen.getAllByLabelText('Select language');
-    expect(selects).toHaveLength(2);
-    expect(selects[0]).toHaveValue('en');
-
-    // Switch to Hausa via the desktop selector
-    fireEvent.change(selects[0], { target: { value: 'ha' } });
-    expect(selects[0]).toHaveValue('ha');
-    expect(selects[1]).toHaveValue('ha');
-
-    // Nav label still renders correctly (English fallback for new keys)
-    const desktopNav = screen.getByLabelText('Main Navigation Desktop');
-    expect(desktopNav.querySelectorAll('button')[0]).toHaveTextContent('Home');
-
-    // Switch back to English
-    fireEvent.change(selects[0], { target: { value: 'en' } });
-    expect(selects[0]).toHaveValue('en');
-    expect(desktopNav.querySelectorAll('button')[0]).toHaveTextContent('Home');
-  });
-
   it('renders no "licensed", "0.1129" or "18s" on any tab; privacy note contains "pseudonymous"', () => {
     storageMock.clear();
     render(<App />);
