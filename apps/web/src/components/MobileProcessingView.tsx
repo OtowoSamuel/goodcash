@@ -42,12 +42,13 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
 
         {/* Vertical Stepper Card */}
         <div className="bg-white border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111]">
-          <div className="relative flex flex-col">
+          <div className="flex flex-col gap-6 relative">
             {/* Step 1: Done */}
-            <div className="relative flex items-start gap-4 pb-6">
+            <div className="relative flex items-start gap-4 pb-1">
               <div className="relative flex flex-col items-center">
-                <div className="w-5 h-5 rounded-full border-2 border-[#111] bg-[#7b39fc] z-10" />
-                <div className="w-0.5 bg-[#111] h-full absolute top-5" />
+                <div className="w-5 h-5 rounded-full bg-[#7b39fc] border-2 border-[#111] z-10 shrink-0" />
+                {/* Connecting line from Step 1 to Step 2 (solid black) */}
+                <div className="absolute left-[9px] top-5 bottom-[-24px] w-[2px] bg-[#111] z-0" />
               </div>
               <div className="flex-1 pt-0.5">
                 <div className="font-bold text-base text-[#111]">Swapped to USDT</div>
@@ -58,10 +59,11 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
             </div>
 
             {/* Step 2: In progress */}
-            <div className="relative flex items-start gap-4 pb-6">
+            <div className="relative flex items-start gap-4 pb-1">
               <div className="relative flex flex-col items-center">
-                <div className="w-5 h-5 rounded-full border-2 border-[#111] bg-[#ffd23f] z-10" />
-                <div className="w-0.5 bg-[#c4b5fd] h-full absolute top-5" />
+                <div className="w-5 h-5 rounded-full bg-[#ffd23f] border-2 border-[#111] z-10 shrink-0" />
+                {/* Connecting line from Step 2 to Step 3 (light purple) */}
+                <div className="absolute left-[9px] top-5 bottom-[-24px] w-[2px] bg-[#c4b5fd] z-0" />
               </div>
               <div className="flex-1 pt-0.5">
                 <div className="font-bold text-base text-[#111]">Sent to payout partner</div>
@@ -72,7 +74,7 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
             {/* Step 3: Waiting */}
             <div className="relative flex items-start gap-4">
               <div className="relative flex flex-col items-center">
-                <div className="w-5 h-5 rounded-full border-2 border-[#111] bg-white z-10" />
+                <div className="w-5 h-5 rounded-full bg-white border-2 border-[#111] z-10 shrink-0" />
               </div>
               <div className="flex-1 pt-0.5">
                 <div className="font-bold text-base text-[#111]">Naira in your bank</div>
