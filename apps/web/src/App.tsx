@@ -527,9 +527,9 @@ export function App({
   }
 
   return (
-    <div className="gc">
+    <div className="gc min-h-screen flex flex-col">
       {/* ── Desktop Layout ── */}
-      <div className="hidden md:flex flex-col h-full">
+      <div className="hidden md:flex flex-col flex-1">
       <Navbar
         currentTab={currentTab}
         onSelectTab={(tab) => {
@@ -828,7 +828,7 @@ export function App({
         />
       )}
 
-      <footer className="flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4">
+      <footer className="mt-auto flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4">
         <span className="font-semibold text-[#111]">{t.footerText}</span>
         <div className="flex items-center gap-4">
           <a
