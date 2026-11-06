@@ -101,7 +101,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
     setSlippagePercent(pct);
   };
 
-  const amountNumber = parseFloat(inputAmountG) || 0;
+  const amountNumber = parseFloat(inputAmountG.replace(/,/g, '')) || 0;
   const rate = getCashoutRate(amountNumber, 123.48, ngnPerUsdt);
   const isHighImpact = quote ? quote.priceImpactBps > MAX_PRICE_IMPACT_BPS : false;
   const isOverBalance = amountNumber > balanceG;
@@ -124,10 +124,15 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
         </div>
         <div className="flex justify-between items-center w-full overflow-hidden mb-6 gap-4">
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             min="1"
             value={inputAmountG}
-            onChange={(e) => setInputAmountG(e.target.value)}
+            onChange={(e) => {
+              const rawValue = e.target.value.replace(/[^0-9]/g, '');
+              const numericValue = parseInt(rawValue, 10) || 0;
+              setInputAmountG(numericValue.toLocaleString('en-US'));
+            }}
             placeholder="0"
             className="w-full min-w-0 flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 p-0 text-5xl font-black text-[#111] appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           />
