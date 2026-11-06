@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useBankDetails } from '../lib/useBankDetails';
+import { BankDetailsModal } from '../components/BankDetailsModal';
 
 export interface MobileReviewViewProps {
   amountG: number;
@@ -23,6 +24,8 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
     clearBankDetails,
     isValid,
   } = useBankDetails();
+
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
 
   const displayBankName = bankDetails.bankName
     ? bankDetails.bankName
@@ -85,7 +88,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
             <button
               type="button"
               className="bg-white border-2 border-[#111] rounded-full px-4 py-1.5 font-bold text-sm text-[#111] shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
-              onClick={() => setBankDetails('', '', null)}
+              onClick={() => setIsBankModalOpen(true)}
             >
               Add ›
             </button>

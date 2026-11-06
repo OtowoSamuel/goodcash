@@ -46,10 +46,10 @@ export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
     >
       <div
-        className="bg-white border-4 border-[#111] rounded-3xl p-6 w-full max-w-md shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
+        className="relative z-[10000] bg-white w-full max-w-md border-4 border-[#111] rounded-3xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
