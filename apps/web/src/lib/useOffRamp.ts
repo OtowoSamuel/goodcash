@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { IS_DEMO_MODE } from './router';
 
 // ---------------------------------------------------------------------------
 // Order status union (all Paycrest statuses)
@@ -238,8 +239,8 @@ export async function createPaycrestOrder(input: CreateOrderInput): Promise<OffR
         recipient: input.recipient,
       });
     } catch (error: unknown) {
-      // Mock success in development when API is offline
-      if (import.meta.env.DEV) {
+      // Mock success in development/when API is offline when demo mode is active
+      if (IS_DEMO_MODE) {
         const mockOrder: OffRampOrder = {
           orderId: `mock-ord-${Date.now()}`,
           receiveAddress: '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',

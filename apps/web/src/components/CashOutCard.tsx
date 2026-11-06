@@ -4,6 +4,7 @@ import { getTranslations } from '../lib/i18n';
 import { getNetQuote, type QuoteResult, MAX_PRICE_IMPACT_BPS } from '../lib/quote';
 import { fetchPaycrestRate, getCashoutRate, formatNaira, MIN_NET_USDT_REQUIRED } from '../lib/rate';
 import { useBankDetails } from '../lib/useBankDetails';
+import type { BankDetailsState } from '../lib/useBankDetails';
 import { useBankAccountVerification } from '../lib/useOffRamp';
 import { BankDetailsModal } from './BankDetailsModal';
 
@@ -23,8 +24,8 @@ interface CashOutCardProps {
   ngnPerUsdt?: number | null;
   activeCashOutAmount?: string;
   setActiveCashOutAmount?: (amount: string) => void;
-  savedBankDetails?: any;
-  setSavedBankDetails?: (details: any) => void;
+  savedBankDetails?: BankDetailsState | null;
+  setSavedBankDetails?: (details: BankDetailsState | null) => void;
 }
 
 export const CashOutCard: React.FC<CashOutCardProps> = ({
@@ -266,6 +267,21 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             Add your bank details to receive Naira payouts
           </p>
         )}
+        {accountName && verificationStatus === 'verified' && (
+          <div className="mt-3">
+            <label className="flex items-center gap-2 text-sm text-[#666]">
+              <input
+                type="checkbox"
+                name="confirmAccountName"
+                value="yes"
+                checked={confirmed}
+                onChange={() => setConfirmed(true)}
+                className="rounded border-[#2D204A] p-1"
+              />
+              Confirm this is my account name
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Review Button */}
@@ -288,7 +304,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             undefined   // bankCode
           );
         }}
-        disabled={!isValidAmount}
+        disabled={!isValidAmount || !confirmed}
         aria-label="Review cash out"
         className={`gc-btn gc-btn--primary w-full mt-4 py-4 text-xl font-bold opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
       >

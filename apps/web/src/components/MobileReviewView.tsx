@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useBankDetails } from '../lib/useBankDetails';
+import type { BankDetailsState } from '../lib/useBankDetails';
 import { BankDetailsModal } from '../components/BankDetailsModal';
 
 export interface MobileReviewViewProps {
@@ -10,8 +11,8 @@ export interface MobileReviewViewProps {
   onConfirm: () => void;
   activeCashOutAmount?: string;
   setActiveCashOutAmount?: (amount: string) => void;
-  savedBankDetails?: any;
-  setSavedBankDetails?: (details: any) => void;
+  savedBankDetails?: BankDetailsState | null;
+  setSavedBankDetails?: (details: BankDetailsState | null) => void;
 }
 
 export const MobileReviewView: React.FC<MobileReviewViewProps> = ({

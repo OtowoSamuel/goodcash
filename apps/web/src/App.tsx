@@ -11,6 +11,8 @@ import { MobileSuccessView } from './components/MobileSuccessView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { CashOutTracker } from './components/CashOutTracker';
 import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
+import { useBankDetails } from './lib/useBankDetails';
+import type { BankDetailsState } from './lib/useBankDetails';
 import type { Language } from './lib/i18n';
 import { getTranslations } from './lib/i18n';
 import { getCashoutRate } from './lib/rate';
@@ -93,14 +95,14 @@ export function App({
 
   const [balanceG, setBalanceG] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_g') : null;
-    return cached ? parseFloat(cached) : 50000;
+    return cached ? parseFloat(cached) : IS_DEMO_MODE ? 50000 : 1297.5;
   });
   const [balanceUpdatedAt, setBalanceUpdatedAt] = useState<number>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_updated_at') : null;
     return cached ? Number(cached) : Date.now();
   });
   const [activeCashOutAmount, setActiveCashOutAmount] = useState<string>('');
-  const [savedBankDetails, setSavedBankDetails] = useState<any>(null);
+  const [savedBankDetails, setSavedBankDetails] = useState<BankDetailsState | null>(null);
 
   const [history, setHistory] = useState<SwapHistoryItem[]>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_history') : null;
@@ -372,9 +374,6 @@ export function App({
         txHash: realTxHash,
         usdtReceived: realUsdtReceived,
         amountGSwapped: amountG,
-        bankName: pendingQuote.bankName || '',
-        accountNumber: pendingQuote.accountNumber || '',
-        accountHolderName: pendingQuote.accountHolderName || '',
         ngnPerUsdt: pendingQuote.ngnPerUsdt ?? null,
         orderId: order.orderId,
         initialOrder: order,
@@ -569,9 +568,9 @@ export function App({
                   txHash={trackerData.txHash}
                   usdtReceived={trackerData.usdtReceived}
                   amountGSwapped={trackerData.amountGSwapped}
-                  bankName={trackerData.bankName || 'Bank Payout'}
-                  accountNumber={trackerData.accountNumber || '••••••••'}
-                  accountHolderName={trackerData.accountHolderName || 'Beneficiary'}
+                  bankName='Bank Payout'
+                  accountNumber='••••••••'
+                  accountHolderName='Beneficiary'
                   ngnPerUsdt={trackerData.ngnPerUsdt}
                   initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
                   walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}
