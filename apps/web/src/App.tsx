@@ -881,7 +881,7 @@ export function App({
       </div>
 
       {/* ── Mobile Shell ── */}
-      <div className="flex flex-col md:hidden w-full min-h-screen bg-[#d4c5fb] pb-24 relative">
+      <div className="gc--mobile-shell md:!hidden w-full bg-[#d4c5fb] relative">
         {/* Debug Panel - Only visible in development */}
         {isDemoMode && (
           <div className="fixed top-2 right-2 z-[100] bg-black/80 text-white p-2 rounded-lg text-xs">
@@ -963,19 +963,19 @@ export function App({
         ) : (
           <>
             {/* Mobile Header */}
-            <div className="flex justify-between items-center px-4 pt-6 pb-4">
+            <div className="gc-top">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-[#111] text-xl">GoodCash</span>
+                <span className="gc-logo text-[#111]">GoodCash</span>
               </div>
               <div className="flex items-center gap-2">
-                <button className="border-2 border-[#111] bg-white rounded-full px-3 py-1 font-bold text-sm">
+                <button className="gc-chip text-[#111]">
                   {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
                 </button>
               </div>
             </div>
 
             {/* Mobile Content */}
-            <div className="flex flex-col gap-4 px-4">
+            <div className="gc-col">
               <ReadinessCard
                 balanceG={balanceG}
                 dailyClaimG={123.48}
@@ -987,14 +987,14 @@ export function App({
             </div>
 
             {/* Bottom Navigation */}
-            <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] bg-white border-2 border-[#111] rounded-full p-2 flex justify-between items-center shadow-[4px_4px_0px_#111] z-50 md:hidden">
+            <nav className="gc-nav fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] z-50 md:!hidden">
               <button
                 type="button"
                 onClick={() => setMobileView('home')}
                 className={
                   mobileView === 'home'
-                    ? 'bg-[#7b39fc] text-white rounded-full px-6 py-2 font-bold'
-                    : 'px-4 py-2 font-bold text-[#111]'
+                    ? 'gc-nav__item gc-nav__item--on'
+                    : 'gc-nav__item'
                 }
               >
                 Home
@@ -1002,14 +1002,14 @@ export function App({
               <button
                 type="button"
                 onClick={() => setMobileView('cashout')}
-                className="px-4 py-2 font-bold text-[#111]"
+                className="gc-nav__item"
               >
                 Cash out
               </button>
               <button
                 type="button"
                 onClick={() => setMobileView('history')}
-                className="px-4 py-2 font-bold text-[#111]"
+                className="gc-nav__item"
               >
                 History
               </button>

@@ -15,25 +15,25 @@ function formatDisplayDate(timestamp: number): string {
 
 function getStatus(item: SwapHistoryItem): { label: string; className: string } {
   if (item.steps?.paidInNaira === 'completed') {
-    return { label: 'Paid', className: 'bg-[#86EFAC]' };
+    return { label: 'Paid', className: 'gc-pill gc-pill--mint' };
   }
-  return { label: 'On its way', className: 'bg-[#ffd23f]' };
+  return { label: 'On its way', className: 'gc-pill gc-pill--yellow' };
 }
 
 export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, onClose }) => {
   return (
-    <div className="flex flex-col min-h-screen bg-[#D6C5F3] px-5 pt-8 pb-32 gap-6">
+    <div className="gc-col flex-1 bg-[#D6C5F3]">
       {/* Header */}
-      <header className="flex items-center justify-between w-full mb-4 relative">
+      <header className="gc-top relative">
         <button
           type="button"
           onClick={onClose}
           aria-label="Close history"
-          className="border-2 border-[#111] bg-white rounded-xl w-10 h-10 flex items-center justify-center shadow-[2px_2px_0px_#111] font-black text-lg z-10"
+          className="gc-back relative z-10"
         >
           ✕
         </button>
-        <span className="text-[32px] font-black text-black tracking-tight absolute left-1/2 -translate-x-1/2">
+        <span className="gc-title absolute left-1/2 -translate-x-1/2 text-black">
           History
         </span>
         <div className="w-10" />
@@ -41,21 +41,21 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
 
       {/* Transaction Cards or Empty State */}
       {history.length > 0 ? (
-        <div>
+        <div className="gc-col">
           {history.map((item) => {
             const status = getStatus(item);
             return (
               <div
                 key={item.id}
-                className="w-full bg-white border-[4px] border-black rounded-[32px] p-7 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col mb-4"
+                className="gc-card"
               >
                 {/* Top Row: Date & Status */}
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-[16px] font-bold text-gray-600 uppercase tracking-widest">
+                  <span className="gc-lab text-gray-600">
                     {formatDisplayDate(item.timestamp)}
                   </span>
                   <span
-                    className={`${status.className} border-[3px] border-black rounded-[12px] px-3 py-1 text-[14px] font-black text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]`}
+                    className={status.className}
                   >
                     {status.label}
                   </span>
@@ -63,22 +63,22 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
 
                 {/* Middle Row: Amount Details */}
                 <div className="flex flex-col gap-1 mb-4">
-                  <span className="text-[14px] font-bold text-black">Sent</span>
-                  <span className="text-[32px] font-black text-black leading-none">
+                  <span className="gc-lab">Sent</span>
+                  <span className="gc-big gc-big--history">
                     {item.amountInG.toLocaleString()} G$
                   </span>
-                  <span className="text-[18px] font-bold text-[#7C3AED]">
+                  <span className="gc-sm text-[#7C3AED]">
                     {item.nairaAmount != null ? `₦${item.nairaAmount.toLocaleString()}` : '—'}
                   </span>
                 </div>
 
                 {/* Bottom Row: Hash/Link */}
-                <div className="flex justify-between items-center pt-4 border-t-[3px] border-black">
+                <div className="flex justify-between items-center pt-4 border-t-[2.5px] border-black">
                   <a
                     href={`https://celo.blockscout.com/tx/${item.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[15px] font-bold text-black bg-gray-100 px-3 py-1 border-[2px] border-black rounded-lg"
+                    className="gc-pill gc-pill--white"
                   >
                     {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
                   </a>
@@ -89,10 +89,10 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
         </div>
       ) : (
         <div
-          className="w-full bg-white border-[4px] border-black rounded-[32px] p-10 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center text-center mt-10"
+          className="gc-card flex flex-col items-center justify-center text-center"
         >
-          <span className="text-[24px] font-black text-black mb-2">No cash outs yet</span>
-          <span className="text-[16px] font-bold text-gray-600">Your transaction history will appear here.</span>
+          <span className="gc-title mb-2">No cash outs yet</span>
+          <span className="gc-sm text-gray-600">Your transaction history will appear here.</span>
         </div>
       )}
     </div>

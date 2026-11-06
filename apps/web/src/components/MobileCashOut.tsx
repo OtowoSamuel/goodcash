@@ -53,74 +53,74 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
   const canReview = amountG > 0 && amountG <= maxG;
 
   return (
-    <div className="fixed inset-0 bg-[#d4c5fb] z-40 flex flex-col overflow-y-auto pt-6 px-4">
+    <div className="gc--mobile-shell fixed inset-0 bg-[#d4c5fb] z-40 overflow-y-auto">
       {/* Header */}
-      <header className="flex items-center justify-between mb-6 relative">
+      <header className="gc-top relative">
         <button
           type="button"
           onClick={onClose}
           aria-label="Close cash out"
-          className="border-2 border-[#111] bg-white rounded-xl w-10 h-10 flex items-center justify-center shadow-[2px_2px_0px_#111] font-black text-lg z-10"
+          className="gc-back relative z-10"
         >
           ✕
         </button>
-        <span className="text-2xl font-black absolute left-1/2 -translate-x-1/2 text-[#111]">
+        <span className="gc-title absolute left-1/2 -translate-x-1/2 text-[#111]">
           Cash out
         </span>
         <div className="w-10" />
       </header>
 
       {/* YOU GIVE card */}
-      <div className="bg-white border-2 border-[#111] rounded-2xl shadow-[4px_4px_0px_#111] p-4 mb-3">
-        <div className="flex justify-between items-center mb-2">
-          <span className="font-extrabold text-xs tracking-wide text-[#111]">
+      <div className="gc-card">
+        <div className="gc-row mb-2">
+          <span className="gc-lab">
             YOU GIVE
           </span>
           <button
             type="button"
             onClick={handleMax}
-            className="border-2 border-[#111] bg-[#eae2ff] rounded-full px-3 py-1 font-extrabold text-sm text-[#111]"
+            className="gc-pill gc-hit"
           >
             MAX {maxG.toLocaleString('en-US', { maximumFractionDigits: 1 })}
           </button>
         </div>
-        <div className="flex justify-between items-center">
-          <span className="text-5xl font-black text-[#111] tabular-nums">
+        <div className="gc-row">
+          <span className="gc-big tabular-nums">
             {amountG.toLocaleString('en-US', { maximumFractionDigits: 4 })}
           </span>
-          <span className="border-2 border-[#111] bg-[#ffd23f] rounded-full px-4 py-1.5 font-extrabold text-base text-[#111]">
+          <span className="gc-pill gc-pill--yellow">
             G$
           </span>
         </div>
       </div>
 
       {/* YOU RECEIVE ABOUT card */}
-      <div className="bg-[#63f2b4] border-2 border-[#111] rounded-2xl shadow-[4px_4px_0px_#111] p-4 mb-3">
-        <div className="font-extrabold text-xs tracking-wide text-[#111] mb-1">
+      <div className="gc-card gc-card--mint">
+        <div className="gc-lab mb-1">
           YOU RECEIVE ABOUT
         </div>
-        <div className="flex justify-between items-center">
-          <span className="text-5xl font-black text-[#111]">
+        <div className="gc-row">
+          <span className="gc-big">
             {nairaEstimate !== null ? `₦${nairaEstimate.toLocaleString()}` : '₦—'}
           </span>
-          <span className="border-2 border-[#111] bg-white rounded-full px-4 py-1.5 font-extrabold text-base text-[#111]">
+          <span className="gc-pill gc-pill--white">
             NGN
           </span>
         </div>
-        <div className="font-bold text-sm text-[#111] mt-1">
+        <div className="gc-sm mt-1">
           at least {usdtEstimate > 0 ? usdtEstimate.toFixed(4) : '0.0000'} USDT
         </div>
       </div>
 
       {/* Number pad */}
-      <div className="grid grid-cols-3 gap-y-6 text-2xl font-black text-center mt-auto mb-24 text-[#111]">
+      <div className="gc-keys mt-auto">
         {KEYS.map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => handleKey(k)}
             aria-label={k === '⌫' ? 'Backspace' : k}
-            className="py-2"
+            className="gc-keys__key"
           >
             {k}
           </button>
@@ -133,7 +133,7 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
           type="button"
           disabled={!canReview}
           onClick={() => onReview(amountG, nairaEstimate, usdtEstimate)}
-          className="w-full py-4 text-xl font-black rounded-2xl border-2 border-[#111] shadow-[4px_4px_0px_#111] text-white disabled:opacity-50"
+          className="gc-btn"
           style={{ background: canReview ? '#7b39fc' : '#b9a6e6' }}
         >
           Review

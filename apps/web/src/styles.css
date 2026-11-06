@@ -758,3 +758,39 @@ button {
     background: #fff;
   }
 }
+
+/* ── Real-phone scale-up ─────────────────────────────────────────
+   The sticker-pop frame was drawn at 272px; phones are ~390px.
+   These overrides only apply below 900px so the desktop layout
+   (min-width: 900px) is untouched. Borders stay 2.5px and
+   shadows stay 5px / 3px / 2px. */
+@media (max-width: 899px) {
+  .gc .gc-card { padding: 16px 18px; }
+  .gc .gc-lab { font-size: 12.5px; }
+  .gc .gc-sm { font-size: 15px; }
+  .gc .gc-big { font-size: 52px; }
+  .gc .gc-big--success { font-size: 46px; }
+  .gc .gc-big--history { font-size: 30px; }
+  .gc .gc-title { font-size: 24px; }
+  .gc .gc-title--status { font-size: 30px; }
+  .gc .gc-logo { font-size: 24px; }
+  .gc .gc-chip { font-size: 13px; padding: 5px 12px; }
+  .gc .gc-pill { font-size: 14px; padding: 4px 11px; }
+  .gc .gc-btn { height: 58px; font-size: 17px; }
+  .gc .gc-note { font-size: 14px; }
+  .gc .gc-cost .gc-row { font-size: 15px; padding: 8px 0; }
+  .gc .gc-tl__step b { font-size: 15px; }
+  .gc .gc-tl__step p { font-size: 13.5px; }
+  .gc .gc-nav__item { font-size: 13px; padding: 9px 0; }
+  .gc .gc-coin { width: 50px; height: 50px; }
+  .gc .gc-sticker { font-size: 14px; }
+  .gc .gc-bar { height: 22px; }
+  .gc .gc-keys { font-size: 22px; }
+  .gc .gc-keys__key { min-height: 52px; }
+  .gc .gc-main { gap: 14px; padding: 16px; }
+  .gc .gc-col { gap: 14px; }
+  .gc .gc--mobile-shell {
+    gap: 14px;
+    padding: 16px 16px 96px;
+  }
+}
