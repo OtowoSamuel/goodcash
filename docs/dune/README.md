@@ -15,6 +15,10 @@ The numbers come from the **G$ sent into the two GoodCash router contracts**. Ad
 
 Notes on the queries: they use Dune's raw Celo tables (`celo.logs`). Dune does not offer the ready-made `tokens.transfers` table for Celo, so the queries read the token's `Transfer` events directly. Column names follow Dune's standard log table (`contract_address`, `topic0`..`topic3`, `data`, `tx_hash`, `block_time`); if Dune reports an unknown column, open the table in Dune's data explorer and adjust the name.
 
+## Fee revenue (04_fee_revenue.sql)
+
+Counts the USDT that reaches the GoodCash Safe, which is where the 1% fee is paid. Use its total for form field 2.7 (revenue). It starts at 0 and only grows once a fee has been collected, so check your Safe too.
+
 ## Expected values on 8 Nov 2026 (checked on Blockscout)
 
 | Check | Value |
