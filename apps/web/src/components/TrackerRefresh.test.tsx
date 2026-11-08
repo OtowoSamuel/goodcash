@@ -49,8 +49,9 @@ describe('Tracker for an order it did not create itself', () => {
     render(<CashOutTracker {...base} />);
     await waitFor(() => expect(calls.length).toBeGreaterThan(0));
     const before = calls.length;
+    // the button is briefly disabled while a check is already running, so wait until it is free
     const btn = await screen.findByRole('button', { name: /refresh status/i });
-    expect(btn).toBeEnabled();
+    await waitFor(() => expect(btn).toBeEnabled());
     fireEvent.click(btn);
     await waitFor(() => expect(calls.length).toBeGreaterThan(before));
     expect(await screen.findByText(/Checked just now/)).toBeInTheDocument();

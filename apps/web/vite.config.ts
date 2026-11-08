@@ -85,5 +85,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: 'jsdom',
     globals: true,
+    // The full suite is heavy; a busy machine made a different test time out at 5 s on each run (they pass alone).
+    testTimeout: 20000,
   },
 }));
