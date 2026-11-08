@@ -20,6 +20,7 @@ import {
 } from '../lib/addGs';
 import { reportIssue } from '../lib/diag';
 import { BankPicker } from './BankPicker';
+import { StepBar } from './StepBar';
 import { loadSavedAddGs, saveAddGs, type SavedAddGs } from '../lib/addGsSaved';
 
 /**
@@ -61,19 +62,7 @@ function stepIndex(step: Step): number {
   if (step === 'pay' || step === 'waiting') return 2;
   return 3;
 }
-const Progress: React.FC<{ step: Step }> = ({ step }) => {
-  const at = stepIndex(step);
-  return (
-    <div style={{ display: 'flex', gap: 6 }} aria-label={`Step ${at + 1} of ${STEPS.length}: ${STEPS[at]}`}>
-      {STEPS.map((label, i) => (
-        <div key={label} style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ height: 8, borderRadius: 99, border: '2px solid #111', background: i < at ? '#8cf0c0' : i === at ? '#7b39fc' : '#fff' }} />
-          <div className="gc-sm" style={{ marginTop: 3, fontSize: 11, fontWeight: i === at ? 800 : 600 }}>{label}</div>
-        </div>
-      ))}
-    </div>
-  );
-};
+const Progress: React.FC<{ step: Step }> = ({ step }) => <StepBar steps={STEPS} at={stepIndex(step)} />;
 
 function timeLeft(validUntil: string, now: number): string | null {
   const ms = new Date(validUntil).getTime() - now;

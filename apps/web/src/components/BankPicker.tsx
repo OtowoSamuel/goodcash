@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal } from './Modal';
 import type { BankInstitution } from '../lib/useOffRamp';
 
 /**
- * Our own bank chooser (instead of the phone's built-in dropdown): a button that opens a searchable list,
- * with the banks most people use pinned at the top.
+ * Our own bank chooser (instead of the phone's built-in dropdown): a button that opens a searchable list right
+ * underneath it (never a second pop-up on top of the current one), with the banks most people use pinned at the top.
  */
 
 /** Names as the partner's list spells them. Matched case-insensitively; missing ones are simply skipped. */
@@ -112,7 +111,7 @@ export const BankPicker: React.FC<Props> = ({ banks, loading = false, value, onC
       <button
         type="button"
         aria-label={label}
-        aria-haspopup="dialog"
+        aria-haspopup="listbox" aria-expanded={open}
         disabled={loading}
         onClick={() => setOpen(true)}
         className="w-full rounded-xl border-[2.5px] border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] outline-none gc-hit"
@@ -125,7 +124,11 @@ export const BankPicker: React.FC<Props> = ({ banks, loading = false, value, onC
       </button>
 
       {open && (
-        <Modal label="Choose your bank" title="Choose your bank" onClose={() => setOpen(false)} z={z} tone="white">
+        <div
+          role="listbox"
+          aria-label="Banks"
+          style={{ marginTop: 8, border: '2.5px solid #111', borderRadius: 16, background: '#fff', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
           <input
             ref={searchRef}
             type="search"
@@ -135,24 +138,26 @@ export const BankPicker: React.FC<Props> = ({ banks, loading = false, value, onC
             aria-label="Search banks"
             className="w-full rounded-xl border-[2.5px] border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] outline-none"
           />
-          {popular.length > 0 && (
-            <>
-              <div className="gc-lab" style={{ marginTop: 4 }}>{query ? 'Popular matches' : 'Popular'}</div>
-              {popular.map((b) => (
-                <Row key={b.code} bank={b} selected={b.code === value} onPick={() => pick(b.code)} />
-              ))}
-            </>
-          )}
-          {rest.length > 0 && (
-            <>
-              <div className="gc-lab" style={{ marginTop: 4 }}>{query ? 'Other matches' : 'All banks'}</div>
-              {rest.map((b) => (
-                <Row key={b.code} bank={b} selected={b.code === value} onPick={() => pick(b.code)} />
-              ))}
-            </>
-          )}
-          {popular.length + rest.length === 0 && <div className="gc-note">No bank matches “{query}”. Check the spelling.</div>}
-        </Modal>
+          <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingRight: 2 }}>
+            {popular.length > 0 && (
+              <>
+                <div className="gc-lab">{query ? 'Popular matches' : 'Popular'}</div>
+                {popular.map((b) => (
+                  <Row key={b.code} bank={b} selected={b.code === value} onPick={() => pick(b.code)} />
+                ))}
+              </>
+            )}
+            {rest.length > 0 && (
+              <>
+                <div className="gc-lab">{query ? 'Other matches' : 'All banks'}</div>
+                {rest.map((b) => (
+                  <Row key={b.code} bank={b} selected={b.code === value} onPick={() => pick(b.code)} />
+                ))}
+              </>
+            )}
+            {popular.length + rest.length === 0 && <div className="gc-note">No bank matches “{query}”. Check the spelling.</div>}
+          </div>
+        </div>
       )}
     </>
   );

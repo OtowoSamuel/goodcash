@@ -795,6 +795,12 @@ button {
   }
 }
 
+/* Short phones (about 740px tall or less): keep the keypad and the Review button apart, keys stay 44px or more */
+@media (max-height: 780px) {
+  .gc .gc-keys__key { min-height: 44px; }
+  .gc .gc--mobile-shell { gap: 10px; }
+}
+
 /* ── Checkbox (sticker style) ───────────────────────────────── */
 .gc input[type='checkbox'] {
   appearance: none;

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import type { BankDetailsState } from '../lib/useBankDetails';
 import { BankDetailsModal, type SavedBank } from '../components/BankDetailsModal';
 import { formatNaira, getCashoutRate } from '../lib/rate';
+import { StepBar, CASH_OUT_STEPS } from './StepBar';
 
 export interface MobileReviewViewProps {
   amountG: number | null;
@@ -79,6 +80,8 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           <div style={{ width: '34px' }} />
         </header>
 
+        <StepBar steps={CASH_OUT_STEPS} at={1} />
+
         {/* Top Card: YOU GET ABOUT */}
         <div className="gc-card">
           <div className="gc-lab">You get about</div>
@@ -130,11 +133,6 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           </div>
         </div>
 
-        {/* Fourth Card: Notice Box */}
-        <div className="gc-note">
-          Quote refreshes while you review. Arrival time depends on the payout partner.
-        </div>
-
         {errorMessage && (
           <div className="gc-note" role="alert" style={{ background: '#ff9b9b', overflowWrap: 'anywhere' }}>
             {errorMessage}
@@ -154,10 +152,11 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         )}
         <div className="gc-note" style={{ marginBottom: 10 }}>
           {(oneTap ?? ONE_TAP_ENABLED) ? (
-            <><b>You'll confirm once in your wallet app.</b> Open MetaMask, tap Confirm, then come back here.</>
+            <><b>You'll confirm once in your wallet.</b> Open your wallet app, tap Confirm, then come back here.</>
           ) : (
-            <><b>You'll confirm in your wallet app up to 3 times.</b> Each time, open MetaMask, tap Confirm, then come back here.</>
-          )}
+            <><b>You'll confirm in your wallet up to 3 times.</b> Each time, open your wallet app, tap Confirm, then come back here.</>
+          )}{' '}
+          The price refreshes while you review. Arrival time depends on the payout partner.
         </div>
         <button
           type="button"

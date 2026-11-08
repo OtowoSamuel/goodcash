@@ -2,6 +2,7 @@ import { nairaFromUsdt } from '../lib/units';
 import { getNetQuote } from '../lib/quote';
 import { getMinimumCashOutG } from '../lib/rate';
 import { IS_DEMO_MODE } from '../lib/router';
+import { StepBar, CASH_OUT_STEPS } from './StepBar';
 import React, { useState } from 'react';
 
 export interface MobileCashOutProps {
@@ -82,6 +83,8 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
         </span>
         <div className="w-10" />
       </header>
+
+      <StepBar steps={CASH_OUT_STEPS} at={0} />
 
       {/* YOU GIVE card */}
       <div className="gc-card">
