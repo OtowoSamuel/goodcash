@@ -1,0 +1,824 @@
+/* ─── Legacy font imports (kept for existing components) ─── */
+
+
+/* ─── Legacy design tokens (kept for existing components) ─── */
+:root {
+  font-family: 'Inter', sans-serif;
+  color-scheme: dark;
+  background: #0F0A1C;
+  color: #ffffff;
+  --canvas: #0F0A1C;
+  --surface: #1B122E;
+  --surface-strong: #120D1D;
+  --border: #2D204A;
+  --primary: #7C3AED;
+  --primary-strong: #8B5CF6;
+  --success: #10B981;
+  --muted: #A39BBE;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  width: 100%;
+  background: var(--canvas);
+}
+
+body {
+  min-height: 100vh;
+  background: var(--canvas);
+  color: #fff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  background: var(--canvas);
+}
+
+.app-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.18), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.12), transparent 22%),
+    linear-gradient(180deg, rgba(15, 10, 28, 0.96) 0%, rgba(18, 13, 29, 0.94) 100%);
+}
+
+.panel-card {
+  background: rgba(27, 18, 46, 0.9);
+  border: 1px solid rgba(45, 32, 74, 0.9);
+  box-shadow: 0 24px 52px rgba(9, 7, 18, 0.5);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 10, 28, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.55);
+  border-radius: 999px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STICKER POP DESIGN SYSTEM — scoped under .gc
+   All values are verbatim from the design HTML files.
+   ═══════════════════════════════════════════════════════════════ */
+
+.gc {
+  /* Colour tokens */
+  --gc-bg:   #cdb8ff;
+  --gc-card: #fff;
+  --gc-ink:  #111;
+  --gc-pu:   #7b39fc;
+  --gc-ye:   #ffd23f;
+  --gc-mi:   #8cf0c0;
+  --gc-pill-default: #ede6ff;
+  --gc-dis-bg:   #e9e3f7;
+  --gc-dis-txt:  #6b5f8a;
+  --gc-dash-div: #cfc3ee;
+
+  /* Layout & typography verbatim from design */
+  background: var(--gc-bg);
+  color: #111;
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100dvh;
+  /* Respect safe-area insets */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Inter font helper for receipts and address text per design */
+.gc-inter {
+  font-family: Inter, system-ui, sans-serif;
+}
+
+/* Focus ring — outline only, no border-radius modification */
+.gc *:focus-visible {
+  outline: 3px solid #111;
+  outline-offset: 2px;
+}
+
+/* Tappable hit area helper for small controls: drawn size remains designed, tappable area ≥ 44×44 */
+.gc-hit {
+  position: relative;
+}
+.gc-hit::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
+
+/* ── Top row ─────────────────────────────────────────────────── */
+.gc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ── Logo ────────────────────────────────────────────────────── */
+.gc-logo {
+  font: 800 20px 'Bricolage Grotesque';
+}
+
+@media (min-width: 900px) {
+  .gc-logo { font: 800 22px 'Bricolage Grotesque'; }
+}
+
+/* ── Wallet chip ─────────────────────────────────────────────── */
+.gc-chip {
+  font: 600 11px Inter;
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 99px;
+  padding: 4px 10px;
+  box-shadow: 3px 3px 0 #111;
+}
+
+@media (min-width: 900px) {
+  .gc-chip {
+    font: 600 12px Inter;
+    padding: 5px 12px;
+  }
+}
+
+/* ── Back / close button ─────────────────────────────────────── */
+.gc-back {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: #fff;
+  border: 2.5px solid #111;
+  box-shadow: 3px 3px 0 #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 16px Inter;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ── Screen title ────────────────────────────────────────────── */
+.gc-title {
+  font: 800 20px 'Bricolage Grotesque';
+}
+
+/* Status headline */
+.gc-title--status {
+  font: 800 26px 'Bricolage Grotesque';
+}
+
+/* ── Card ────────────────────────────────────────────────────── */
+.gc-card {
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 18px;
+  box-shadow: 5px 5px 0 #111;
+  padding: 12px 14px;
+  position: relative;
+}
+
+@media (min-width: 900px) {
+  .gc-card { padding: 14px 18px; }
+}
+
+/* Mint card */
+.gc-card--mint {
+  background: var(--gc-mi);
+}
+
+/* Yellow card */
+.gc-card--yellow {
+  background: var(--gc-ye);
+}
+
+.gc-card--ye {
+  background: var(--gc-ye);
+}
+
+/* Dashed / empty-state card */
+.gc-card--dashed {
+  border-style: dashed;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* ── Label ───────────────────────────────────────────────────── */
+.gc-lab {
+  font: 700 10.5px 'Bricolage Grotesque';
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+@media (min-width: 900px) {
+  .gc-lab { font: 700 11px 'Bricolage Grotesque'; }
+}
+
+/* ── Big number ──────────────────────────────────────────────── */
+.gc-big {
+  font: 800 42px/1 'Bricolage Grotesque';
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+@media (min-width: 900px) {
+  .gc-big { font: 800 44px/1 'Bricolage Grotesque'; }
+}
+
+/* Home balance on desktop: 52px (no mobile override) */
+@media (min-width: 900px) {
+  .gc-big--home-desktop { font-size: 52px; }
+}
+
+/* Success / completed: 38px */
+.gc-big--success {
+  font-size: 38px;
+}
+
+/* History order card: 26px */
+.gc-big--history {
+  font-size: 26px;
+}
+
+/* ── Small text ──────────────────────────────────────────────── */
+.gc-sm {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+@media (min-width: 900px) {
+  .gc-sm { font-size: 13px; }
+}
+
+/* ── Row (flex space-between) ────────────────────────────────── */
+.gc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Pill ────────────────────────────────────────────────────── */
+.gc-pill {
+  font: 800 12px 'Bricolage Grotesque';
+  background: var(--gc-pill-default);
+  border: 2px solid #111;
+  border-radius: 99px;
+  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 900px) {
+  .gc-pill { padding: 3px 10px; }
+}
+
+/* Pill variants */
+.gc-pill--yellow { background: var(--gc-ye); }
+.gc-pill--white  { background: #fff; }
+.gc-pill--mint   { background: var(--gc-mi); }
+.gc-pill--on     { background: var(--gc-pu); color: #fff; }
+
+/* ── Chips row ───────────────────────────────────────────────── */
+.gc-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ── Button ──────────────────────────────────────────────────── */
+.gc-btn {
+  height: 52px;
+  flex: none;
+  border-radius: 16px;
+  background: var(--gc-pu);
+  color: #fff;
+  border: 2.5px solid #111;
+  box-shadow: 5px 5px 0 #111;
+  font: 800 15px 'Bricolage Grotesque';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  cursor: pointer;
+}
+
+@media (min-width: 900px) {
+  .gc-btn {
+    height: 54px;
+    font: 800 16px 'Bricolage Grotesque';
+  }
+}
+
+/* Disabled / "opens at" state */
+.gc-btn--dis {
+  background: var(--gc-dis-bg);
+  color: var(--gc-dis-txt);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* White button */
+.gc-btn--white {
+  background: #fff;
+  color: #111;
+}
+
+/* ── Cost rows ───────────────────────────────────────────────── */
+.gc-cost .gc-row {
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 2px dashed #cfc3ee;
+}
+
+@media (min-width: 900px) {
+  .gc-cost .gc-row {
+    padding: 7px 0;
+    font-size: 13px;
+  }
+}
+
+.gc-cost .gc-row:last-child {
+  border-bottom: 0;
+}
+
+/* Yellow mark (cost highlight) */
+.gc-mark {
+  background: var(--gc-ye);
+  padding: 0 4px;
+  border-radius: 5px;
+}
+
+/* ── Progress bar ────────────────────────────────────────────── */
+.gc-bar {
+  height: 18px;
+  border: 2.5px solid #111;
+  border-radius: 99px;
+  background: #fff;
+  overflow: hidden;
+  margin: 9px 0 5px;
+}
+
+@media (min-width: 900px) {
+  .gc-bar {
+    height: 20px;
+    margin: 10px 0 6px;
+  }
+}
+
+.gc-bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--gc-pu);
+  transition: width 0.3s ease;
+}
+
+/* ── Coin (G$ badge) ─────────────────────────────────────────── */
+.gc-coin {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 13px 'Bricolage Grotesque';
+  transform: rotate(12deg);
+  box-shadow: 2px 2px 0 #111;
+  pointer-events: none;
+}
+
+@media (min-width: 900px) {
+  .gc-coin {
+    right: 16px;
+    top: 14px;
+    width: 46px;
+    height: 46px;
+    font: 800 14px 'Bricolage Grotesque';
+  }
+}
+
+/* ── Sticker (percent badge) ─────────────────────────────────── */
+.gc-sticker {
+  position: absolute;
+  right: -5px;
+  bottom: -11px;
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font: 800 12px 'Bricolage Grotesque';
+  transform: rotate(-5deg);
+  pointer-events: none;
+}
+
+@media (min-width: 900px) {
+  .gc-sticker {
+    right: -6px;
+    bottom: -12px;
+    padding: 1px 9px;
+    font: 800 13px 'Bricolage Grotesque';
+  }
+}
+
+/* ── Spacer ──────────────────────────────────────────────────── */
+.gc-sp {
+  flex: 1;
+}
+
+/* ── Bottom pill nav (mobile only) ──────────────────────────── */
+.gc-nav {
+  display: flex;
+  gap: 6px;
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 16px;
+  padding: 4px;
+  flex: none;
+}
+
+.gc-nav__item {
+  flex: 1;
+  text-align: center;
+  font: 800 11px 'Bricolage Grotesque';
+  padding: 6px 0;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: #111;
+}
+
+.gc-nav__item--on {
+  background: var(--gc-pu);
+  color: #fff;
+}
+
+/* ── Desktop top bar ─────────────────────────────────────────── */
+.gc-bar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 2.5px solid #111;
+  background: #fff;
+}
+
+/* Desktop centre nav */
+.gc-nav-desktop {
+  display: flex;
+  gap: 6px;
+}
+
+.gc-nav-desktop__item {
+  font: 800 13px 'Bricolage Grotesque';
+  padding: 7px 16px;
+  border-radius: 99px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  color: #111;
+}
+
+.gc-nav-desktop__item--on {
+  background: var(--gc-pu);
+  color: #fff;
+  border-color: #111;
+}
+
+/* ── Responsive layout ───────────────────────────────────────── */
+.gc-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+}
+
+.gc-col {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .gc-main {
+    flex-direction: row;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px 28px 0;
+  }
+  .gc-col {
+    width: 420px;
+    margin: 0;
+    gap: 12px;
+  }
+}
+
+.gc-side {
+  display: none;
+  width: 340px;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .gc-side {
+    display: flex;
+  }
+}
+
+/* ── Desktop footer ──────────────────────────────────────────── */
+.gc-foot {
+  padding: 12px 28px;
+  font: 600 12px Inter;
+  display: flex;
+  justify-content: space-between;
+  border-top: 2.5px solid #111;
+  background: #fff;
+}
+
+/* ── Note card ───────────────────────────────────────────────── */
+.gc-note {
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 14px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #111;
+}
+
+/* ── Timeline ────────────────────────────────────────────────── */
+.gc-tl {
+  display: flex;
+  gap: 10px;
+}
+
+.gc-tl__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Timeline dot */
+.gc-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2.5px solid #111;
+  background: #fff;
+  flex: none;
+}
+
+.gc-dot--done     { background: var(--gc-pu); }
+.gc-dot--current  { background: var(--gc-ye); }
+
+/* Timeline line */
+.gc-ln {
+  width: 3px;
+  flex: 1;
+  background: #111;
+  margin: 2px 0;
+}
+
+.gc-ln--wait { background: #cfc3ee; }
+
+/* Timeline step */
+.gc-tl__step b {
+  font: 800 13px 'Bricolage Grotesque';
+  display: block;
+}
+
+.gc-tl__step p {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: #333;
+  font-weight: 600;
+}
+
+/* ── Success hero ────────────────────────────────────────────── */
+.gc-hero {
+  height: 200px;
+  margin: -14px -14px 0;
+  background: var(--gc-pu);
+  border-bottom: 2.5px solid #111;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Yellow circle decoration */
+.gc-c1 {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
+  box-shadow: 3px 3px 0 #111;
+}
+
+/* Success check circle */
+.gc-ok {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--gc-mi);
+  border: 2.5px solid #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 24px Inter;
+  margin: -38px auto 8px;
+  box-shadow: 3px 3px 0 #111;
+}
+
+/* ── HOW IT WORKS numbered step ──────────────────────────────── */
+.gc-st {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  align-items: flex-start;
+}
+
+.gc-st__num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 12px Inter;
+  flex: none;
+}
+
+/* ── Keypad ──────────────────────────────────────────────────── */
+.gc-keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  text-align: center;
+  font: 800 18px 'Bricolage Grotesque';
+  row-gap: 6px;
+  flex: none;
+}
+
+.gc-keys__key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  border-radius: 8px;
+}
+
+/* ── Mobile shell ────────────────────────────────────────────── */
+.gc--mobile-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  min-height: 100dvh;
+}
+
+/* ── Responsive: show/hide ───────────────────────────────────── */
+.gc-desktop-only { display: none; }
+
+@media (min-width: 900px) {
+  .gc-mobile-only  { display: none; }
+  .gc-desktop-only { display: flex; }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .gc * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Desktop layout flow ─────────────────────────────────────── */
+@media (min-width: 900px) {
+  .gc {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .gc-foot {
+    margin-top: auto;
+    border-top: 2.5px solid #111;
+    background: #fff;
+  }
+}
+
+/* ── Real-phone scale-up ─────────────────────────────────────────
+   The sticker-pop frame was drawn at 272px; phones are ~390px.
+   These overrides only apply below 900px so the desktop layout
+   (min-width: 900px) is untouched. Borders stay 2.5px and
+   shadows stay 5px / 3px / 2px. */
+@media (max-width: 899px) {
+  .gc .gc-card { padding: 16px 18px; }
+  .gc .gc-lab { font-size: 12.5px; }
+  .gc .gc-sm { font-size: 15px; }
+  .gc .gc-big { font-size: 52px; }
+  .gc .gc-big--success { font-size: 46px; }
+  .gc .gc-big--history { font-size: 30px; }
+  .gc .gc-title { font-size: 24px; }
+  .gc .gc-title--status { font-size: 30px; }
+  .gc .gc-logo { font-size: 24px; }
+  .gc .gc-chip { font-size: 13px; padding: 5px 12px; }
+  .gc .gc-pill { font-size: 14px; padding: 4px 11px; }
+  .gc .gc-btn { height: 58px; font-size: 17px; }
+  .gc .gc-note { font-size: 14px; }
+  .gc .gc-cost .gc-row { font-size: 15px; padding: 8px 0; }
+  .gc .gc-tl__step b { font-size: 15px; }
+  .gc .gc-tl__step p { font-size: 13.5px; }
+  .gc .gc-nav__item { font-size: 13px; padding: 9px 0; }
+  .gc .gc-coin { width: 50px; height: 50px; }
+  .gc .gc-sticker { font-size: 14px; }
+  .gc .gc-bar { height: 22px; }
+  .gc .gc-keys { font-size: 22px; }
+  .gc .gc-keys__key { min-height: 52px; }
+  .gc .gc-main { gap: 14px; padding: 16px; }
+  .gc .gc-col { gap: 14px; }
+  .gc .gc--mobile-shell {
+    gap: 14px;
+    padding: 16px 16px 96px;
+  }
+}
+
+/* Short phones (about 740px tall or less): keep the keypad and the Review button apart, keys stay 44px or more */
+@media (max-height: 780px) {
+  .gc .gc-keys__key { min-height: 44px; }
+  .gc .gc--mobile-shell { gap: 10px; }
+}
+
+/* ── Checkbox (sticker style) ───────────────────────────────── */
+.gc input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  border: 2.5px solid #111;
+  border-radius: 6px;
+  background: #fff;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+.gc input[type='checkbox']:checked {
+  background: var(--gc-pu);
+}
+.gc input[type='checkbox']:checked::after {
+  content: '✓';
+  color: #fff;
+  font: 800 13px Inter, sans-serif;
+  line-height: 1;
+}
+
+/* The "unfinished cash out" banner must never sit on top of an open pop-up */
+body:has([role="dialog"]) .gc-banner { display: none; }
