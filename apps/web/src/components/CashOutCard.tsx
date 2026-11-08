@@ -1,3 +1,4 @@
+import { BankPicker } from './BankPicker';
 import React, { useState, useEffect } from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
@@ -284,22 +285,9 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       <div className={`gc-card ${showBankDetails ? '' : 'hidden'}`}>
         <div className="gc-row" style={{ marginBottom: '8px', gap: '12px' }}>
           <span className="gc-lab" style={{ whiteSpace: 'nowrap', flex: 'none' }}>Bank details</span>
-          <label className="sr-only" htmlFor="bank-select">
-            Bank
-          </label>
-          <select
-            id="bank-select"
-            aria-label="Bank name"
-            value={institutionCode}
-            onChange={(e) => setInstitutionCode(e.target.value)}
-            disabled={institutionsLoading}
-            className="min-w-0 flex-1 max-w-full rounded-xl border-2 border-[#111] bg-white pl-3 pr-12 py-2 text-sm text-[#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
-          >
-            <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
-            {institutions.map((bank) => (
-              <option key={bank.code} value={bank.code}>{bank.name}</option>
-            ))}
-          </select>
+          <div style={{ flex: '1 1 0', minWidth: 0 }}>
+            <BankPicker banks={institutions} loading={institutionsLoading} value={institutionCode} onChange={setInstitutionCode} label="Bank" z={95} />
+          </div>
         </div>
         <div style={{ marginTop: '12px' }}>
           <label className="gc-lab" htmlFor="account-number">Account number</label>

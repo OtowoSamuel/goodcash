@@ -26,8 +26,8 @@ describe('Bank Details - Part 8 compliance', () => {
     );
 
     // Bank select should be empty/default
-    const bankSelect = screen.getByLabelText(/Bank/i);
-    expect(bankSelect).toHaveValue('');
+    const bankPicker = screen.getByLabelText(/Bank/i);
+    expect(bankPicker.textContent).toMatch(/Choose your bank|Loading banks/);
 
     // Account number should be empty
     const accountInput = screen.getByPlaceholderText(/10-digit account number/i);

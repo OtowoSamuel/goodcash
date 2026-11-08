@@ -1,3 +1,4 @@
+import { BankPicker } from './BankPicker';
 import React from 'react';
 import { useBankAccountVerification } from '../lib/useOffRamp';
 import { Modal } from './Modal';
@@ -85,19 +86,10 @@ export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({ isOpen, onCl
       }
     >
       <div>
-      <label className="gc-lab block mb-1.5" htmlFor="sheet-bank">Bank</label>
-      <select
-        id="sheet-bank"
-        value={institutionCode}
-        onChange={(e) => setInstitutionCode(e.target.value)}
-        disabled={institutionsLoading}
-        className={`w-full rounded-xl border-[2.5px] border-[#111] bg-white pl-4 pr-12 py-3 text-base font-bold text-[#111] outline-none appearance-none ${SELECT_BG}`}
-      >
-        <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
-        {institutions.map((bank) => (
-          <option key={bank.code} value={bank.code}>{bank.name}</option>
-        ))}
-      </select>
+      <div className="gc-lab block mb-1.5">Bank</div>
+      <div style={{ flex: '1 1 0', minWidth: 0 }}>
+        <BankPicker banks={institutions} loading={institutionsLoading} value={institutionCode} onChange={setInstitutionCode} label="Bank" z={95} />
+      </div>
       {institutionsError && <p className="gc-sm mt-1" style={{ color: '#b00020' }}>{institutionsError}</p>}
 
       <label className="gc-lab block mt-4 mb-1.5" htmlFor="sheet-account">Account number</label>

@@ -52,3 +52,16 @@ describe('friendlyAddError', () => {
     expect(friendlyAddError(new Error('RPC 0xdeadbeef execution reverted: Error(swap)'))).toBe('Something went wrong. Nothing was taken and your money is safe. Please try again.');
   });
 });
+
+describe('Add G$ network errors', () => {
+  it('never shows the browser\'s "Failed to fetch" to a customer', async () => {
+    const { fetchOnrampQuote } = await import('./addGs');
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => { throw new TypeError('Failed to fetch'); }) as typeof fetch;
+    try {
+      await expect(fetchOnrampQuote(5000)).rejects.toThrow(/couldn't reach GoodCash/);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+});

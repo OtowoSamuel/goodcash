@@ -42,10 +42,16 @@ export interface OnrampInput {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${ORDERS_API_BASE}${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${ORDERS_API_BASE}${path}`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch {
+    // The browser's own text here ("Failed to fetch", "Load failed") means nothing to a customer
+    throw new Error("We couldn't reach GoodCash. Check your internet connection and try again.");
+  }
   const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
   return data as T;

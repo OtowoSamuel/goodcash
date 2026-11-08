@@ -43,9 +43,21 @@ const BANK_NAME = 'Zenith Bank';
 const BANK_CODE = 'ZENITHB0001';
 
 async function selectBank() {
-  await screen.findByRole('option', { name: BANK_NAME });
-  fireEvent.change(screen.getByLabelText('Bank'), { target: { value: BANK_CODE } });
+  await pickBank('Bank', BANK_NAME);
 }
+
+/** Choose a bank in our own bank picker (it replaced the phone's dropdown). */
+async function pickBank(label: string | RegExp, bankName: string) {
+  const btn = await waitFor(() => {
+    const b = screen.getByLabelText(label);
+    expect(b).not.toBeDisabled();
+    expect(b.textContent).not.toMatch(/Loading banks/);
+    return b;
+  });
+  fireEvent.click(btn);
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp(bankName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }));
+}
+
 
 function mockPaycrestBanking(accountName: string | Promise<string>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

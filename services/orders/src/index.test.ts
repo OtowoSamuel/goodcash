@@ -1477,6 +1477,16 @@ describe('Add G$ orders', () => {
     expect(((await res.json()) as { stage: string }).stage).toBe('done');
   });
 
+  it('A5. "pending" means still waiting for the bank transfer; only "fulfilling" means the naira arrived', async () => {
+    const { onrampStage } = await import('./index.js');
+    expect(onrampStage('initiated')).toBe('waiting');
+    expect(onrampStage('pending')).toBe('waiting');
+    expect(onrampStage('pending', true)).toBe('review');
+    expect(onrampStage('fulfilling')).toBe('received');
+    expect(onrampStage('settled')).toBe('done');
+    expect(onrampStage('refunded')).toBe('refund');
+  });
+
   it('A4. Never prints the customer details when the partner refuses', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"message":"bad BVN 22212345678","field":"Source"}', { status: 400 })));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});

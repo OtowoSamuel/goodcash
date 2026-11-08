@@ -1339,6 +1339,12 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const { id, status, paymentReference } = event.data ?? {};
   if (!id) return new Response('OK', { status: 200 }); // ignore malformed
 
+  // Naira-in order held for a compliance review: the status stays "pending", so remember it separately
+  if (event.event === 'payment_order.compliance_hold' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
+    await env.ORDER_STORE.put(`onramphold:${id}`, '1', { expirationTtl: 14 * 24 * 3600 });
+    return new Response('OK', { status: 200 });
+  }
+
   // Update KV — only status and paymentReference (no PII)
   const existing = await env.ORDER_STORE.get(`order:${id}`);
   if (existing) {
@@ -1988,17 +1994,20 @@ async function handleRelayStatus(request: Request, env: Env): Promise<Response> 
   }
 }
 
-/** Customer-facing stages for a naira order. */
-export function onrampStage(status: string): 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review' {
+/**
+ * Customer-facing stages for a naira order (Paycrest on-ramp lifecycle):
+ * initiated -> pending (matched to a provider, STILL WAITING for the bank transfer) -> fulfilling (naira received)
+ * -> validated -> settling -> settled (dollars delivered to the wallet).
+ * A compliance hold is a webhook event, not a status: the order stays "pending", so it is passed in separately.
+ */
+export function onrampStage(status: string, held = false): 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review' {
   switch (status) {
     case 'settled':
       return 'done';
-    case 'pending':
     case 'fulfilling':
     case 'fulfilled':
     case 'validated':
     case 'settling':
-    case 'deposited':
       return 'received';
     case 'expired':
     case 'cancelled':
@@ -2006,8 +2015,8 @@ export function onrampStage(status: string): 'waiting' | 'received' | 'done' | '
     case 'refunding':
     case 'refunded':
       return 'refund';
-    case 'compliance_hold':
-      return 'review';
+    case 'pending':
+      return held ? 'review' : 'waiting';
     default:
       return 'waiting';
   }
@@ -2022,7 +2031,8 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
     if (!res.ok) return err('Could not check this order right now.', 502);
     const o = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
     const status = String(o?.status ?? 'initiated');
-    return json({ orderId, status, stage: onrampStage(status) });
+    const held = (await env.ORDER_STORE.get(`onramphold:${orderId}`)) !== null;
+    return json({ orderId, status, stage: onrampStage(status, held) });
   } catch {
     return err('Could not check this order right now.', 502);
   }

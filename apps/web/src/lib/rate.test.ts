@@ -10,6 +10,18 @@ import { ReadinessCard } from '../components/ReadinessCard';
 import { getNetQuote } from './quote';
 import { getBalanceProgressPercent, getCashoutRate, MIN_NET_USDT_REQUIRED } from './rate';
 
+/** Choose a bank in our own bank picker (it replaced the phone's dropdown). */
+async function pickBank(label: string | RegExp, bankName: string) {
+  const btn = await waitFor(() => {
+    const b = screen.getByLabelText(label);
+    expect(b).not.toBeDisabled();
+    expect(b.textContent).not.toMatch(/Loading banks/);
+    return b;
+  });
+  fireEvent.click(btn);
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp(bankName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }));
+}
+
 describe('shared rate conversion', () => {
   const fakeNgnRate = 1500;
 
@@ -181,12 +193,10 @@ describe('shared rate conversion', () => {
       expect(reviewBtn).toBeDisabled();
     });
 
-    const bankSelect = screen.getByLabelText('Bank');
     const accountInput = screen.getByPlaceholderText('10-digit account number');
 
     // 2. Only bank selected: still disabled
-    await screen.findByRole('option', { name: BANK_NAME });
-    fireEvent.change(bankSelect, { target: { value: BANK_CODE } });
+    await pickBank('Bank', BANK_NAME);
     expect(reviewBtn).toBeDisabled();
 
     // 3. Invalid account number (9 digits): disabled
@@ -222,8 +232,7 @@ describe('shared rate conversion', () => {
     );
 
     // Provide valid bank details
-    await screen.findByRole('option', { name: BANK_NAME });
-    fireEvent.change(screen.getByLabelText('Bank'), { target: { value: BANK_CODE } });
+    await pickBank('Bank', BANK_NAME);
     fireEvent.change(screen.getByPlaceholderText('10-digit account number'), { target: { value: '1234567890' } });
     expect(await screen.findByText('JANE DOE')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /confirm this is my account name/i }));
