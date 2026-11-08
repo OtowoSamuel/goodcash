@@ -9,6 +9,8 @@ import {
   friendlyAddError,
   formatNaira,
   isAdultDate,
+  ASSET_LABEL,
+  type AddAsset,
   reportOnrampArrived,
   saveOnrampEmail,
   readDollarsOnBase,
@@ -41,6 +43,8 @@ interface Props {
   onClose: () => void;
   /** Called when G$ has arrived, so the app can refresh the balance. */
   onArrived: () => void;
+  /** Which one is chosen when the pop-up opens (an open order keeps its own choice) */
+  initialAsset?: AddAsset;
 }
 
 /** The server's own messages are already plain; anything else becomes a general line. */
@@ -55,14 +59,21 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, 
     {children}
   </div>
 );
-const STEPS = ['Amount', 'Details', 'Pay', 'Get G$'] as const;
+/** G$ in whole units; CELO with two decimals (it is worth far more per coin). */
+function formatAssetAmount(n: number, asset: AddAsset): string {
+  return asset === 'celo'
+    ? `${(Math.floor(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CELO`
+    : `${Math.floor(n).toLocaleString('en-US')} G$`;
+}
+
+const stepsFor = (asset: AddAsset) => ['Amount', 'Details', 'Pay', `Get ${ASSET_LABEL[asset]}`] as const;
 function stepIndex(step: Step): number {
   if (step === 'amount') return 0;
   if (step === 'details' || step === 'confirm') return 1;
   if (step === 'pay' || step === 'waiting') return 2;
   return 3;
 }
-const Progress: React.FC<{ step: Step }> = ({ step }) => <StepBar steps={STEPS} at={stepIndex(step)} />;
+const Progress: React.FC<{ step: Step; asset: AddAsset }> = ({ step, asset }) => <StepBar steps={stepsFor(asset)} at={stepIndex(step)} />;
 
 function timeLeft(validUntil: string, now: number): string | null {
   const ms = new Date(validUntil).getTime() - now;
@@ -74,7 +85,7 @@ function timeLeft(validUntil: string, now: number): string | null {
 
 const INPUT = 'w-full rounded-xl border-[2.5px] border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] outline-none';
 
-export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
+export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, initialAsset = 'g' }) => {
   const saved = useRef(loadSaved(wallet));
   const [step, setStep] = useState<Step>(
     saved.current ? (saved.current.swapRequestId ? 'working' : saved.current.sent ? 'waiting' : 'pay') : 'amount'
@@ -85,6 +96,8 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
   const [shareOk, setShareOk] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [order, setOrder] = useState<OnrampOrder | null>(saved.current?.order ?? null);
+  const [asset, setAsset] = useState<AddAsset>(saved.current?.asset ?? initialAsset);
+  const what = ASSET_LABEL[asset];
   const [naira, setNaira] = useState('');
   const [quote, setQuote] = useState<OnrampQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -108,7 +121,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     if (amount < 1000) return;
     let live = true;
     const t = setTimeout(() => {
-      fetchOnrampQuote(amount, wallet)
+      fetchOnrampQuote(amount, wallet, asset)
         .then((q) => live && setQuote(q))
         .catch((e: Error) => live && setQuoteError(e.message));
     }, 400);
@@ -116,7 +129,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       live = false;
       clearTimeout(t);
     };
-  }, [amount, step, wallet]);
+  }, [amount, step, wallet, asset]);
 
   // Follow the naira payment
   useEffect(() => {
@@ -209,6 +222,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       const o = await createOnrampOrder({
         naira: amount,
         wallet,
+        asset,
         fullName: bank.accountName,
         birthDate,
         idType,
@@ -216,7 +230,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
         refundAccount: { institution: bank.institutionCode, accountIdentifier: bank.accountIdentifier, accountName: bank.accountName },
       });
       setOrder(o);
-      save({ order: o, wallet });
+      save({ order: o, wallet, asset });
       setIdNumber('');
       setStage('waiting');
       setStep('pay');
@@ -236,9 +250,9 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
         setError(friendlyAddError(new Error('has not shown up')));
         return;
       }
-      const r = await startGasFreeSwap(wallet, have);
-      save({ order: order!, wallet, swapRequestId: r.requestId });
-      saved.current = { order: order!, wallet, swapRequestId: r.requestId };
+      const r = await startGasFreeSwap(wallet, have, asset);
+      save({ order: order!, wallet, asset, swapRequestId: r.requestId });
+      saved.current = { order: order!, wallet, asset, swapRequestId: r.requestId };
       setStep('working');
       void follow(r.requestId);
     } catch (e) {
@@ -269,11 +283,11 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
   const emailBox = order ? (
     emailState === 'saved' ? (
       <div className="gc-note" style={{ background: '#8cf0c0' }}>
-        <b>We'll email you</b> when your money arrives, and again when your G$ is in your wallet.
+        <b>We'll email you</b> when your money arrives, and again when your {what} is in your wallet.
       </div>
     ) : (
       <div className="gc-note">
-        <b>Want an email when it's done?</b> We'll tell you when your money arrives and when your G$ is in your wallet. We use your email for nothing else.
+        <b>Want an email when it's done?</b> We'll tell you when your money arrives and when your {what} is in your wallet. We use your email for nothing else.
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <input
             className={INPUT}
@@ -312,21 +326,44 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     onClose();
   };
 
-  let title = 'Add G$';
+  let title = `Add ${what}`;
   let body: React.ReactNode;
   let footer: React.ReactNode;
 
   if (step === 'amount') {
     body = (
       <>
+        <Field label="What do you want to add?">
+          <div className="flex gap-2" role="group" aria-label="What do you want to add?">
+            {(['g', 'celo'] as const).map((a) => (
+              <button
+                key={a}
+                type="button"
+                aria-pressed={asset === a}
+                onClick={() => setAsset(a)}
+                className={`gc-pill gc-hit ${asset === a ? 'gc-pill--on' : ''}`}
+              >
+                {a === 'g' ? 'G$' : 'CELO (for fees)'}
+              </button>
+            ))}
+          </div>
+        </Field>
+        {asset === 'celo' && (
+          <div className="gc-note">
+            CELO pays the small network fee when you cash out your G$. A little goes a long way: a cash out usually costs under ₦30 in fees.
+          </div>
+        )}
         <Field label="How much naira do you want to add?">
           <input className={INPUT} inputMode="numeric" placeholder="₦5,000" value={naira} onChange={(e) => setNaira(e.target.value.replace(/[^\d,]/g, ''))} aria-label="Amount in naira" />
         </Field>
         {quote && (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
             <div className="gc-lab">You will get about</div>
-            <b style={{ fontSize: 24 }}>{Math.floor(quote.gOutMin).toLocaleString('en-US')} G$</b>
-            <div className="gc-sm">for {formatNaira(quote.naira)}. Fees are included.</div>
+            <b style={{ fontSize: 24 }}>{formatAssetAmount(quote.amountOutMin ?? quote.gOutMin, asset)}</b>
+            <div className="gc-sm">
+              for {formatNaira(quote.naira)}. Fees are included.
+              {asset === 'celo' && ` That pays the network fee for roughly ${Math.max(1, Math.floor((quote.amountOutMin ?? quote.gOutMin) / 0.25))} cash outs.`}
+            </div>
           </div>
         )}
         {quoteError && <div className="gc-note">{quoteError}</div>}
@@ -389,7 +426,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       ['You pay', formatNaira(amount)],
       ['From', `${bank.selectedInstitution?.name?.trim() ?? 'your bank'} ••• ${bank.accountIdentifier.slice(-4)}`],
       ['Account name', bank.accountName ?? ''],
-      ['You get about', quote ? `${Math.floor(quote.gOutMin).toLocaleString('en-US')} G$` : '—'],
+      ['You get about', quote ? formatAssetAmount(quote.amountOutMin ?? quote.gOutMin, asset) : '—'],
       ['To your wallet', `${wallet.slice(0, 6)}…${wallet.slice(-4)}`],
       [idType, `••••••• ${idNumber.slice(-4)}`],
     ];
@@ -459,7 +496,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
         {emailBox}
       </>
     );
-    footer = primary("I've sent the money", () => { save({ order, wallet, sent: true }); saved.current = { order, wallet, sent: true }; setStep('waiting'); }, true);
+    footer = primary("I've sent the money", () => { save({ order, wallet, asset, sent: true }); saved.current = { order, wallet, asset, sent: true }; setStep('waiting'); }, true);
   } else if (step === 'waiting' && order) {
     title = stage === 'received' ? 'Payment received' : stage === 'review' ? 'Checking your payment' : 'Waiting for your payment';
     body = (
@@ -467,7 +504,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
         {stage === 'received' ? (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
             <b>We got your {formatNaira(Number(order.amountToTransfer))}.</b>
-            <div className="gc-sm">Your money is on its way to your wallet. Keep this page open. In a few minutes it will ask you to tap once to get your G$.</div>
+            <div className="gc-sm">Your money is on its way to your wallet. Keep this page open. In a few minutes it will ask you to tap once to get your {what}.</div>
           </div>
         ) : stage === 'review' ? (
           <div className="gc-note" style={{ background: '#fff3c4' }}>
@@ -501,25 +538,25 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     );
     footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Hide this (keep the tab open)</button>;
   } else if (step === 'swap') {
-    title = 'Get your G$ now';
+    title = `Get your ${what} now`;
     body = (
       <>
         <div className="gc-note" style={{ background: '#8cf0c0' }}>
           <b style={{ fontSize: 18 }}>{order ? `Your ${formatNaira(Number(order.amountToTransfer))} has arrived!` : 'Your money has arrived!'}</b>
           <div className="gc-sm" style={{ marginTop: 4 }}>
-            It is waiting for you. <b>Tap "Get my G$" below to receive your G$ in your wallet.</b> Your G$ is only added after you tap.
+            It is waiting for you. <b>Tap "Get my {what}" below to receive your {what} in your wallet.</b> Your {what} is only added after you tap.
           </div>
         </div>
         <div className="gc-note">Your wallet may ask you to change network and sign one message. It costs you no fee. Please keep this tab open until it is done.</div>
         {error && <div className="gc-note" style={{ background: '#ffd6d6' }}>{error}</div>}
       </>
     );
-    footer = primary('Get my G$', () => void getG(), true);
+    footer = primary(`Get my ${what}`, () => void getG(), true);
   } else if (step === 'working') {
-    title = 'Getting your G$';
+    title = `Getting your ${what}`;
     body = (
       <div className="gc-note" style={{ background: '#fff3c4' }}>
-        <b>Almost there. Please keep this tab open.</b> It takes about a minute. You will see a message here when your G$ arrives.
+        <b>Almost there. Please keep this tab open.</b> It takes about a minute. You will see a message here when your {what} arrives.
       </div>
     );
     footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Hide this (keep the tab open)</button>;
@@ -527,16 +564,16 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     title = 'All done';
     body = (
       <div className="gc-note" style={{ background: '#8cf0c0' }}>
-        <b style={{ fontSize: 20 }}>Your G$ has arrived.</b>
-        <div className="gc-sm">It is in your wallet now. You can cash out any time.{emailState === 'saved' ? " We've also sent you an email." : ''}</div>
+        <b style={{ fontSize: 20 }}>Your {what} has arrived.</b>
+        <div className="gc-sm">It is in your wallet now. {asset === 'celo' ? 'It will pay the small network fee when you cash out.' : 'You can cash out any time.'}{emailState === 'saved' ? " We've also sent you an email." : ''}</div>
       </div>
     );
     footer = primary('Done', finish, true);
   }
 
   return (
-    <Modal label="Add G$" title={title} onClose={finish} z={80} tone="white" footer={footer}>
-      <Progress step={step} />
+    <Modal label={`Add ${what}`} title={title} onClose={finish} z={80} tone="white" footer={footer}>
+      <Progress step={step} asset={asset} />
       {body}
     </Modal>
   );

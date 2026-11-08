@@ -121,7 +121,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
 
       {onAddClick && (
         <button type="button" onClick={onAddClick} className="gc-btn gc-btn--white gc-hit w-full" style={{ marginTop: 10 }}>
-          Add G$ with naira
+          Add G$ or CELO with naira
         </button>
       )}
 

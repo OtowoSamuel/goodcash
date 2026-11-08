@@ -11,11 +11,19 @@ export const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const BASE_CHAIN_HEX = '0x2105';
 const CELO_CHAIN_HEX = '0xa4ec';
 
+/** What the customer is adding: G$, or CELO (the coin that pays the small network fee when cashing out). */
+export type AddAsset = 'g' | 'celo';
+export const ASSET_LABEL: Record<AddAsset, string> = { g: 'G$', celo: 'CELO' };
+
 export interface OnrampQuote {
   naira: number;
   ngnPerUsd: number;
   gOut: number;
   gOutMin: number;
+  /** The amount of whichever asset was asked for (same numbers as gOut / gOutMin) */
+  amountOut?: number;
+  amountOutMin?: number;
+  asset?: AddAsset;
   swapFeeUsd: number;
   minNaira: number;
   validForSeconds: number;
@@ -32,6 +40,7 @@ export interface OnrampOrder {
 export type OnrampStage = 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review';
 
 export interface OnrampInput {
+  asset?: AddAsset;
   naira: number;
   wallet: string;
   fullName: string;
@@ -57,8 +66,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export const fetchOnrampQuote = (naira: number, wallet?: string) =>
-  api<OnrampQuote>(`/onramp/quote?naira=${naira}${wallet ? `&wallet=${wallet}` : ''}`);
+export const fetchOnrampQuote = (naira: number, wallet?: string, asset: AddAsset = 'g') =>
+  api<OnrampQuote>(`/onramp/quote?naira=${naira}&asset=${asset}${wallet ? `&wallet=${wallet}` : ''}`);
 
 export const createOnrampOrder = (input: OnrampInput) =>
   api<OnrampOrder>('/onramp/orders', { method: 'POST', body: JSON.stringify(input) });
@@ -159,10 +168,10 @@ export interface SwapResult {
 }
 
 /** Ask for the price, get the customer's one signature, and hand it to the swap service. */
-export async function startGasFreeSwap(wallet: string, amount: bigint): Promise<SwapResult> {
+export async function startGasFreeSwap(wallet: string, amount: bigint, asset: AddAsset = 'g'): Promise<SwapResult> {
   const p = getWalletProvider();
   if (!p) throw new Error('Connect your wallet first.');
-  const quote = await api<RelayQuoteResponse>('/relay/quote', { method: 'POST', body: JSON.stringify({ wallet, amount: amount.toString() }) });
+  const quote = await api<RelayQuoteResponse>('/relay/quote', { method: 'POST', body: JSON.stringify({ wallet, amount: amount.toString(), asset }) });
   const { sign, api: apiKind } = checkRelaySigning(quote, wallet, amount);
   await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
   const typed = {

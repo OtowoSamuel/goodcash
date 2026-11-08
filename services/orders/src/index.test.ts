@@ -1552,6 +1552,65 @@ describe('Add G$ orders', () => {
     });
   });
 
+  describe('Add CELO (same flow, different asset)', () => {
+    const NATIVE = '0x0000000000000000000000000000000000000000';
+    const GD = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A';
+    let relayBodies: Array<Record<string, unknown>>;
+    let sentEmails: Array<{ subject: string }>;
+    beforeEach(() => {
+      relayBodies = [];
+      sentEmails = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init?: RequestInit) => {
+          const u = String(url);
+          if (u.includes('api.resend.com')) {
+            sentEmails.push(JSON.parse(String(init?.body)));
+            return new Response('{}');
+          }
+          if (u.includes('/v2/rates/')) return new Response(JSON.stringify({ data: { buy: { rate: '1384.52' } } }));
+          if (u.includes('api.relay.link/quote')) {
+            relayBodies.push(JSON.parse(String(init?.body)));
+            return new Response(JSON.stringify({ requestId: '0x' + 'ab'.repeat(32), steps: [], fees: { relayer: { amountUsd: '0.035' } }, details: { currencyOut: { amount: '10259979964030953448', minimumAmount: '10100000000000000000' } } }));
+          }
+          if (u.includes('/v2/sender/orders') && init?.method === 'POST') {
+            return new Response(JSON.stringify({ data: { id: ID, status: 'initiated', providerAccount: { institution: 'B', accountIdentifier: '9990001111', accountName: 'P', amountToTransfer: '1000', validUntil: '2026-11-08T22:00:00Z' } } }), { status: 201 });
+          }
+          return new Response(JSON.stringify({ data: { id: ID, status: 'settled' } }));
+        })
+      );
+    });
+
+    it('C1. The price can be asked for in CELO, to the customer\'s own wallet, and defaults to G$', async () => {
+      const env = makeEnv(kv);
+      const celo = (await (await worker.fetch(makeRequest('GET', `/onramp/quote?naira=1000&wallet=${BODY.wallet}&asset=celo`), env)).json()) as { asset: string; amountOut: number };
+      expect(celo.asset).toBe('celo');
+      expect(celo.amountOut).toBeCloseTo(10.26, 2);
+      expect(relayBodies[0].destinationCurrency).toBe(NATIVE);
+      expect(relayBodies[0].recipient).toBe(BODY.wallet);
+      relayBodies.length = 0;
+      await worker.fetch(makeRequest('GET', `/onramp/quote?naira=1000&wallet=${BODY.wallet}&asset=whatever`), env);
+      expect(relayBodies[0].destinationCurrency).toBe(GD);
+    });
+
+    it('C2. The swap proxy only ever sends to G$ or native CELO, never an address the caller picks', async () => {
+      const env = makeEnv(kv);
+      await worker.fetch(makeRequest('POST', '/relay/quote', { wallet: BODY.wallet, amount: '700000', asset: 'celo' }), env);
+      expect(relayBodies[0].destinationCurrency).toBe(NATIVE);
+      const bad = await worker.fetch(makeRequest('POST', '/relay/quote', { wallet: BODY.wallet, amount: '700000', asset: '0x1111111111111111111111111111111111111111' }), env);
+      expect(bad.status).toBe(400);
+    });
+
+    it('C3. A CELO order\'s emails say CELO, not G$', async () => {
+      const env = makeEnv(kv, { RESEND_API_KEY: 'resend-test' } as never);
+      await worker.fetch(makeRequest('POST', '/onramp/orders', { ...BODY, asset: 'celo' }), env);
+      await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/notify`, { email: 'me@example.com' }), env);
+      await worker.fetch(makeRequest('GET', `/onramp/orders/${ID}`), env);
+      expect(sentEmails[0].subject).toMatch(/CELO/);
+      expect(sentEmails[0].subject).not.toMatch(/G\$/);
+    });
+  });
+
   it('A4. Never prints the customer details when the partner refuses', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"message":"bad BVN 22212345678","field":"Source"}', { status: 400 })));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});

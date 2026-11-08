@@ -1684,6 +1684,15 @@ async function handleLinkOneTapSwap(orderId: string, request: Request, env: Env)
 
 const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const CELO_G_DOLLAR = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A';
+/** What a naira order can end up as in the customer's wallet on Celo: G$, or CELO (the coin that pays network fees). */
+export type OnrampAsset = 'g' | 'celo';
+const ONRAMP_ASSETS: Record<OnrampAsset, { address: string; label: string }> = {
+  g: { address: CELO_G_DOLLAR, label: 'G$' },
+  celo: { address: '0x0000000000000000000000000000000000000000', label: 'CELO' },
+};
+function parseAsset(v: unknown): OnrampAsset {
+  return v === 'celo' ? 'celo' : 'g';
+}
 /** Assumed partner fee for a naira order, in dollars. UNVERIFIED: the real fee comes back when an order is created. */
 const ONRAMP_FEE_RESERVE_USDT = 0.02;
 const ONRAMP_MIN_USDT = 0.5;
@@ -1716,6 +1725,7 @@ async function handleOnrampQuote(request: Request, env: Env): Promise<Response> 
   const url = new URL(request.url);
   const naira = Number(url.searchParams.get('naira'));
   const wallet = url.searchParams.get('wallet') ?? '';
+  const asset = parseAsset(url.searchParams.get('asset'));
   if (!Number.isFinite(naira) || naira <= 0) return err('Enter an amount in naira.', 400);
   if (naira > ONRAMP_MAX_NAIRA) return err(`The most you can add at once is ₦${ONRAMP_MAX_NAIRA.toLocaleString('en-US')}.`, 400);
   if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return err('Invalid wallet address', 400);
@@ -1758,7 +1768,7 @@ async function handleOnrampQuote(request: Request, env: Env): Promise<Response> 
         originChainId: 8453,
         originCurrency: BASE_USDC,
         destinationChainId: 42220,
-        destinationCurrency: CELO_G_DOLLAR,
+        destinationCurrency: ONRAMP_ASSETS[asset].address,
         tradeType: 'EXACT_INPUT',
         amount: atomic.toString(),
         usePermit: true,
@@ -1782,8 +1792,12 @@ async function handleOnrampQuote(request: Request, env: Env): Promise<Response> 
     partnerFeeUsd: ONRAMP_FEE_RESERVE_USDT,
     swapFeeUsd: Math.round(feeUsd * 10_000) / 10_000,
     networkFeeUsd: 0,
+    asset,
+    // gOut / gOutMin keep their old names (they hold the amount of whichever asset was asked for)
     gOut,
     gOutMin: minOut,
+    amountOut: gOut,
+    amountOutMin: minOut,
     seconds: null,
     minNaira,
     // Quotes move; the app must ask again if it is older than this
@@ -1805,6 +1819,7 @@ const OnrampOrderSchema = z.object({
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   idType: z.enum(['BVN', 'NIN']),
   idNumber: z.string().regex(/^\d{11}$/),
+  asset: z.enum(['g', 'celo']).optional(),
   refundAccount: z.object({
     institution: z.string().regex(/^[A-Za-z0-9]{4,16}$/),
     accountIdentifier: z.string().regex(/^\d{10}$/),
@@ -1887,7 +1902,7 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
   }
   await env.ORDER_STORE.put(
     `onramp:${order.id}`,
-    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, createdAt: Date.now() }),
+    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, asset: parseAsset(input.asset), createdAt: Date.now() }),
     { expirationTtl: 14 * 24 * 3600 }
   );
   return json(
@@ -1911,6 +1926,7 @@ function relayHeaders(env: Env): Record<string, string> {
 const RelayQuoteSchema = z.object({
   wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
   amount: z.string().regex(/^\d{1,12}$/), // USDC, 6 decimals
+  asset: z.enum(['g', 'celo']).optional(),
 });
 
 async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
@@ -1934,7 +1950,7 @@ async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
         originChainId: 8453,
         originCurrency: BASE_USDC,
         destinationChainId: 42220,
-        destinationCurrency: CELO_G_DOLLAR,
+        destinationCurrency: ONRAMP_ASSETS[parseAsset(parsed.data.asset)].address,
         tradeType: 'EXACT_INPUT',
         amount: parsed.data.amount,
         usePermit: true,
@@ -2033,15 +2049,18 @@ export function onrampStage(status: string, held = false): 'waiting' | 'received
 // Kept apart from the cash-out email on purpose (different keys, different words).
 // ---------------------------------------------------------------------------
 
-function onrampEmailHtml(kind: 'ready' | 'arrived', orderId: string, naira: string | null): string {
+function onrampEmailHtml(kind: 'ready' | 'arrived', orderId: string, naira: string | null, asset: OnrampAsset = 'g'): string {
   const ref = orderId.slice(0, 8);
-  const headline = kind === 'ready' ? 'YOUR MONEY IS READY' : 'G$ ADDED';
-  const big = kind === 'ready' ? 'One last tap' : 'Your G$ is in your wallet';
+  const what = ONRAMP_ASSETS[asset].label;
+  const headline = kind === 'ready' ? 'YOUR MONEY IS READY' : `${what} ADDED`;
+  const big = kind === 'ready' ? 'One last tap' : `Your ${what} is in your wallet`;
   const small =
     kind === 'ready'
-      ? `${naira ? `Your ${naira} has arrived. ` : 'Your naira has arrived. '}Open GoodCash and tap <b>Get my G$</b> to finish. It costs you no fee.`
+      ? `${naira ? `Your ${naira} has arrived. ` : 'Your naira has arrived. '}Open GoodCash and tap <b>Get my ${what}</b> to finish. It costs you no fee.`
+      : asset === 'celo'
+      ? 'It is in your wallet now. It pays the small network fee when you cash out.'
       : 'It is in your wallet now. You can cash out any time.';
-  const button = kind === 'ready' ? 'Get my G$' : 'Open GoodCash';
+  const button = kind === 'ready' ? `Get my ${what}` : 'Open GoodCash';
   return `<!doctype html><html><body style="margin:0;padding:0;background:#cdb8ff;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#cdb8ff;padding:28px 12px;">
 <tr><td align="center">
@@ -2060,6 +2079,16 @@ Reference: ${ref}<br>Questions? Open GoodCash and choose Contact support.
 </table></td></tr></table></body></html>`;
 }
 
+/** Which asset a naira order was for (older orders had no choice: G$). */
+async function onrampAssetOf(orderId: string, env: Env): Promise<OnrampAsset> {
+  try {
+    const raw = await env.ORDER_STORE.get(`onramp:${orderId}`);
+    return raw ? parseAsset((JSON.parse(raw) as { asset?: unknown }).asset) : 'g';
+  } catch {
+    return 'g';
+  }
+}
+
 interface OnrampNotify {
   email: string;
   naira: string | null;
@@ -2068,16 +2097,18 @@ interface OnrampNotify {
 
 async function sendOnrampEmail(kind: 'ready' | 'arrived', orderId: string, to: OnrampNotify, env: Env): Promise<void> {
   if (!env.RESEND_API_KEY) return;
-  const subject = kind === 'ready' ? 'Your money is ready. Tap to get your G$' : 'Your G$ is in your wallet';
+  const asset = await onrampAssetOf(orderId, env);
+  const what = ONRAMP_ASSETS[asset].label;
+  const subject = kind === 'ready' ? `Your money is ready. Tap to get your ${what}` : `Your ${what} is in your wallet`;
   const text =
     kind === 'ready'
-      ? `${to.naira ? `Your ${to.naira} has arrived. ` : 'Your naira has arrived. '}Open GoodCash (https://goodcash.xyz) and tap "Get my G$" to finish. It costs you no fee.\n\nReference: ${orderId.slice(0, 8)}`
-      : `Your G$ is in your wallet now. You can cash out any time.\n\nReference: ${orderId.slice(0, 8)}`;
+      ? `${to.naira ? `Your ${to.naira} has arrived. ` : 'Your naira has arrived. '}Open GoodCash (https://goodcash.xyz) and tap "Get my ${what}" to finish. It costs you no fee.\n\nReference: ${orderId.slice(0, 8)}`
+      : `Your ${what} is in your wallet now. ${asset === 'celo' ? 'It pays the small network fee when you cash out.' : 'You can cash out any time.'}\n\nReference: ${orderId.slice(0, 8)}`;
   try {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: env.RESEND_FROM || 'GoodCash <onboarding@resend.dev>', to: [to.email], subject, html: onrampEmailHtml(kind, orderId, to.naira), text }),
+      body: JSON.stringify({ from: env.RESEND_FROM || 'GoodCash <onboarding@resend.dev>', to: [to.email], subject, html: onrampEmailHtml(kind, orderId, to.naira, asset), text }),
     });
   } catch (e) {
     console.error('[onramp-notify] email failed:', e);
