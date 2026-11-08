@@ -37,7 +37,7 @@ describe('never says "nothing was taken" when money may have moved', () => {
   });
   it('a sent-but-unconfirmed swap tells the user not to swap again', () => {
     const msg = friendlySwapError(new SwapPendingError('0x' + 'cd'.repeat(32)));
-    expect(msg).toMatch(/don't swap again/i);
+    expect(msg).toMatch(/don't send it again/i);
   });
   it('the generic payment error no longer promises that nothing was taken', () => {
     expect(friendlyPayError(new Error('boom'))).not.toMatch(/nothing was taken/i);

@@ -187,7 +187,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, initia
           return;
         }
         if (s === 'failure' || s === 'refund') {
-          setError('The swap did not go through. Your money is safe in your wallet. Please try again.');
+          setError('That did not go through. Your money is safe in your wallet. Please try again.');
           setStep('swap');
           return;
         }

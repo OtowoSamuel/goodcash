@@ -228,7 +228,7 @@ export const translations: Record<Language, Partial<Translations>> = {
     statusPaidExplanation: 'Paid: naira sent to your bank account.',
     receiptsTitle: 'Receipts',
     receiptsExplanation: 'Every cash out has an on-chain receipt you can check on the Celo explorer.',
-    footerText: 'GoodCash © 2026 · Non-custodial Celo router',
+    footerText: 'GoodCash © 2026 · Your money stays in your wallet',
     contractLinkText: 'Contract',
     goodDollarLinkText: 'GoodDollar',
     paycrestLinkText: 'Paycrest',

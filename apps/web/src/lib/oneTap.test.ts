@@ -144,7 +144,7 @@ describe('one-tap cash out', () => {
     expect(r.friendlySwapError(new Error('PRICE_MOVED'))).toMatch(/price moved/i);
     expect(r.friendlySwapError(new Error('execution reverted: InsufficientOutput(1,2)'))).toMatch(/price moved/i);
     expect(r.friendlySwapError(new Error('ORDER_EXPIRED'))).toMatch(/window closed/i);
-    expect(r.friendlySwapError(new r.SwapPendingError('0xabc'))).toMatch(/don't swap again/i);
+    expect(r.friendlySwapError(new r.SwapPendingError('0xabc'))).toMatch(/don't send it again/i);
   });
 });
 

@@ -277,7 +277,7 @@ export function friendlySwapError(err: unknown): string {
   }
   if (/NEEDS_NETWORK_FEE/.test(raw)) return networkFeeMessage((err as { info?: NetworkFeeInfo })?.info ?? null);
   if (/SwapPendingError/.test(raw)) {
-    return "Your swap was sent and is still being confirmed. Please don't swap again. It will show in History, and we'll offer to finish your payout.";
+    return "Your cash out was sent and is still being confirmed. Please don't send it again. It will show in History, and we'll help you finish your payout.";
   }
   if (/^\s*Minimum cash out/i.test(e?.message ?? '')) return (e?.message as string).trim();
   if (/PRICE_MOVED|InsufficientOutput|MinOutBelowPayAmount/.test(raw)) {
@@ -297,12 +297,12 @@ export function friendlySwapError(err: unknown): string {
   if (/insufficient funds|gas required exceeds/i.test(raw)) {
     return networkFeeMessage(null);
   }
-  if (/approval transaction failed/i.test(raw)) return "The G$ approval didn't go through. Nothing was swapped. Please try again.";
+  if (/approval transaction failed/i.test(raw)) return "Your wallet's first confirmation didn't go through. Your G$ was not taken. Please try again.";
   if (/reverted on Celo|execution reverted|reverted/i.test(raw)) {
-    return "The swap didn't go through on Celo. Nothing was taken. Please refresh the quote and try again.";
+    return "Your cash out didn't go through. Your G$ was not taken. Please refresh the price and try again.";
   }
   if (/event log not found/i.test(raw)) {
-    return "Your swap was sent but we couldn't read the result. Check History for your receipt before trying again.";
+    return "Your cash out was sent but we couldn't read the result. Please check History before trying again.";
   }
   if (/No Celo wallet/i.test(raw)) return 'No Celo wallet found. Open GoodCash in a wallet app or install a wallet extension.';
   return "Something went wrong and we couldn't confirm your cash out. Please check History before trying again.";
@@ -837,14 +837,14 @@ export async function fetchSwapForRecovery(
       if (decoded.eventName !== 'CashOut') continue;
       const args = decoded.args as { user: string; recipient: string; amountIn: bigint; amountOut: bigint };
       if (walletAddress && (args.user.toLowerCase() !== walletAddress.toLowerCase() || args.recipient.toLowerCase() !== walletAddress.toLowerCase())) {
-        throw new Error('That swap was made by a different wallet. Connect the wallet that made it.');
+        throw new Error('That cash out was made by a different wallet. Connect the wallet that made it.');
       }
       return { usdtReceived: Number(args.amountOut) / 1e6, amountG: Number(args.amountIn) / 1e18 };
     } catch (e) {
       if (e instanceof Error && /different wallet/.test(e.message)) throw e;
     }
   }
-  throw new Error('No GoodCash swap found in that transaction.');
+  throw new Error('No GoodCash cash out was found in that transaction.');
 }
 
 /**

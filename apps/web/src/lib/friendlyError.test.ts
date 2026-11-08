@@ -31,3 +31,13 @@ describe('friendlyApiError', () => {
     expect(friendlyApiError(new Error('TypeError: x is undefined at 0xabcdef'))).toMatch(/try again/i);
   });
 });
+
+describe('no jargon in cash-out errors', () => {
+  it('never says swap, quote or names the network', async () => {
+    const { friendlySwapError, SwapPendingError } = await import('./router');
+    for (const e of [new Error('Swap transaction reverted on Celo'), new Error('execution reverted'), new SwapPendingError('0xabc'), new Error('CashOut event log not found in transaction receipt'), new Error('approval transaction failed')]) {
+      const msg = friendlySwapError(e);
+      expect(msg).not.toMatch(/\bswap|quote|\bCelo\b/i);
+    }
+  });
+});

@@ -63,7 +63,7 @@ export const SupportModal: React.FC<SupportModalProps> = ({ context, defaultTopi
 
   const attached: [string, string | undefined][] = [
     ['Order reference', context.orderId],
-    ['Swap transaction', context.txHash ? `${context.txHash.slice(0, 10)}…${context.txHash.slice(-6)}` : undefined],
+    ['Transaction', context.txHash ? `${context.txHash.slice(0, 10)}…${context.txHash.slice(-6)}` : undefined],
     ['Your wallet', context.wallet ? `${context.wallet.slice(0, 6)}…${context.wallet.slice(-4)}` : undefined],
     ['Status shown', context.status],
     ['Amount', context.amountG ? `${context.amountG} G$${context.naira ? ` → ${context.naira}` : ''}` : undefined],
