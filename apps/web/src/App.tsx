@@ -6,6 +6,8 @@ import { Navbar } from './components/Navbar';
 import { SafetyBanner } from './components/SafetyBanner';
 import { ReadinessCard } from './components/ReadinessCard';
 const AddGsModal = React.lazy(() => import('./components/AddGsModal'));
+/** Naira -> G$ is parked (it needs the customer's BVN/NIN). Only builds that set VITE_ADDG_ENABLED=true show it. */
+const ADDG_ENABLED = import.meta.env.VITE_ADDG_ENABLED === 'true';
 import { CashOutCard } from './components/CashOutCard';
 import { MobileCashOut } from './components/MobileCashOut';
 import { MobileReviewView } from './components/MobileReviewView';
@@ -1382,7 +1384,7 @@ export function App({
               balanceG={balanceG}
               dailyClaimG={123.48}
               onCashOutClick={() => setCurrentTab('cashout')}
-              onAddClick={handleAddClick}
+              onAddClick={ADDG_ENABLED ? handleAddClick : undefined}
               feeNote={networkFee && !networkFee.enough ? `You also need about ${celoText(networkFee.needCelo)} CELO in your wallet to pay the network fee. G$ can't pay it, so top up a little CELO before cashing out.` : null}
               language={language}
               isStale={balanceIsStale}
@@ -1937,7 +1939,7 @@ export function App({
                 balanceG={balanceG}
                 dailyClaimG={123.48}
                 onCashOutClick={() => setMobileView('cashout')}
-                onAddClick={handleAddClick}
+                onAddClick={ADDG_ENABLED ? handleAddClick : undefined}
                 feeNote={networkFee && !networkFee.enough ? `You also need about ${celoText(networkFee.needCelo)} CELO in your wallet to pay the network fee. G$ can't pay it, so top up a little CELO before cashing out.` : null}
                   language={language}
                 isStale={balanceIsStale}
