@@ -203,3 +203,41 @@ describe('network fee check', () => {
     expect(friendlySwapError(new Error('insufficient funds for gas * price + value'))).toMatch(/Top up a little CELO/);
   });
 });
+
+describe('a lost wallet reply is never reported as "nothing was taken"', () => {
+  it('only treats an error as "nothing sent" when it proves it', async () => {
+    const { provesNothingWasSent } = await import('./router');
+    expect(provesNothingWasSent({ code: 4001, message: 'User rejected the request.' })).toBe(true);
+    expect(provesNothingWasSent(Object.assign(new Error('x'), { name: 'TransactionExecutionError', cause: { name: 'UserRejectedRequestError', message: 'denied' } }))).toBe(true);
+    expect(provesNothingWasSent(Object.assign(new Error('Execution reverted'), { name: 'EstimateGasExecutionError' }))).toBe(true);
+    expect(provesNothingWasSent(new Error('insufficient funds for gas'))).toBe(true);
+    // a phone wallet's request timing out says nothing about whether the customer approved it
+    expect(provesNothingWasSent(new Error('Request expired. Please try again.'))).toBe(false);
+    expect(provesNothingWasSent(new Error('The request timed out'))).toBe(false);
+    expect(provesNothingWasSent({ name: 'HttpRequestError', message: 'Failed to fetch' })).toBe(false);
+  });
+
+  it('says to check History first, and never "nothing was taken", for an unclear failure', async () => {
+    const { friendlySwapError, SwapUncertainError } = await import('./router');
+    const msg = friendlySwapError(new SwapUncertainError(new Error('Request expired')));
+    expect(msg).toMatch(/check History/i);
+    expect(msg).not.toMatch(/nothing was taken/i);
+    expect(friendlySwapError(new Error('some odd thing'))).not.toMatch(/nothing was taken/i);
+  });
+
+  it('finds a cash out that went through even though the wallet reply was lost', async () => {
+    const { findOneTapPayment } = await import('./useOffRamp');
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++;
+        const swaps = calls < 3 ? [] : [{ txHash: '0xabc', amountG: '5500', usdtReceived: '0.7', at: 1, orderId: 'ord-1' }];
+        return new Response(JSON.stringify({ swaps }), { status: 200 });
+      })
+    );
+    expect(await findOneTapPayment('ord-1', '0x1111111111111111111111111111111111111111', 5, 1)).toBe('0xabc');
+    expect(await findOneTapPayment('other', '0x1111111111111111111111111111111111111111', 2, 1)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+});

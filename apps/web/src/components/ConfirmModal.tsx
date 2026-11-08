@@ -241,7 +241,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
         {errorMessage && (
           <div className="mb-4 bg-[#ff6b6b] text-white border-2 border-[#111] p-3 rounded-xl font-bold shadow-[2px_2px_0px_#111] break-words" style={{ overflowWrap: "anywhere" }}>
-            <span className="font-black">{hasConfirmedSwap ? 'Almost there' : 'Not sent'}: </span>
+            <span className="font-black">{hasConfirmedSwap ? 'Almost there' : /couldn't confirm/i.test(errorMessage) ? 'Please check' : 'Not sent'}: </span>
             {errorMessage}
           </div>
         )}

@@ -31,8 +31,8 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, celoText, type NetworkFeeInfo } from './lib/router';
-import { createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
+import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, celoText, SwapUncertainError, type NetworkFeeInfo } from './lib/router';
+import { findOneTapPayment, createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
 import { PendingPayoutCard } from './components/PendingPayoutCard';
@@ -685,7 +685,14 @@ export function App({
       } catch (e) {
         // Sent to the network but not confirmed yet: it may still go through, so show progress rather than an error
         if (e instanceof SwapPendingError) unconfirmedHash = e.hash;
-        else throw e;
+        else if (e instanceof SwapUncertainError) {
+          // The wallet's reply was lost (a phone wallet's request can time out while the customer approves). The
+          // transaction may have gone through, so look for it before telling the customer anything.
+          reportIssue('swap_uncertain', e.cause, { orderId: placed.orderId });
+          const found = await findOneTapPayment(placed.orderId, wallet);
+          if (found) unconfirmedHash = found;
+          else throw e;
+        } else throw e;
       }
 
       const txHash = result?.txHash ?? unconfirmedHash ?? '';

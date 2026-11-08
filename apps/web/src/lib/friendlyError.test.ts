@@ -17,8 +17,9 @@ describe('friendlySwapError', () => {
 
   it('keeps unknown errors to one short line', () => {
     const msg = friendlySwapError(new Error(`Boom\n${'x'.repeat(500)}`));
-    expect(msg).toMatch(/could not be completed/i);
-    expect(msg.length).toBeLessThan(120);
+    expect(msg).toMatch(/couldn't confirm your cash out/i);
+    expect(msg).toMatch(/check History/i);
+    expect(msg.length).toBeLessThan(140);
   });
 });
 

@@ -101,6 +101,32 @@ export const GOOD_CASH_ROUTER_ABI = parseAbi([
 
 const ROUTER_STATE_ABI = parseAbi(['function paused() external view returns (bool)']);
 
+/**
+ * Asking the wallet to send failed in a way that does NOT prove nothing was sent (for example a phone wallet's request
+ * timed out while the customer was still approving in the other app). The transaction may well have gone through,
+ * so this is never reported as "nothing was taken".
+ */
+export class SwapUncertainError extends Error {
+  constructor(public cause: unknown) {
+    super('SWAP_UNCERTAIN');
+    this.name = 'SwapUncertainError';
+  }
+}
+
+/** True only when the error proves the wallet never sent anything: the customer said no, or the network refused it first. */
+export function provesNothingWasSent(err: unknown): boolean {
+  let e: unknown = err;
+  for (let depth = 0; e && depth < 8; depth++) {
+    const x = e as { name?: string; code?: number; message?: string; shortMessage?: string; cause?: unknown };
+    const text = `${x.name ?? ''} ${x.shortMessage ?? ''} ${x.message ?? ''}`;
+    if (x.code === 4001 || /UserRejected|user rejected|user denied|rejected the request|denied transaction/i.test(text)) return true;
+    // The network's own pre-check (gas estimate) failed, so the wallet was never asked to sign
+    if (/EstimateGasExecutionError|ExecutionRevertedError|InsufficientFundsError|execution reverted|insufficient funds|gas required exceeds/i.test(text)) return true;
+    e = x.cause;
+  }
+  return false;
+}
+
 /** The swap was sent to the network but we could not confirm it yet. It may well have gone through. */
 export class SwapPendingError extends Error {
   hash: string;
@@ -246,6 +272,9 @@ async function assertNetworkFee(address: string, flow: CashOutFlow, publicClient
 export function friendlySwapError(err: unknown): string {
   const e = err as { name?: string; message?: string; shortMessage?: string; cause?: { name?: string } } | null;
   const raw = `${e?.name ?? ''} ${e?.cause?.name ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
+  if (/SWAP_UNCERTAIN/.test(raw)) {
+    return "We couldn't confirm your cash out. It may still have gone through, so please check History before trying again. That way you don't send it twice.";
+  }
   if (/NEEDS_NETWORK_FEE/.test(raw)) return networkFeeMessage((err as { info?: NetworkFeeInfo })?.info ?? null);
   if (/SwapPendingError/.test(raw)) {
     return "Your swap was sent and is still being confirmed. Please don't swap again. It will show in History, and we'll offer to finish your payout.";
@@ -276,7 +305,7 @@ export function friendlySwapError(err: unknown): string {
     return "Your swap was sent but we couldn't read the result. Check History for your receipt before trying again.";
   }
   if (/No Celo wallet/i.test(raw)) return 'No Celo wallet found. Open GoodCash in a wallet app or install a wallet extension.';
-  return 'The swap could not be completed. Nothing was taken. Please try again.';
+  return "Something went wrong and we couldn't confirm your cash out. Please check History before trying again.";
 }
 
 export const ERC20_ABI = parseAbi([
@@ -610,14 +639,20 @@ export async function executeOneTapCashOut(args: {
   });
 
   onStep?.({ kind: 'swap', n: 1, total: 1 });
-  const txHash = await walletClient.writeContract({
-    chain: celo,
-    address: G_DOLLAR_ADDRESS,
-    abi: ONE_TAP_ABI,
-    functionName: 'transferAndCall',
-    args: [routerAddress, amountInWei, data],
-    account: walletClient.account ?? (walletAddress as Address),
-  });
+  let txHash: `0x${string}`;
+  try {
+    txHash = await walletClient.writeContract({
+      chain: celo,
+      address: G_DOLLAR_ADDRESS,
+      abi: ONE_TAP_ABI,
+      functionName: 'transferAndCall',
+      args: [routerAddress, amountInWei, data],
+      account: walletClient.account ?? (walletAddress as Address),
+    });
+  } catch (e) {
+    if (provesNothingWasSent(e)) throw e;
+    throw new SwapUncertainError(e);
+  }
 
   let receipt;
   try {

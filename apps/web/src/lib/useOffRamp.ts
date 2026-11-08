@@ -605,6 +605,25 @@ export async function fetchUnfinishedSwaps(wallet: string): Promise<UnfinishedSw
 }
 
 /** Every swap this wallet has made, with payout status, from our service. Works on any device. */
+/**
+ * After an unclear failure, find out whether a one-tap cash out for this order actually went through. Our server reads
+ * the contract's own records, so this does not depend on the wallet or the page having seen the result.
+ * Returns the transaction hash when found, or null if it still cannot be seen after about half a minute.
+ */
+export async function findOneTapPayment(orderId: string, wallet: string, tries = 8, waitMs = 4000): Promise<string | null> {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const rows = await fetchWalletHistory(wallet);
+      const hit = rows.find((r) => r.orderId === orderId && r.txHash);
+      if (hit) return hit.txHash;
+    } catch {
+      // try again
+    }
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, waitMs));
+  }
+  return null;
+}
+
 export async function fetchWalletHistory(wallet: string): Promise<import('./historySync').ServerSwap[]> {
   const data = await apiGet<{
     swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number; orderId?: string; status?: string; naira?: string }>;
