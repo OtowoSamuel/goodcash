@@ -121,6 +121,8 @@ const CreateOrderSchema = z.object({
     .max(64)
     .regex(/^[a-zA-Z0-9_-]+$/)
     .optional(),
+  /** The GoodCash fee percent the customer's screen showed. The fee is charged only when this matches the server's setting. */
+  feePercent: z.number().min(0).max(5).optional(),
 });
 
 type CreateOrderInput = z.infer<typeof CreateOrderSchema>;
@@ -1071,6 +1073,15 @@ export function goodcashFeePercent(env: Env): number {
   return pct;
 }
 
+/**
+ * The fee we actually charge on this order: the configured percent, but only when the customer's screen showed that
+ * same percent. An older screen (or a different build) that does not show the fee is never charged it.
+ */
+export function chargedFeePercent(env: Env, shown: number | undefined): number {
+  const configured = goodcashFeePercent(env);
+  return configured > 0 && typeof shown === 'number' && Math.abs(shown - configured) < 1e-9 ? configured : 0;
+}
+
 async function createPaycrestOrderRaw(
   env: Env,
   input: {
@@ -1078,9 +1089,11 @@ async function createPaycrestOrderRaw(
     refundAddress: string;
     recipient: { institution: string; accountIdentifier: string; accountName: string; memo?: string };
     reference: string;
+    /** The fee percent the customer's screen showed (see chargedFeePercent) */
+    feePercentShown?: number;
   }
 ): Promise<{ order: PaycrestOrderResponse } | { response: Response }> {
-  const feePct = goodcashFeePercent(env);
+  const feePct = chargedFeePercent(env, input.feePercentShown);
   const feeFields: Record<string, string> =
     feePct > 0
       ? // A percent fee. "customer" pays the partner's own transaction fee on top, so GoodCash earns the full percent
@@ -1235,6 +1248,7 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
     refundAddress: input.refundAddress,
     recipient: input.recipient,
     reference: input.reference ?? generateRef(),
+    feePercentShown: input.feePercent,
   });
   if ('response' in created) return created.response;
   const paycrestResponse = created.order;
@@ -1546,6 +1560,8 @@ const OneTapOrderSchema = z.object({
   refundAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'Must be a valid Ethereum/Celo address'),
   recipient: RecipientSchema,
   reference: z.string().min(8).max(64).regex(/^[a-zA-Z0-9_-]+$/).optional(),
+  /** The GoodCash fee percent the customer's screen showed. The fee is charged only when this matches the server's setting. */
+  feePercent: z.number().min(0).max(5).optional(),
 });
 
 /** The payout partner keeps about this much of the dollars; the order is sized below the minimum by it. */
@@ -1593,7 +1609,7 @@ async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Resp
   const minAtomic = toAtomic6(input.minUsdt);
   const floor = toAtomic6(PAYCREST_MIN_USDT.toFixed(2));
   // Start from what fits: (guaranteed minimum - partner fee) / (1 + GoodCash fee %). The loop below corrects any rounding.
-  const feeBps = BigInt(Math.round(goodcashFeePercent(env) * 100));
+  const feeBps = BigInt(Math.round(chargedFeePercent(env, input.feePercent) * 100));
   let amountAtomic = ((minAtomic - ONE_TAP_FEE_RESERVE_ATOMIC) * 10_000n) / (10_000n + feeBps);
   const tooSmall = () => err('That amount is too small to pay out after fees. Try a larger amount.', 400);
   if (amountAtomic < floor) return tooSmall();
@@ -1607,6 +1623,7 @@ async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Resp
       refundAddress: input.refundAddress,
       recipient: input.recipient,
       reference: attempt === 0 ? reference : `${reference}-${attempt}`.slice(0, 64),
+      feePercentShown: input.feePercent,
     });
     if ('response' in created) return created.response;
     const toSend = toAtomic6(created.order.providerAccount.amountToTransfer);

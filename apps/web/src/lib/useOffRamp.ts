@@ -257,7 +257,7 @@ export async function createOneTapOrder(input: {
   refundAddress: string;
   recipient: { institution: string; accountIdentifier: string; accountName: string; memo?: string };
 }): Promise<OneTapOrder> {
-  const data = await apiPost<PaycrestOrderPayload & { payAmountAtomic: string; routerAddress: string }>('/orders/v2', input);
+  const data = await apiPost<PaycrestOrderPayload & { payAmountAtomic: string; routerAddress: string }>('/orders/v2', { ...input, feePercent: GOODCASH_FEE_PERCENT });
   return { ...data, status: (data.status as OffRampStatus) ?? 'initiated' };
 }
 
@@ -296,6 +296,8 @@ export async function createPaycrestOrder(input: CreateOrderInput): Promise<OffR
         swapTxHash: input.swapTxHash,
         refundAddress: input.refundAddress,
         recipient: input.recipient,
+        // The fee this screen showed. The server charges it only when this matches its own setting.
+        feePercent: GOODCASH_FEE_PERCENT,
       });
     } catch (error: unknown) {
       // Mock success in development/when API is offline when demo mode is active

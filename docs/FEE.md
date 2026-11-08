@@ -9,12 +9,12 @@ GoodCash charges **1% of each cash out** (the naira the customer is paid). It is
 | `services/orders/wrangler.toml` | `SENDER_FEE_PERCENT`, `SENDER_FEE_ADDRESS` | What the server charges. Empty or `0` means no fee. Capped at 5. |
 | `apps/web/.env.production` (not in git) | `VITE_GOODCASH_FEE_PERCENT` | What the screens show. Empty or `0` means no fee row. Capped at 5. |
 
-## Deploy order
+## Deploy order does not matter
 
-1. Deploy the **website** first (it shows the fee).
-2. Then deploy the **worker** (it starts charging).
+Each order request carries the fee percent the customer's screen **showed**. The server charges the fee only when that matches its own setting. So:
 
-If the worker goes first, customers would be charged a fee the screen does not show.
+- The live site (an older build, no fee on screen) is never charged, even after the worker has the fee switched on.
+- A preview or release build that shows the fee is charged exactly what it showed.
 
 ## Safety
 
@@ -23,4 +23,4 @@ If the worker goes first, customers would be charged a fee the screen does not s
 
 ## Turn it off
 
-Set `SENDER_FEE_PERCENT = "0"` in `wrangler.toml` and `VITE_GOODCASH_FEE_PERCENT=0`, then deploy the worker first and the website second. Also change the wording in `apps/web/public/about.html` and `terms.html`.
+Set `SENDER_FEE_PERCENT = "0"` in `wrangler.toml` and `VITE_GOODCASH_FEE_PERCENT=0`, then deploy both. Also change the wording in `apps/web/public/about.html` and `terms.html`.

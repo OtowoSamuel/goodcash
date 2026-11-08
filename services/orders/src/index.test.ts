@@ -1263,7 +1263,7 @@ describe('One-tap cash out (router V2)', () => {
     const m = mock({ totals: ['0.570000'] });
     vi.stubGlobal('fetch', m.f);
     const feeEnv = { ...env, SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: '0x735Ef948F746bc141D04042d2A18aA7f967bce2f' } as Env;
-    const res = await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), feeEnv);
+    const res = await worker.fetch(makeRequest('POST', '/orders/v2', { ...ORDER_BODY, feePercent: 1 }), feeEnv);
     expect(res.status).toBe(201);
     // (0.57 - 0.02) / 1.01 = 0.544554...
     expect(Number(m.posted[0].amount)).toBeCloseTo(0.544554, 5);
@@ -1660,7 +1660,8 @@ describe('GoodCash fee on cash outs', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  const create = (over: Partial<Env> = {}) => worker.fetch(makeRequest('POST', '/orders', VALID_BODY), makeEnv(new MockKV(), over));
+  const create = (over: Partial<Env> = {}, shown: number | null = 1) =>
+    worker.fetch(makeRequest('POST', '/orders', shown === null ? VALID_BODY : { ...VALID_BODY, feePercent: shown }), makeEnv(new MockKV(), over));
 
   it('F1. With a percent and a fee address, the order asks the partner for that percent, paid by the customer on top of the partner fee', async () => {
     expect((await create({ SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: FEE_ADDR })).status).toBe(201);
@@ -1686,6 +1687,23 @@ describe('GoodCash fee on cash outs', () => {
     expect(posted[1].senderFeePercent).toBeUndefined();
     expect(JSON.stringify(err.mock.calls)).toMatch(/refused the GoodCash fee/);
     err.mockRestore();
+  });
+
+  it('F5. A screen that did not show the fee (an older version) is never charged it, nor one that showed a different percent', async () => {
+    for (const shown of [null, 0, 2, 0.5]) {
+      posted = [];
+      expect((await create({ SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: FEE_ADDR }, shown)).status).toBe(201);
+      expect(posted[0].senderFeePercent).toBeUndefined();
+    }
+  });
+
+  it('F6. One-tap orders from a screen without the fee are sized and sent without it', async () => {
+    // (covered with the sizing test above; here only the rule)
+    const { chargedFeePercent } = await import('./index.js');
+    const e = makeEnv(new MockKV(), { SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: FEE_ADDR });
+    expect(chargedFeePercent(e, 1)).toBe(1);
+    expect(chargedFeePercent(e, undefined)).toBe(0);
+    expect(chargedFeePercent(makeEnv(new MockKV()), 1)).toBe(0);
   });
 
   it('F4. goodcashFeePercent reads the setting safely', async () => {

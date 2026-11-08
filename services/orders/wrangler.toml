@@ -53,7 +53,7 @@ ROUTER_V2_ADDRESS = "0x546698368a246539Df5e641EdC2b79c5782ea359"
 ROUTER_V2_DEPLOY_BLOCK = "82237765"
 # GoodCash fee: a percent of each cash out, paid out through the payout partner to the GoodCash Safe (public address).
 # Remove SENDER_FEE_PERCENT (or set it to "0") to stop charging. The app shows the fee only when its own
-# VITE_GOODCASH_FEE_PERCENT matches this, so deploy the website first, then this.
+# VITE_GOODCASH_FEE_PERCENT matches this, so deploy either order (the server charges only when the screen showed the fee).
 SENDER_FEE_PERCENT = "1"
 SENDER_FEE_ADDRESS = "0x735Ef948F746bc141D04042d2A18aA7f967bce2f"
 
