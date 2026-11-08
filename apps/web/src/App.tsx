@@ -26,7 +26,7 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow } from './lib/router';
+import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, hasNetworkFee } from './lib/router';
 import { createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
@@ -482,6 +482,16 @@ export function App({
     return () => { alive = false; clearInterval(iv); };
   }, [isDemoMode, walletAddress]);
 
+  const [networkFeeLow, setNetworkFeeLow] = useState(false);
+  useEffect(() => {
+    if (isDemoMode || !walletAddress) {
+      setNetworkFeeLow(false);
+      return;
+    }
+    let alive = true;
+    void hasNetworkFee(walletAddress).then((ok) => alive && setNetworkFeeLow(!ok));
+    return () => { alive = false; };
+  }, [isDemoMode, walletAddress, mobileView]);
   const [addOpen, setAddOpen] = useState(false);
   const handleAddClick = () => {
     if (isDemoMode) {
@@ -1758,6 +1768,7 @@ export function App({
             }
             usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
             oneTap={ONE_TAP_ENABLED && !oneTapPaused}
+            networkFeeLow={networkFeeLow}
             onBack={() => setMobileView('cashout')}
             onConfirm={async () => {
               try {

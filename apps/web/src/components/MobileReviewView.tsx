@@ -10,6 +10,8 @@ export interface MobileReviewViewProps {
   usdtEstimate: number | null;
   /** True when one tap does everything (the one-tap router is on and open). */
   oneTap?: boolean;
+  /** True when the wallet has too little CELO to pay the network fee. */
+  networkFeeLow?: boolean;
   onBack: () => void;
   onConfirm: () => void | Promise<void>;
   errorMessage?: string | null;
@@ -25,6 +27,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
   nairaEstimate,
   usdtEstimate,
   oneTap,
+  networkFeeLow,
   onBack,
   onConfirm,
   onBankSaved,
@@ -138,6 +141,11 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         className="fixed left-0 right-0 bottom-0 px-[14px] pb-[14px]"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}
       >
+        {networkFeeLow && (
+          <div className="gc-note" style={{ marginBottom: 10, background: '#fff3c4' }} role="alert">
+            <b>Add a little extra first.</b> Your wallet needs a small amount of CELO (a few cents) to pay the network fee. G$ can't pay it.
+          </div>
+        )}
         <div className="gc-note" style={{ marginBottom: 10 }}>
           {(oneTap ?? ONE_TAP_ENABLED) ? (
             <><b>You'll confirm once in your wallet app.</b> Open MetaMask, tap Confirm, then come back here.</>

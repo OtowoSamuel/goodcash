@@ -165,3 +165,16 @@ describe('which cash-out flow is used', () => {
     expect(chooseCashOutFlow(false, true)).toBe('three-step');
   });
 });
+
+describe('network fee check', () => {
+  it('asks for a little extra CELO in plain words, before any wallet prompt', async () => {
+    const { hasNetworkFee, friendlySwapError, NETWORK_FEE_MESSAGE } = await import('./router');
+    expect(await hasNetworkFee('0x1111111111111111111111111111111111111111', { getBalance: async () => 0n })).toBe(false);
+    expect(await hasNetworkFee('0x1111111111111111111111111111111111111111', { getBalance: async () => 20_000_000_000_000_000n })).toBe(true);
+    // if the balance cannot be read, the wallet decides
+    expect(await hasNetworkFee('0x1111111111111111111111111111111111111111', { getBalance: async () => { throw new Error('rpc'); } })).toBe(true);
+    expect(friendlySwapError(new Error('NEEDS_NETWORK_FEE'))).toBe(NETWORK_FEE_MESSAGE);
+    expect(friendlySwapError(new Error('insufficient funds for gas'))).toBe(NETWORK_FEE_MESSAGE);
+    expect(NETWORK_FEE_MESSAGE).not.toMatch(/revert|0x|error/i);
+  });
+});
