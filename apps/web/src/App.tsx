@@ -506,7 +506,8 @@ export function App({
     };
   }, [isDemoMode, walletAddress, oneTapPaused, reviewing]);
   const [addOpen, setAddOpen] = useState(false);
-  const handleAddClick = () => {
+  const [addAsset, setAddAsset] = useState<'g' | 'celo'>('g');
+  const handleAddClick = (asset: 'g' | 'celo' = 'g') => {
     if (isDemoMode) {
       setWalletMessage('Adding G$ works with a real wallet. Connect your wallet to try it.');
       return;
@@ -515,6 +516,7 @@ export function App({
       handleConnectWallet();
       return;
     }
+    setAddAsset(asset);
     setAddOpen(true);
   };
   // Add G$: follow this device's open order even when the pop-up is closed, and tell the customer when to act
@@ -1319,20 +1321,21 @@ export function App({
     (trackerData && !trackerData.depositSent && mobileView !== 'processing' && mobileView !== 'success'));
   const statusNotice: StatusNotice | null = pickNotice([
     !!walletAddress && addPhase === 'ready' && { id: 'money-ready', tone: 'good', title: 'Your money is here!', text: 'Tap to get your G$.', onClick: () => setAddOpen(true) },
-    !!walletAddress && addPhase === 'problem' && { id: 'add-problem', tone: 'bad', title: 'Your Add G$ order needs a look.', text: 'Tap to see what happened.', onClick: () => setAddOpen(true) },
+    !!walletAddress && addPhase === 'problem' && { id: 'add-problem', tone: 'bad', title: 'Your top-up order needs a look.', text: 'Tap to see what happened.', onClick: () => setAddOpen(true) },
     unfinishedCashOut && {
       id: 'unfinished-cashout', tone: 'warn', title: 'You have an unfinished cash out.', text: 'Tap to finish getting your naira.',
       onClick: () => { setCurrentTab('cashout'); setMobileView(trackerData ? 'processing' : 'finish'); },
     },
     !!walletAddress && !!addPhase && addPhase !== 'ready' && addPhase !== 'problem' && {
       id: 'add-order', tone: 'warn',
-      title: addPhase === 'working' ? 'Getting your G$…' : 'Your Add G$ order is open.',
+      title: addPhase === 'working' ? 'Getting your G$…' : 'Your top-up order is open.',
       text: addPhase === 'working' ? 'Keep this tab open. Tap to watch.' : 'Keep this tab open. Tap to see where it is.',
       onClick: () => setAddOpen(true),
     },
     networkFee && !networkFee.enough && {
       id: 'top-up', tone: 'warn', title: 'Top up CELO to cash out.',
-      text: `You need about ${celoText(networkFee.needCelo)} CELO in your wallet for the network fee. G$ can't pay it.`,
+      text: `You need about ${celoText(networkFee.needCelo)} CELO in your wallet for the network fee. G$ can't pay it. Tap to add some with naira.`,
+      onClick: ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined,
     },
   ]);
   // The strip stays out of the way while a pop-up is open
@@ -1350,6 +1353,7 @@ export function App({
         <React.Suspense fallback={null}>
           <AddGsModal
             wallet={walletAddress}
+            initialAsset={addAsset}
             onClose={() => setAddOpen(false)}
             onArrived={() => {
               setOkNotice('Your G$ is in your wallet.');
@@ -1445,7 +1449,7 @@ export function App({
               balanceG={balanceG}
               dailyClaimG={123.48}
               onCashOutClick={() => setCurrentTab('cashout')}
-              onAddClick={ADDG_ENABLED ? handleAddClick : undefined}
+              onAddClick={ADDG_ENABLED ? () => handleAddClick() : undefined}
               language={language}
               isStale={balanceIsStale}
               ngnPerUsdt={liveNgnRate}
@@ -1910,7 +1914,7 @@ export function App({
                 balanceG={balanceG}
                 dailyClaimG={123.48}
                 onCashOutClick={() => setMobileView('cashout')}
-                onAddClick={ADDG_ENABLED ? handleAddClick : undefined}
+                onAddClick={ADDG_ENABLED ? () => handleAddClick() : undefined}
                   language={language}
                 isStale={balanceIsStale}
                 ngnPerUsdt={liveNgnRate}

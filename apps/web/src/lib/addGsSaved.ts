@@ -1,9 +1,11 @@
-import type { OnrampOrder } from './addGs';
+import type { AddAsset, OnrampOrder } from './addGs';
 
 /** The Add G$ order this device is in the middle of, so it survives closing the pop-up or reloading. */
 export const ADDGS_SAVED_KEY = 'goodcash_addg_order';
 
 export interface SavedAddGs {
+  /** G$ or CELO; older saved orders have none and mean G$ */
+  asset?: AddAsset;
   order: OnrampOrder;
   wallet: string;
   swapRequestId?: string;
