@@ -18,23 +18,33 @@ export const WALLETCONNECT_ENABLED = Boolean(PROJECT_ID && PROJECT_ID.trim());
 
 let provider: WcProvider | null = null;
 
-async function init(): Promise<WcProvider> {
-  if (provider) return provider;
-  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
-  const origin = window.location.origin;
-  provider = (await EthereumProvider.init({
-    projectId: PROJECT_ID as string,
-    chains: [42220],
+/**
+ * What we ask the WalletConnect library for. Celo is OPTIONAL, not required. A required chain makes any wallet that
+ * does not list Celo refuse the connection outright ("connection rejected"). With it optional, every wallet can
+ * connect, and the app switches to Celo (or says clearly that the wallet does not support it) right before a payment.
+ */
+export function walletConnectInitOptions(projectId: string, origin: string, rpcUrl: string) {
+  return {
+    projectId,
+    optionalChains: [42220],
     showQrModal: true,
-    rpcMap: { 42220: CELO_RPC_URL },
+    rpcMap: { 42220: rpcUrl },
     metadata: {
       name: 'GoodCash',
       description: 'Cash out your GoodDollar (G$) to naira.',
       url: origin,
       icons: [`${origin}/pwa-192x192.png`],
     },
-    qrModalOptions: { themeMode: 'light' },
-  })) as unknown as WcProvider;
+    qrModalOptions: { themeMode: 'light' as const },
+  };
+}
+
+async function init(): Promise<WcProvider> {
+  if (provider) return provider;
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+  provider = (await EthereumProvider.init(
+    walletConnectInitOptions(PROJECT_ID as string, window.location.origin, CELO_RPC_URL) as never
+  )) as unknown as WcProvider;
   return provider;
 }
 
