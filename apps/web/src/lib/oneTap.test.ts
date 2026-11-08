@@ -241,3 +241,15 @@ describe('a lost wallet reply is never reported as "nothing was taken"', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('messages from our own server', () => {
+  it('are shown as written, so a retry after a successful cash out says why instead of a vague error', async () => {
+    const { friendlySwapError } = await import('./router');
+    const { createOneTapOrder, OrderRequestError } = await import('./useOffRamp');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: "That's more G$ than your wallet holds." }), { status: 400 })));
+    const err = await createOneTapOrder({ minUsdt: '0.57', amountG: '5000', refundAddress: '0x1111111111111111111111111111111111111111', recipient: { institution: 'X', accountIdentifier: '1', accountName: 'A' } }).catch((e) => e);
+    expect(err).toBeInstanceOf(OrderRequestError);
+    expect(friendlySwapError(err)).toBe("That's more G$ than your wallet holds.");
+    vi.unstubAllGlobals();
+  });
+});

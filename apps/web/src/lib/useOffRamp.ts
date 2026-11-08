@@ -174,15 +174,27 @@ const ORDERS_BASE = (
   typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_ORDERS_API_URL?: string } }).env?.VITE_ORDERS_API_URL
 ) ?? 'http://localhost:8787';
 
+/**
+ * Our own server refused the request. Its message is written for customers ("That's more G$ than your wallet holds.")
+ * and it always happens BEFORE the wallet is asked to send anything, so it can be shown as it is.
+ */
+export class OrderRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OrderRequestError';
+  }
+}
+
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${ORDERS_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = (await res.json()) as T & { error?: string };
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
-    throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
+    const message = (data as { error?: string }).error;
+    throw message && message.length < 200 ? new OrderRequestError(message) : new Error(`HTTP ${res.status}`);
   }
   return data;
 }
