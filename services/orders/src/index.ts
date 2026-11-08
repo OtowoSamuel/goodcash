@@ -26,7 +26,8 @@ export interface Env {
   ROUTER_V2_DEPLOY_BLOCK?: string; // Block the one-tap router was deployed in (where history scanning starts)
   SENDER_FEE?: string;            // Optional GoodCash fee in USDT (needs SENDER_FEE_ADDRESS)
   RELAY_API_KEY?: string;         // Optional key for the swap service (a secret; raises its limits)
-  SENDER_FEE_ADDRESS?: string;    // Wallet that receives SENDER_FEE
+  SENDER_FEE_ADDRESS?: string;    // Wallet that receives SENDER_FEE or SENDER_FEE_PERCENT
+  SENDER_FEE_PERCENT?: string;    // GoodCash fee as a percent of each cash out (for example "1"). Needs SENDER_FEE_ADDRESS
   RESEND_API_KEY?: string;        // Optional: emails support tickets to SUPPORT_INBOX (secret)
   SUPPORT_INBOX?: string;         // Where support tickets are emailed. A secret: never put it in code or wrangler.toml
   RATE_LIMITER_READ?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };   // looser, for status polling
@@ -1059,6 +1060,17 @@ async function handleWalletHistory(request: Request, env: Env): Promise<Response
  * Ask the payout partner for an off-ramp order. Returns the order, or a ready-made friendly error response.
  * The partner's API key stays on the server.
  */
+/**
+ * GoodCash's own fee on a cash out, as a percent of the payout. Off unless BOTH a percent and an EVM fee address
+ * are configured. Capped at 5 so a typo can never charge a customer a lot.
+ */
+export function goodcashFeePercent(env: Env): number {
+  const pct = Number(env.SENDER_FEE_PERCENT);
+  if (!Number.isFinite(pct) || pct <= 0 || pct > 5) return 0;
+  if (!env.SENDER_FEE_ADDRESS || !/^0x[0-9a-fA-F]{40}$/.test(env.SENDER_FEE_ADDRESS)) return 0;
+  return pct;
+}
+
 async function createPaycrestOrderRaw(
   env: Env,
   input: {
@@ -1068,14 +1080,20 @@ async function createPaycrestOrderRaw(
     reference: string;
   }
 ): Promise<{ order: PaycrestOrderResponse } | { response: Response }> {
+  const feePct = goodcashFeePercent(env);
+  const feeFields: Record<string, string> =
+    feePct > 0
+      ? // A percent fee. "customer" pays the partner's own transaction fee on top, so GoodCash earns the full percent
+        // even on small orders (otherwise the partner's fee would swallow it).
+        { senderFeePercent: String(feePct), senderFeeAddress: env.SENDER_FEE_ADDRESS as string, transactionFeePayer: 'customer' }
+      : // Paycrest rejects an explicit zero fee ("Sender fee must be greater than zero") and requires a fee address
+        // whenever a fee is set. So send no fee at all unless the team configures both.
+        env.SENDER_FEE && Number(env.SENDER_FEE) > 0 && env.SENDER_FEE_ADDRESS
+        ? { senderFee: env.SENDER_FEE, senderFeeAddress: env.SENDER_FEE_ADDRESS }
+        : {};
   const paycrestBody = {
     amount: input.amount,
-    // Paycrest rejects an explicit zero fee ("Sender fee must be greater than zero") and
-    // requires a fee address whenever a fee is set. So send no fee at all unless the
-    // team configures both SENDER_FEE and SENDER_FEE_ADDRESS.
-    ...(env.SENDER_FEE && Number(env.SENDER_FEE) > 0 && env.SENDER_FEE_ADDRESS
-      ? { senderFee: env.SENDER_FEE, senderFeeAddress: env.SENDER_FEE_ADDRESS }
-      : {}),
+    ...feeFields,
     source: {
       type: 'crypto',
       currency: 'USDT',
@@ -1095,15 +1113,25 @@ async function createPaycrestOrderRaw(
     reference: input.reference,
   };
 
-  try {
-    const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders`, {
+  const post = (body: unknown) =>
+    fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'API-Key': env.PAYCREST_API_KEY,
       },
-      body: JSON.stringify(paycrestBody),
+      body: JSON.stringify(body),
     });
+
+  try {
+    let res = await post(paycrestBody);
+    if (!res.ok && feePct > 0 && (res.status === 400 || res.status === 422)) {
+      // The partner may refuse our fee setting (for example a cap on the profile). Never block a customer's cash out
+      // over our own fee: log it for the team and create the order without the fee.
+      console.error(`[orders] Paycrest refused the GoodCash fee (${res.status}): ${(await res.text()).slice(0, 200)}. Retrying without it.`);
+      const { senderFeePercent: _a, senderFeeAddress: _b, transactionFeePayer: _c, ...noFee } = paycrestBody as Record<string, unknown>;
+      res = await post(noFee);
+    }
     if (!res.ok) {
       const errText = await res.text();
       // Sanitise: do not forward raw Paycrest error which may contain internal details
@@ -1564,7 +1592,9 @@ async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Resp
 
   const minAtomic = toAtomic6(input.minUsdt);
   const floor = toAtomic6(PAYCREST_MIN_USDT.toFixed(2));
-  let amountAtomic = minAtomic - ONE_TAP_FEE_RESERVE_ATOMIC;
+  // Start from what fits: (guaranteed minimum - partner fee) / (1 + GoodCash fee %). The loop below corrects any rounding.
+  const feeBps = BigInt(Math.round(goodcashFeePercent(env) * 100));
+  let amountAtomic = ((minAtomic - ONE_TAP_FEE_RESERVE_ATOMIC) * 10_000n) / (10_000n + feeBps);
   const tooSmall = () => err('That amount is too small to pay out after fees. Try a larger amount.', 400);
   if (amountAtomic < floor) return tooSmall();
 

@@ -4,6 +4,7 @@ import type { BankDetailsState } from '../lib/useBankDetails';
 import { BankDetailsModal, type SavedBank } from '../components/BankDetailsModal';
 import { formatNaira, getCashoutRate } from '../lib/rate';
 import { StepBar, CASH_OUT_STEPS } from './StepBar';
+import { GOODCASH_FEE_PERCENT } from '../lib/units';
 
 export interface MobileReviewViewProps {
   amountG: number | null;
@@ -60,7 +61,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
 
   return (
     <div className="gc fixed inset-0 z-40 flex flex-col overflow-y-auto">
-      <div className="gc-col" style={{ padding: '14px 14px 96px', gap: '10px' }}>
+      <div className="gc-col" style={{ padding: '14px 14px 250px', gap: '10px' }}>
         {/* Header */}
         <header className="gc-top relative">
           <button
@@ -123,6 +124,12 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
             <span>GoodDollar contribution (10%)</span>
             <span className="gc-mark">−{Math.floor(exitContributionG)} G$</span>
           </div>
+          {GOODCASH_FEE_PERCENT > 0 && (
+            <div className="gc-row">
+              <span>GoodCash fee ({GOODCASH_FEE_PERCENT}%)</span>
+              <span>{nairaEstimate != null ? `about ₦${Math.max(1, Math.round((nairaEstimate * GOODCASH_FEE_PERCENT) / 100)).toLocaleString('en-US')}` : '—'}</span>
+            </div>
+          )}
           <div className="gc-row">
             <span>Network fee (paid in CELO, not G$)</span>
             <span>{feeText}</span>

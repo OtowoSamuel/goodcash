@@ -1259,6 +1259,19 @@ describe('One-tap cash out (router V2)', () => {
     expect((await worker.fetch(makeRequest('POST', '/orders/v2', { ...ORDER_BODY, minUsdt: '0.300000' }), env)).status).toBe(400);
   });
 
+  it('O3b. With the GoodCash fee on, the first order is sized so amount + 1% fee + partner fee fits the guaranteed minimum', async () => {
+    const m = mock({ totals: ['0.570000'] });
+    vi.stubGlobal('fetch', m.f);
+    const feeEnv = { ...env, SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: '0x735Ef948F746bc141D04042d2A18aA7f967bce2f' } as Env;
+    const res = await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), feeEnv);
+    expect(res.status).toBe(201);
+    // (0.57 - 0.02) / 1.01 = 0.544554...
+    expect(Number(m.posted[0].amount)).toBeCloseTo(0.544554, 5);
+    expect(m.posted[0].amount).toBe('0.544554');
+    // never more than the guaranteed minimum
+    expect(0.544554 * 1.01 + 0.02).toBeLessThanOrEqual(0.57);
+  });
+
   it('O4. Is off until the one-tap router is configured', async () => {
     vi.stubGlobal('fetch', mock().f);
     const res = await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), makeEnv(new MockKV()));
@@ -1618,5 +1631,69 @@ describe('Add G$ orders', () => {
     expect(res.status).toBe(400);
     expect(JSON.stringify(log.mock.calls)).not.toContain('22212345678');
     log.mockRestore();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// GoodCash fee (a percent of each cash out, paid through the payout partner's sender fee)
+// ---------------------------------------------------------------------------
+describe('GoodCash fee on cash outs', () => {
+  const FEE_ADDR = '0x735Ef948F746bc141D04042d2A18aA7f967bce2f';
+  let posted: Array<Record<string, any>>;
+  let refuseFee = false;
+  beforeEach(() => {
+    posted = [];
+    refuseFee = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_u: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          const body = JSON.parse(String(init.body));
+          posted.push(body);
+          if (refuseFee && body.senderFeePercent) return new Response('{"message":"fee over cap"}', { status: 400 });
+          return new Response(JSON.stringify(MOCK_PAYCREST_RESPONSE), { status: 201 });
+        }
+        return new Response(JSON.stringify({ data: MOCK_PAYCREST_RESPONSE }), { status: 200 });
+      })
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const create = (over: Partial<Env> = {}) => worker.fetch(makeRequest('POST', '/orders', VALID_BODY), makeEnv(new MockKV(), over));
+
+  it('F1. With a percent and a fee address, the order asks the partner for that percent, paid by the customer on top of the partner fee', async () => {
+    expect((await create({ SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: FEE_ADDR })).status).toBe(201);
+    expect(posted[0]).toMatchObject({ senderFeePercent: '1', senderFeeAddress: FEE_ADDR, transactionFeePayer: 'customer' });
+    expect(posted[0].senderFee).toBeUndefined();
+  });
+
+  it('F2. No fee unless both the percent and a real address are set, and never more than 5 percent', async () => {
+    for (const over of [{}, { SENDER_FEE_PERCENT: '1' }, { SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: 'not-an-address' }, { SENDER_FEE_PERCENT: '9', SENDER_FEE_ADDRESS: FEE_ADDR }, { SENDER_FEE_PERCENT: '0', SENDER_FEE_ADDRESS: FEE_ADDR }]) {
+      posted = [];
+      await create(over as Partial<Env>);
+      expect(posted[0].senderFeePercent).toBeUndefined();
+      expect(posted[0].senderFeeAddress).toBeUndefined();
+    }
+  });
+
+  it('F3. If the partner refuses the fee setting, the customer\'s order still goes through, without the fee', async () => {
+    refuseFee = true;
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await create({ SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: FEE_ADDR });
+    expect(res.status).toBe(201);
+    expect(posted).toHaveLength(2);
+    expect(posted[1].senderFeePercent).toBeUndefined();
+    expect(JSON.stringify(err.mock.calls)).toMatch(/refused the GoodCash fee/);
+    err.mockRestore();
+  });
+
+  it('F4. goodcashFeePercent reads the setting safely', async () => {
+    const { goodcashFeePercent } = await import('./index.js');
+    const base = makeEnv(new MockKV());
+    expect(goodcashFeePercent({ ...base, SENDER_FEE_PERCENT: '1', SENDER_FEE_ADDRESS: FEE_ADDR })).toBe(1);
+    expect(goodcashFeePercent({ ...base, SENDER_FEE_PERCENT: '0.5', SENDER_FEE_ADDRESS: FEE_ADDR })).toBe(0.5);
+    expect(goodcashFeePercent({ ...base, SENDER_FEE_PERCENT: 'abc', SENDER_FEE_ADDRESS: FEE_ADDR })).toBe(0);
+    expect(goodcashFeePercent(base)).toBe(0);
   });
 });

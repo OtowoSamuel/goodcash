@@ -26,3 +26,18 @@ describe('nairaFromUsdt', () => {
     expect(nairaFromUsdt(0.01, 1370)).toBe(0);
   });
 });
+
+describe('GoodCash fee maths', () => {
+  it('pays out (dollars - partner fee) / (1 + fee), so payout + our fee + partner fee never exceeds the dollars', async () => {
+    const { payoutUsdt, nairaFromUsdt, goodcashFeeNaira, PAYOUT_FEE_RESERVE_USDT } = await import('./units');
+    expect(payoutUsdt(0.57, 0)).toBeCloseTo(0.55, 6);
+    const p = payoutUsdt(0.57, 1);
+    expect(p).toBeCloseTo(0.544554, 5);
+    expect(p + p * 0.01 + PAYOUT_FEE_RESERVE_USDT).toBeLessThanOrEqual(0.57 + 1e-9);
+    // 1% costs the customer 1% of the payout in naira
+    expect(nairaFromUsdt(0.57, 1385, 1)).toBeCloseTo(nairaFromUsdt(0.57, 1385, 0) / 1.01, 4);
+    expect(goodcashFeeNaira(0.57, 1385, 1)).toBeCloseTo(nairaFromUsdt(0.57, 1385, 1) * 0.01, 4);
+    expect(goodcashFeeNaira(0.57, 1385, 0)).toBe(0);
+    expect(payoutUsdt(0.01, 1)).toBe(0);
+  });
+});

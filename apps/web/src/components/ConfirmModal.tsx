@@ -1,5 +1,6 @@
 import { celoText, networkFeeMessage, type NetworkFeeInfo } from '../lib/router';
 import { Modal } from './Modal';
+import { GOODCASH_FEE_PERCENT } from '../lib/units';
 import { StepBar, CASH_OUT_STEPS } from './StepBar';
 import React, { useEffect, useState } from 'react';
 import type { QuoteResult } from '../lib/quote';
@@ -188,6 +189,13 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             <span className="font-medium text-[#111]">{t.exitContribution}</span>
             <span className="font-bold text-[#111]">−{exitContributionG.toFixed(0)} G$</span>
           </div>
+
+          {GOODCASH_FEE_PERCENT > 0 && Number.isFinite(cashoutRate.netNaira) && (
+            <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+              <span className="font-medium text-[#111]">GoodCash fee ({GOODCASH_FEE_PERCENT}%)</span>
+              <span className="font-bold text-[#111]">about {formatNaira(Math.max(1, (cashoutRate.netNaira * GOODCASH_FEE_PERCENT) / 100))}</span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
             <span className="font-medium text-[#111]">{t.youReceiveAbout}</span>

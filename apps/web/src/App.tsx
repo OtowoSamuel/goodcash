@@ -1,6 +1,6 @@
 import { isPaidOutStatus } from './lib/useOffRamp';
 import { useAddGsWatcher, type AddGsPhase } from './lib/useAddGsWatcher';
-import { gToWei, nairaFromUsdt } from './lib/units';
+import { gToWei, nairaFromUsdt, GOODCASH_FEE_PERCENT } from './lib/units';
 import { Modal } from './components/Modal';
 import { getWalletLink, openWalletApp } from './lib/walletLink';
 import React, { useState, useEffect, useRef } from 'react';
@@ -1557,12 +1557,18 @@ export function App({
                   <h3 className="font-bold uppercase text-[#111]">WHAT YOU'LL PAY</h3>
                 </div>
                 <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
-                  <span>GoodDollar contribution (10%)</span>
-                  <span className="bg-[#ffd23f] px-2 py-0.5 rounded text-[#111] font-medium">−100 G$</span>
+                  <span>GoodDollar contribution</span>
+                  <span className="bg-[#ffd23f] px-2 py-0.5 rounded text-[#111] font-medium">10% of your G$</span>
                 </div>
+                {GOODCASH_FEE_PERCENT > 0 && (
+                  <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
+                    <span>GoodCash fee</span>
+                    <span>{GOODCASH_FEE_PERCENT}% of your naira</span>
+                  </div>
+                )}
                 <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
-                  <span>Network fee</span>
-                  <span>under $0.001</span>
+                  <span>Network fee (paid in CELO)</span>
+                  <span>{networkFee ? `about ₦${networkFee.celoUsd && liveNgnRate ? Math.max(1, Math.ceil(networkFee.feeCelo * networkFee.celoUsd * liveNgnRate)).toLocaleString('en-US') : '—'}` : 'checking…'}</span>
                 </div>
                 <div className="gc-row pt-3 pb-3">
                   <span>You get at least</span>

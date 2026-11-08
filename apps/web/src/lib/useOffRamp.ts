@@ -9,7 +9,7 @@
  *   5. On expiry, call `renewOrder()` to create a fresh order (never reuse an address).
  */
 
-import { PAYOUT_FEE_RESERVE_USDT } from './units';
+import { GOODCASH_FEE_PERCENT, PAYOUT_FEE_RESERVE_USDT } from './units';
 import { friendlyApiError } from './userMessage';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { IS_DEMO_MODE } from './router';
@@ -74,8 +74,10 @@ const ONE_USDT_ATOMIC = 1_000_000;
 
 export function paycrestOrderAmount(usdtReceived: number): string {
   if (!Number.isFinite(usdtReceived) || usdtReceived <= 0) return '0.000000';
-  // Whole micro-dollars, so floating-point noise can never shave a unit off the order amount
-  const atomic = Math.round(usdtReceived * ONE_USDT_ATOMIC) - Math.round(PAYCREST_FEE_RESERVE_USDT * ONE_USDT_ATOMIC);
+  // Whole micro-dollars, so floating-point noise can never shave a unit off the order amount. Our own fee is added by the
+  // partner on top of this amount, so leave room for it (rounding down: the total must never exceed what the swap made).
+  const budget = Math.round(usdtReceived * ONE_USDT_ATOMIC) - Math.round(PAYCREST_FEE_RESERVE_USDT * ONE_USDT_ATOMIC);
+  const atomic = Math.floor((budget * 10_000) / (10_000 + Math.round(GOODCASH_FEE_PERCENT * 100)));
   return (Math.max(0, atomic) / ONE_USDT_ATOMIC).toFixed(6);
 }
 

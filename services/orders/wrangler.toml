@@ -51,6 +51,11 @@ ALLOWED_ORIGINS = "https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,htt
 # One-tap router (owned by the GoodCash Safe). The app only uses it on builds that also set VITE_ROUTER_V2_ADDRESS.
 ROUTER_V2_ADDRESS = "0x546698368a246539Df5e641EdC2b79c5782ea359"
 ROUTER_V2_DEPLOY_BLOCK = "82237765"
+# GoodCash fee: a percent of each cash out, paid out through the payout partner to the GoodCash Safe (public address).
+# Remove SENDER_FEE_PERCENT (or set it to "0") to stop charging. The app shows the fee only when its own
+# VITE_GOODCASH_FEE_PERCENT matches this, so deploy the website first, then this.
+SENDER_FEE_PERCENT = "1"
+SENDER_FEE_ADDRESS = "0x735Ef948F746bc141D04042d2A18aA7f967bce2f"
 
 [env.development.vars]
 ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"
