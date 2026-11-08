@@ -226,7 +226,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
         </div>
         {!IS_DEMO_MODE && (
           <div className="gc-sm" role={isBelowMinimum && amountNumber > 0 ? 'alert' : undefined} style={{ marginTop: 8, fontWeight: 700, color: isBelowMinimum && amountNumber > 0 ? '#b00020' : '#444' }}>
-            Minimum cash out is about {minG.toLocaleString()} G$, plus a little CELO for the network fee
+            Minimum cash out is about {minG.toLocaleString()} G$
           </div>
         )}
       </div>

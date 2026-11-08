@@ -15,7 +15,18 @@ describe('page footer', () => {
     expect((footer.match(/href="\/about"/g) ?? []).length).toBe(1);
     expect((footer.match(/href="\/privacy"/g) ?? []).length).toBe(1);
     expect((footer.match(/href="\/terms"/g) ?? []).length).toBe(1);
-    // five separators between six items: contract, GoodDollar, Paycrest, About, Privacy page, Terms, privacy notice
-    expect((footer.match(/>·<\/span>/g) ?? []).length).toBeGreaterThanOrEqual(6);
+    // four separators between five items: contract, GoodDollar, About, Privacy, Terms
+    expect((footer.match(/>·<\/span>/g) ?? []).length).toBe(4);
+  });
+
+  it('names no payout partner and has no second privacy link', () => {
+    expect(footer).not.toMatch(/paycrest/i);
+    expect(footer).not.toMatch(/privacyLinkText/);
+  });
+
+  it('links the contract customers actually use', async () => {
+    const { ROUTER_ADDRESS, BLOCKSCOUT_URL } = await import('./SafetyBanner');
+    expect(BLOCKSCOUT_URL).toContain(ROUTER_ADDRESS);
+    expect(ROUTER_ADDRESS).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 });

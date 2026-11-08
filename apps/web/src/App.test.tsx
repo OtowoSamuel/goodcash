@@ -99,12 +99,12 @@ describe('Step 1 home validation', () => {
 
     expect(screen.getAllByText(/your balance/i)[0]).toBeInTheDocument();
     expect(screen.getAllByText(/to go/i)[0]).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /dismiss/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /stay safe/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Cash out your GoodDollar/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/New\b/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/dune\.com/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/pseudonymous personal data/i)).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /privacy/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('link', { name: /privacy/i }).length).toBeGreaterThanOrEqual(1);
 
     // Below minimum: main button should be disabled cash out
     const primaryAction = screen.getAllByRole('button', { name: /Cash out opens at/i })[0];
@@ -165,19 +165,19 @@ describe('Step 2b shell and i18n', () => {
     expect(mobileNav.querySelectorAll('button')).toHaveLength(3);
   });
 
-  it('dismisses the safety banner when the close control is clicked', () => {
+  it('keeps the safety message one tap away, in one pop-up, instead of a banner', () => {
     storageMock.clear();
     render(<App />);
 
-    // Safety text appears in both the mobile banner and the desktop side panel
-    expect(screen.getAllByText(/Never share your seed phrase/i).length).toBeGreaterThanOrEqual(1);
-    // The dismiss button only exists in the mobile SafetyBanner component
-    fireEvent.click(screen.getByRole('button', { name: /dismiss safety notice/i }));
-    // After dismissing, the SafetyBanner (and its dismiss button) is gone
-    expect(screen.queryByRole('button', { name: /dismiss safety notice/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Never share your seed phrase/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /stay safe/i })[0]);
+    expect(screen.getByRole('dialog', { name: /stay safe/i })).toBeInTheDocument();
+    expect(screen.getByText(/Never share your seed phrase/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /got it/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('renders no "licensed", "0.1129" or "18s" on any tab; privacy note contains "pseudonymous"', () => {
+  it('renders no "licensed", "0.1129" or "18s" on any tab; privacy is a single link', () => {
     storageMock.clear();
     render(<App />);
 
@@ -198,10 +198,8 @@ describe('Step 2b shell and i18n', () => {
     expect(screen.queryByText(/0\.1129/)).not.toBeInTheDocument();
     expect(screen.queryByText(/18s/)).not.toBeInTheDocument();
 
-    // Privacy note contains "pseudonymous"
-    const privacyButtons = screen.getAllByRole('button', { name: /privacy/i });
-    fireEvent.click(privacyButtons[0]);
-    expect(screen.getByText(/pseudonymous/i)).toBeInTheDocument();
+    // The privacy page is one link, not a second pop-up note
+    expect(screen.queryByRole('button', { name: /^privacy$/i })).not.toBeInTheDocument();
   });
 });
 

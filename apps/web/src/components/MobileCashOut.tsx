@@ -114,7 +114,7 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
       >
         {belowMinimum
           ? `Minimum cash out is ${minG.toLocaleString()} G$. Enter a bit more to continue.`
-          : `Minimum cash out is about ${minG.toLocaleString()} G$, plus a little CELO for the network fee`}
+          : `Minimum cash out is about ${minG.toLocaleString()} G$`}
       </p>
 
       <div className="gc-card gc-card--mint">

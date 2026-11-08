@@ -11,8 +11,6 @@ interface ReadinessCardProps {
   onCashOutClick: () => void;
   /** Opens the naira-to-G$ screen. The button shows only when this is given. */
   onAddClick?: () => void;
-  /** Shown under the button when the wallet can't pay the network fee (paid in CELO). */
-  feeNote?: string | null;
   language: Language;
   isLoading?: boolean;
   isStale?: boolean;
@@ -41,7 +39,6 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   dailyClaimG = 0,
   onCashOutClick,
   onAddClick,
-  feeNote = null,
   isStale = false,
   ngnPerUsdt = null,
   history = [],
@@ -87,14 +84,6 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
         <div className="gc-sticker">{percent}%</div>
       </div>
 
-      {/* ── First payout card ───────────────────────────────────────── */}
-      <div className="gc-card">
-        <div className="gc-lab">{t.firstPayout}</div>
-        <div className="gc-sm" style={{ marginTop: '2px' }}>
-          {t.minimumCashOutAbout.replace('{g}', getMinimumCashOutG().toLocaleString()).replace('{naira}', minNaira)}
-        </div>
-      </div>
-
       {/* ── Last cash out (mobile only) ─────────────────────────────── */}
       {lastCashOut && (
         <div
@@ -124,10 +113,9 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
           {t.cashOutOpensAt.replace('{n}', getMinimumCashOutG().toLocaleString())}
         </button>
       )}
-
-      {feeNote && (
-        <div className="gc-note" role="alert" style={{ marginTop: 10, background: '#fff3c4' }}>
-          {feeNote}
+      {!minimumReached && (
+        <div className="gc-sm" style={{ textAlign: 'center' }}>
+          Minimum cash out is about {getMinimumCashOutG().toLocaleString()} G$ ({minNaira}).
         </div>
       )}
 

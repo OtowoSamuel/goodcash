@@ -5,8 +5,10 @@ import { Modal } from './components/Modal';
 import { getWalletLink, openWalletApp } from './lib/walletLink';
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
-import { SafetyBanner } from './components/SafetyBanner';
 import { ReadinessCard } from './components/ReadinessCard';
+import { StatusStrip, pickNotice, type StatusNotice } from './components/StatusStrip';
+import { BLOCKSCOUT_URL } from './components/SafetyBanner';
+import { HomeLinks } from './components/HomeLinks';
 const AddGsModal = React.lazy(() => import('./components/AddGsModal'));
 /** Naira -> G$ is parked (it needs the customer's BVN/NIN). Only builds that set VITE_ADDG_ENABLED=true show it. */
 const ADDG_ENABLED = import.meta.env.VITE_ADDG_ENABLED === 'true';
@@ -24,7 +26,6 @@ import type { BankDetailsState } from './lib/useBankDetails';
 import type { Language } from './lib/i18n';
 import { getTranslations } from './lib/i18n';
 import { fetchPaycrestRate, MIN_NET_USDT_REQUIRED, ORDERS_API_BASE, getMinimumCashOutG, formatNaira } from './lib/rate';
-import { BLOCKSCOUT_URL } from './components/SafetyBanner';
 import { getNetQuote, type QuoteResult } from './lib/quote';
 import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
@@ -232,7 +233,6 @@ export function App({
     return null;
   });
 
-  const [showPrivacy, setShowPrivacy] = useState(false);
 
   // Live NGN rate for Home / History so naira figures are not blank
   const [confirmStage, setConfirmStage] = useState<'swap' | 'order' | 'pay' | null>(null);
@@ -1314,43 +1314,32 @@ export function App({
     );
   }
 
+  // One status strip per screen: the single most urgent thing. (Replaces the floating banners and the yellow box.)
+  const unfinishedCashOut = !!walletAddress && ((pendingSwapResult && !pendingQuote && !trackerData && mobileView !== 'finish') ||
+    (trackerData && !trackerData.depositSent && mobileView !== 'processing' && mobileView !== 'success'));
+  const statusNotice: StatusNotice | null = pickNotice([
+    !!walletAddress && addPhase === 'ready' && { id: 'money-ready', tone: 'good', title: 'Your money is here!', text: 'Tap to get your G$.', onClick: () => setAddOpen(true) },
+    !!walletAddress && addPhase === 'problem' && { id: 'add-problem', tone: 'bad', title: 'Your Add G$ order needs a look.', text: 'Tap to see what happened.', onClick: () => setAddOpen(true) },
+    unfinishedCashOut && {
+      id: 'unfinished-cashout', tone: 'warn', title: 'You have an unfinished cash out.', text: 'Tap to finish getting your naira.',
+      onClick: () => { setCurrentTab('cashout'); setMobileView(trackerData ? 'processing' : 'finish'); },
+    },
+    !!walletAddress && !!addPhase && addPhase !== 'ready' && addPhase !== 'problem' && {
+      id: 'add-order', tone: 'warn',
+      title: addPhase === 'working' ? 'Getting your G$…' : 'Your Add G$ order is open.',
+      text: addPhase === 'working' ? 'Keep this tab open. Tap to watch.' : 'Keep this tab open. Tap to see where it is.',
+      onClick: () => setAddOpen(true),
+    },
+    networkFee && !networkFee.enough && {
+      id: 'top-up', tone: 'warn', title: 'Top up CELO to cash out.',
+      text: `You need about ${celoText(networkFee.needCelo)} CELO in your wallet for the network fee. G$ can't pay it.`,
+    },
+  ]);
+  // The strip stays out of the way while a pop-up is open
+  const strip = addOpen ? null : <StatusStrip notice={statusNotice} />;
+
   return (
     <div className="gc min-h-screen flex flex-col">
-      {/* Notices live at the very top so phones and desktops both see them (the desktop layout is hidden on phones) */}
-      {walletAddress && ((pendingSwapResult && !pendingQuote && !trackerData && mobileView !== 'finish') ||
-        (trackerData && !trackerData.depositSent && mobileView !== 'processing' && mobileView !== 'success')) && currentTab !== 'cashout' && (mobileView === 'home' || mobileView === 'history') && (
-        <button
-          type="button"
-          className="gc-note gc-banner fixed left-1/2 z-[150] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
-          onClick={() => {
-            setCurrentTab('cashout');
-            setMobileView(trackerData ? 'processing' : 'finish');
-          }}
-          style={{ background: '#ffd23f', textAlign: 'left', cursor: 'pointer' }}
-        >
-          <b>You have an unfinished cash out.</b> Tap to finish getting your naira.
-        </button>
-      )}
-
-      {walletAddress && addPhase && !addOpen && (
-        <button
-          type="button"
-          className="gc-note gc-banner fixed left-1/2 z-[150] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
-          onClick={() => setAddOpen(true)}
-          style={{ background: addPhase === 'ready' ? '#8cf0c0' : addPhase === 'problem' ? '#ffd6d6' : '#ffd23f', textAlign: 'left', cursor: 'pointer' }}
-        >
-          {addPhase === 'ready' ? (
-            <><b>Your money is here!</b> Tap to get your G$.</>
-          ) : addPhase === 'problem' ? (
-            <><b>Your Add G$ order needs a look.</b> Tap to see what happened.</>
-          ) : addPhase === 'working' ? (
-            <><b>Getting your G$…</b> Keep this tab open. Tap to watch.</>
-          ) : (
-            <><b>Your Add G$ order is open.</b> Keep this tab open. Tap to see where it is.</>
-          )}
-        </button>
-      )}
-
       {magicOpen && (
         <React.Suspense fallback={null}>
           <MagicConnect onConnected={onMagicConnected} onError={onMagicError} onClose={() => setMagicOpen(false)} />
@@ -1448,22 +1437,21 @@ export function App({
       />
 
       <main className="gc-main">
-        <div className="gc-mobile-only" style={{ width: '100%', maxWidth: '420px', margin: '0 auto' }}>
-          <SafetyBanner language={language} />
-        </div>
-
         <div className="gc-col pb-24">
+          {(currentTab === 'home') && strip}
           {currentTab === 'home' ? (
+            <>
             <ReadinessCard
               balanceG={balanceG}
               dailyClaimG={123.48}
               onCashOutClick={() => setCurrentTab('cashout')}
               onAddClick={ADDG_ENABLED ? handleAddClick : undefined}
-              feeNote={networkFee && !networkFee.enough ? `You also need about ${celoText(networkFee.needCelo)} CELO in your wallet to pay the network fee. G$ can't pay it, so top up a little CELO before cashing out.` : null}
               language={language}
               isStale={balanceIsStale}
               ngnPerUsdt={liveNgnRate}
             />
+            <HomeLinks language={language} />
+            </>
           ) : currentTab === 'cashout' ? (
             <>
               {trackerData && !pendingQuote ? (
@@ -1556,48 +1544,8 @@ export function App({
           ) : null}
         </div>
 
+        {currentTab !== 'home' && (
         <aside className="gc-side">
-          {currentTab === 'home' && (
-            <>
-              <div className="gc-card">
-                <div className="gc-lab">{t.howItWorks}</div>
-                <div className="gc-st">
-                  <b className="gc-st__num">1</b>
-                  <span className="gc-sm">{t.howItWorksStep1}</span>
-                </div>
-                <div className="gc-st">
-                  <b className="gc-st__num">2</b>
-                  <span className="gc-sm">{t.howItWorksStep2}</span>
-                </div>
-                <div className="gc-st">
-                  <b className="gc-st__num">3</b>
-                  <span className="gc-sm">{t.howItWorksStep3}</span>
-                </div>
-              </div>
-              <div className="gc-card">
-                <div className="gc-lab">{t.whatItCostsPanel}</div>
-                <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.whatItCostsExplanation}
-                </div>
-              </div>
-              <div className="gc-card gc-card--mint">
-                <div className="gc-lab">{t.staySafe}</div>
-                <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.staySafeText}{' '}
-                  <a
-                    href={BLOCKSCOUT_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="gc-inter"
-                    style={{ color: '#111', textDecoration: 'underline' }}
-                  >
-                    Contract 0xA433…c407 ↗
-                  </a>
-                </div>
-              </div>
-            </>
-          )}
-
           {currentTab === 'cashout' && (
             <>
               <div className="gc-card">
@@ -1687,42 +1635,8 @@ export function App({
             </>
           )}
         </aside>
+        )}
       </main>
-
-      {showPrivacy && (
-        <div style={{ width: '100%', maxWidth: '420px', margin: '0 auto 10px', padding: '0 14px' }}>
-          <div
-            className="gc-note"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '10px',
-            }}
-          >
-            <div>
-              <strong>{t.privacyTitle}:</strong> {t.privacyText}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowPrivacy(false)}
-              aria-label="Close privacy note"
-              className="gc-hit"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                font: '800 13px Inter',
-                cursor: 'pointer',
-                padding: '2px 6px',
-                color: '#111',
-                flex: 'none',
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
 
       {pendingQuote && (
         <ConfirmModal
@@ -1774,28 +1688,11 @@ export function App({
             {t.goodDollarLinkText}
           </a>
           <span className="text-[#111] font-bold">·</span>
-          <a
-            href="https://paycrest.io"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
-          >
-            {t.paycrestLinkText}
-          </a>
-          <span className="text-[#111] font-bold">·</span>
           <a href="/about" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">About</a>
           <span className="text-[#111] font-bold">·</span>
           <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">Privacy</a>
           <span className="text-[#111] font-bold">·</span>
           <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">Terms</a>
-          <span className="text-[#111] font-bold">·</span>
-          <button
-            type="button"
-            onClick={() => setShowPrivacy((v) => !v)}
-            className="text-[#111] hover:text-[#111]/80 font-bold bg-transparent border-none p-0 cursor-pointer"
-          >
-            {t.privacyLinkText}
-          </button>
         </div>
       </footer>
       {/* ── End Desktop Layout ── */}
@@ -2009,16 +1906,17 @@ export function App({
 
             {/* Mobile Content */}
             <div className="gc-col">
+              {strip}
               <ReadinessCard
                 balanceG={balanceG}
                 dailyClaimG={123.48}
                 onCashOutClick={() => setMobileView('cashout')}
                 onAddClick={ADDG_ENABLED ? handleAddClick : undefined}
-                feeNote={networkFee && !networkFee.enough ? `You also need about ${celoText(networkFee.needCelo)} CELO in your wallet to pay the network fee. G$ can't pay it, so top up a little CELO before cashing out.` : null}
                   language={language}
                 isStale={balanceIsStale}
                 ngnPerUsdt={liveNgnRate}
               />
+              <HomeLinks language={language} />
               <div className="gc-sm" style={{ textAlign: 'center', marginTop: 4 }}>
                 <a href="/about" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>About</a>
                 {' · '}

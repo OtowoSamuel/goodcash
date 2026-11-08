@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
+import { ONE_TAP_ENABLED, ROUTER_V2_ADDRESS } from '../lib/router';
 
 interface SafetyBannerProps {
   language: Language;
 }
 
-export const ROUTER_ADDRESS = '0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407';
+const OLD_ROUTER_ADDRESS = '0xA4338586d4B2f0E1641C54b8cF0d53CD06B5c407';
+/** The contract customers are actually using: the one-tap router when this build uses it, otherwise the original. */
+export const ROUTER_ADDRESS: string = ONE_TAP_ENABLED && ROUTER_V2_ADDRESS ? ROUTER_V2_ADDRESS : OLD_ROUTER_ADDRESS;
+export const SHORT_ROUTER_ADDRESS = `${ROUTER_ADDRESS.slice(0, 6)}…${ROUTER_ADDRESS.slice(-4)}`;
 export const BLOCKSCOUT_URL = `https://celo.blockscout.com/address/${ROUTER_ADDRESS}`;
 
 export const SafetyBanner: React.FC<SafetyBannerProps> = ({ language }) => {
@@ -35,7 +39,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({ language }) => {
             className="gc-inter"
             style={{ color: 'var(--gc-pu)', textDecoration: 'underline' }}
           >
-            Contract 0xA433…c407 ↗
+            Contract {SHORT_ROUTER_ADDRESS} ↗
           </a>
         </span>
         <button
