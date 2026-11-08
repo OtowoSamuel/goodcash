@@ -1,3 +1,5 @@
+// Paycrest keeps about 0.02 USDT of each payout, so naira estimates are for (dollars - 0.02)
+const PAYOUT_FEE_RESERVE_ATOMIC = 20_000n;
 export const ONE_18 = 10n ** 18n;
 export const ONE_6 = 10n ** 6n;
 export const EXIT_CONTRIBUTION_BPS = 1000n;
@@ -182,7 +184,7 @@ export function getNetQuote({
   const networkFeeUsd = chainState.networkFeeUsdRaw ?? 0n;
   const partnerFeeUsd = chainState.partnerFeeUsdRaw ?? 0n;
   const netNaira = Number.isFinite(ngnPerUsdt)
-    ? safeDiv(usdtOut * BigInt(Math.round((ngnPerUsdt as number) * 1_000_000)), 1_000_000n)
+    ? safeDiv((usdtOut > PAYOUT_FEE_RESERVE_ATOMIC ? usdtOut - PAYOUT_FEE_RESERVE_ATOMIC : 0n) * BigInt(Math.round((ngnPerUsdt as number) * 1_000_000)), 1_000_000n)
     : 0n;
 
   const quote: QuoteResult = {

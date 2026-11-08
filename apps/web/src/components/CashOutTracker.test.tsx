@@ -16,7 +16,7 @@ describe('CashOutTracker Component', () => {
     accountNumber: '1234567890',
     accountHolderName: 'Jane Doe',
     ngnPerUsdt: 1500,
-    walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+    walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
     onDone: vi.fn(),
   };
 
@@ -28,8 +28,8 @@ describe('CashOutTracker Component', () => {
     it('renders the headline naira estimate and the exact subtitle', () => {
       render(<CashOutTracker {...baseProps} />);
 
-      // Top headline naira estimate: 0.1140 * 1500 = 171.00
-      expect(screen.getByText(/≈ ₦171\.00/i)).toBeInTheDocument();
+      // Top headline naira estimate: (0.1140 - 0.02 payout fee) * 1500 = 141.00
+      expect(screen.getByText(/≈ ₦141\.00/i)).toBeInTheDocument();
       // Required subtitle: "Final amount is set when the payout completes"
       expect(screen.getByText('Final amount is set when the payout completes')).toBeInTheDocument();
     });
@@ -39,8 +39,8 @@ describe('CashOutTracker Component', () => {
     it('renders all 4 steps in the stepper header', () => {
       render(<CashOutTracker {...baseProps} />);
 
-      expect(screen.getByText(/1 Swapped to USDT/i)).toBeInTheDocument();
-      expect(screen.getByText(/2 Send to partner/i)).toBeInTheDocument();
+      expect(screen.getByText(/1 G\$ converted/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 Confirm payment/i)).toBeInTheDocument();
       expect(screen.getByText(/3 Paying to your bank/i)).toBeInTheDocument();
       expect(screen.getByText(/4 Done/i)).toBeInTheDocument();
     });
@@ -50,13 +50,13 @@ describe('CashOutTracker Component', () => {
     it('renders Step 1 summary when initialStep is 1', () => {
       render(<CashOutTracker {...baseProps} initialStep={1} />);
 
-      expect(screen.getByText(/Swapped 1,000 G\$ to 0\.1140 USDT/i)).toBeInTheDocument();
+      expect(screen.getByText(/Converted 1,000 G\$ to dollars/i)).toBeInTheDocument();
     });
 
     it('renders Step 2 (user action) with all required fields, copy button, countdown, warning, and "I\'ve sent it" button', () => {
       const initialOrder = {
         orderId: 'ord-test-step2',
-        receiveAddress: '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',
+        receiveAddress: '0x1111111111111111111111111111111111111111',
         amountToSend: '0.1140',
         validUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
         memo: 'GoodCash-test-memo',
@@ -77,7 +77,7 @@ describe('CashOutTracker Component', () => {
       expect(screen.getByText(/to this address before/i)).toBeInTheDocument();
 
       // Receive address
-      expect(screen.getByText('0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75')).toBeInTheDocument();
+      expect(screen.getByText('0x1111111111111111111111111111111111111111')).toBeInTheDocument();
 
       // Copy button
       expect(screen.getByRole('button', { name: /copy/i })).toBeInTheDocument();
@@ -93,8 +93,34 @@ describe('CashOutTracker Component', () => {
       const sentButton = screen.getByRole('button', { name: /I've sent it/i });
       expect(sentButton).toBeInTheDocument();
 
-      // Clicking "I've sent it" transitions tracker to Step 3
+      // Clicking "I've sent it" must NOT claim the bank is being paid: nothing has been confirmed yet
       fireEvent.click(sentButton);
+      expect(screen.queryByText('Paying to your bank')).not.toBeInTheDocument();
+      expect(screen.getByText(/Checking for your payment/i)).toBeInTheDocument();
+    });
+
+    it('moves to "Paying to your bank" only once the payout partner reports the payment', () => {
+      const order = {
+        orderId: 'ord-seen',
+        receiveAddress: '0x6157820d8ADE8Cb501CcFD01fdD1B918d78C1E76',
+        amountToSend: '0.55',
+        currency: 'USDT',
+        network: 'celo',
+        senderFee: '0',
+        transactionFee: '0.02',
+        validUntil: new Date(Date.now() + 600000).toISOString(),
+      };
+      const props = { txHash: '0x' + 'ab'.repeat(32), usdtReceived: 0.57, amountGSwapped: 5000, bankName: 'GTBank', accountNumber: '0123456789', accountHolderName: 'Jane Doe', walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', onDone: () => {} };
+      const { unmount } = render(<CashOutTracker {...props} initialOrder={{ ...order, status: 'initiated' }} />);
+      expect(screen.queryByText('Paying to your bank')).not.toBeInTheDocument();
+      unmount();
+      render(<CashOutTracker {...props} initialOrder={{ ...order, status: 'deposited' }} />);
+      expect(screen.getByText('Paying to your bank')).toBeInTheDocument();
+    });
+
+    it('shows "Paying to your bank" straight away when the app itself made the confirmed payment', () => {
+      const props = { txHash: '0x' + 'ab'.repeat(32), usdtReceived: 0.57, amountGSwapped: 5000, bankName: 'GTBank', accountNumber: '0123456789', accountHolderName: 'Jane Doe', walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', onDone: () => {} };
+      render(<CashOutTracker {...props} depositSent initialOrder={{ orderId: 'o', receiveAddress: '0x6157820d8ADE8Cb501CcFD01fdD1B918d78C1E76', amountToSend: '0.55', status: 'initiated' }} />);
       expect(screen.getByText('Paying to your bank')).toBeInTheDocument();
     });
 
@@ -187,8 +213,8 @@ describe('CashOutTracker Component', () => {
   });
 
   describe('Failure states show the order ID and Contact support action', () => {
-    it('failure state 1: order expired before USDT arrived shows order ID and Contact support', () => {
-      const orderId = 'ord-expired-999';
+    it('failure state 1: payment window expired shows order ID and Contact support', () => {
+      const orderId = '11111111-1111-4111-8111-111111111999';
       render(
         <CashOutTracker
           {...baseProps}
@@ -197,16 +223,18 @@ describe('CashOutTracker Component', () => {
         />
       );
 
-      expect(screen.getByText(/order expired before USDT arrived/i)).toBeInTheDocument();
+      expect(screen.getByText(/payment window expired/i)).toBeInTheDocument();
       expect(screen.getAllByText(orderId).length).toBeGreaterThanOrEqual(1);
 
-      const supportLink = screen.getByRole('link', { name: /contact support/i });
+      const supportLink = screen.getByRole('button', { name: /contact support/i });
       expect(supportLink).toBeInTheDocument();
-      expect(supportLink).toHaveAttribute('href', expect.stringContaining(orderId));
+      fireEvent.click(supportLink);
+      expect(screen.getByRole('dialog', { name: /contact support/i })).toBeInTheDocument();
+      expect(screen.getAllByText(orderId).length).toBeGreaterThanOrEqual(2);
     });
 
     it('failure state 2: order refunded shows order ID and Contact support', () => {
-      const orderId = 'ord-refunded-888';
+      const orderId = '11111111-1111-4111-8111-111111111888';
       render(
         <CashOutTracker
           {...baseProps}
@@ -218,13 +246,15 @@ describe('CashOutTracker Component', () => {
       expect(screen.getByText(/order refunded/i)).toBeInTheDocument();
       expect(screen.getAllByText(orderId).length).toBeGreaterThanOrEqual(1);
 
-      const supportLink = screen.getByRole('link', { name: /contact support/i });
+      const supportLink = screen.getByRole('button', { name: /contact support/i });
       expect(supportLink).toBeInTheDocument();
-      expect(supportLink).toHaveAttribute('href', expect.stringContaining(orderId));
+      fireEvent.click(supportLink);
+      expect(screen.getByRole('dialog', { name: /contact support/i })).toBeInTheDocument();
+      expect(screen.getAllByText(orderId).length).toBeGreaterThanOrEqual(2);
     });
 
-    it('failure state 3: USDT sent but naira not received after N minutes shows order ID and Contact support', () => {
-      const orderId = 'ord-delayed-777';
+    it('failure state 3: Payment sent but naira not received after N minutes shows order ID and Contact support', () => {
+      const orderId = '11111111-1111-4111-8111-111111111777';
       render(
         <CashOutTracker
           {...baseProps}
@@ -234,12 +264,14 @@ describe('CashOutTracker Component', () => {
         />
       );
 
-      expect(screen.getByText(/USDT sent but naira not received after 5 minutes/i)).toBeInTheDocument();
+      expect(screen.getByText(/Payment sent but naira not received after 5 minutes/i)).toBeInTheDocument();
       expect(screen.getAllByText(orderId).length).toBeGreaterThanOrEqual(1);
 
-      const supportLink = screen.getByRole('link', { name: /contact support/i });
+      const supportLink = screen.getByRole('button', { name: /contact support/i });
       expect(supportLink).toBeInTheDocument();
-      expect(supportLink).toHaveAttribute('href', expect.stringContaining(orderId));
+      fireEvent.click(supportLink);
+      expect(screen.getByRole('dialog', { name: /contact support/i })).toBeInTheDocument();
+      expect(screen.getAllByText(orderId).length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -251,6 +283,7 @@ describe('CashOutTracker Component', () => {
           initialStep={2}
           initialOrder={{
             orderId: 'ord-paycrest-docs-example',
+            receiveAddress: '0x1111111111111111111111111111111111111111',
             amountToSend: '105.0000',
             amount: '100',
             rate: '1650',
@@ -263,8 +296,8 @@ describe('CashOutTracker Component', () => {
       );
 
       expect(screen.getByText(/≈ ₦165,000\.00/)).toBeInTheDocument();
-      expect(screen.getByText('Set by your Paycrest payout order')).toBeInTheDocument();
-      expect(screen.getByText('Amount to send (from Paycrest)')).toBeInTheDocument();
+      expect(screen.getByText('Set by your payout order')).toBeInTheDocument();
+      expect(screen.getByText('Amount to send')).toBeInTheDocument();
       expect(screen.getAllByText('105.0000 USDT').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('4.9 USDT')).toBeInTheDocument();
       expect(screen.getByText('0.1 USDT')).toBeInTheDocument();
@@ -275,7 +308,7 @@ describe('CashOutTracker Component', () => {
 
   describe('Under Details section', () => {
     it('displays swap hash, explorer link, residual balance, and order ID', () => {
-      const orderId = 'ord-details-check';
+      const orderId = '11111111-1111-4111-8111-111111111100';
       render(
         <CashOutTracker
           {...baseProps}
@@ -293,7 +326,7 @@ describe('CashOutTracker Component', () => {
         `https://celo.blockscout.com/tx/${baseProps.txHash}`
       );
 
-      expect(screen.getByText(/0 G\$ \/ 0 USDT \(Zero-dust design\)/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Zero-dust/i)).not.toBeInTheDocument();
       expect(screen.getAllByText(orderId).length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -301,8 +334,8 @@ describe('CashOutTracker Component', () => {
   describe('Reload safety and tap-independent status polling', () => {
     it('restores active order details (deposit address, amount, deadline, status) upon reload', () => {
       const restoredOrder = {
-        orderId: 'ord-restored-456',
-        receiveAddress: '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',
+        orderId: '11111111-1111-4111-8111-111111111456',
+        receiveAddress: '0x1111111111111111111111111111111111111111',
         amountToSend: '0.1140',
         validUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
         status: 'initiated' as const,
@@ -316,16 +349,16 @@ describe('CashOutTracker Component', () => {
       );
 
       // Verifies deposit address, amount to send, and deadline are restored
-      expect(screen.getByText('0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75')).toBeInTheDocument();
+      expect(screen.getByText('0x1111111111111111111111111111111111111111')).toBeInTheDocument();
       expect(screen.getAllByText(/0\.1140 USDT/i).length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText(/Send to partner/i)).toBeInTheDocument();
-      expect(screen.getAllByText('ord-restored-456').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Confirm payment/i)).toBeInTheDocument();
+      expect(screen.getAllByText('11111111-1111-4111-8111-111111111456').length).toBeGreaterThanOrEqual(1);
     });
 
     it('auto-advances to Step 3 (Paying to your bank) if deposit is received even if user never tapped "I\'ve sent it"', () => {
       const initialOrder = {
         orderId: 'ord-auto-step3',
-        receiveAddress: '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',
+        receiveAddress: '0x1111111111111111111111111111111111111111',
         amountToSend: '0.1140',
         status: 'deposited' as const, // deposit detected on-chain by partner
       };

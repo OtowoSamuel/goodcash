@@ -36,8 +36,8 @@ function makeCashOutLog(amountOutUsdt6: bigint, address: string = ROUTER_ADDRESS
   );
 
   // Indexed params as topics
-  const userTopic = pad('0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6' as `0x${string}`, { size: 32 });
-  const recipientTopic = pad('0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6' as `0x${string}`, { size: 32 });
+  const userTopic = pad('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF' as `0x${string}`, { size: 32 });
+  const recipientTopic = pad('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF' as `0x${string}`, { size: 32 });
   const tokenOutTopic = pad('0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e' as `0x${string}`, { size: 32 });
 
   const topics = [eventSig, userTopic, recipientTopic, tokenOutTopic] as const;
@@ -107,7 +107,7 @@ describe('executeRouterSwap', () => {
       amountG: 1000,
       quote: QUOTE,
       slippageBps: 100,
-      walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+      walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
       isDemoMode: false,
       publicClient: publicClient as unknown as PublicClient,
       walletClient: walletClient as unknown as WalletClient,
@@ -129,7 +129,7 @@ describe('executeRouterSwap', () => {
         amountG: 1000,
         quote: QUOTE,
         slippageBps: 100,
-        walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+        walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
         isDemoMode: false,
         publicClient: publicClient as unknown as PublicClient,
         walletClient: walletClient as unknown as WalletClient,
@@ -149,7 +149,7 @@ describe('executeRouterSwap', () => {
         amountG: 1000,
         quote: QUOTE,
         slippageBps: 100,
-        walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+        walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
         isDemoMode: false,
         publicClient: publicClient as unknown as PublicClient,
         walletClient: walletClient as unknown as WalletClient,
@@ -166,7 +166,7 @@ describe('executeRouterSwap', () => {
         amountG: 1000,
         quote: QUOTE,
         slippageBps: 100,
-        walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+        walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
         isDemoMode: false,
         publicClient: publicClient as unknown as PublicClient,
         walletClient: walletClient as unknown as WalletClient,
@@ -186,7 +186,7 @@ describe('executeRouterSwap', () => {
       amountG: 1000,
       quote: QUOTE,
       slippageBps: 100,
-      walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+      walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
       isDemoMode: false,
       publicClient: publicClient as unknown as PublicClient,
       walletClient: walletClient as unknown as WalletClient,
@@ -207,7 +207,7 @@ describe('executeRouterSwap', () => {
         amountG: 1000,
         quote: QUOTE,
         slippageBps: 100,
-        walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+        walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
         isDemoMode: false,
         publicClient: publicClient as unknown as PublicClient,
         walletClient: walletClient as unknown as WalletClient,
@@ -215,7 +215,7 @@ describe('executeRouterSwap', () => {
     ).rejects.toThrow('CashOut event log not found');
   });
 
-  it('10,000 G$ with 1% slippage gives a minimum close to the quote, not 0.51', () => {
+  it('10,000 G$ with 1% slippage gives a minimum close to the quote, not 0.53', () => {
     // 10,000 G$ yields ~1.139928 USDT (1_139_928n in 6 decimals)
     const quote10kUsdtOut = 1_139_928n;
     const slippageBps = 100; // 1%
@@ -224,17 +224,17 @@ describe('executeRouterSwap', () => {
     // Slippage-based minimum: 1_139_928 * 9900 / 10000 = 1_128_528n
     expect(minOut).toBe(1_128_528n);
     expect(minOut).toBeGreaterThan(510_000n);
-    // Confirms it is close to the quote (~1.1285 USDT) and NOT 0.51
+    // Confirms it is close to the quote (~1.1285 USDT) and NOT 0.53
     expect(Number(minOut) / 1e6).toBeCloseTo(1.128528, 5);
   });
 
-  it('clamps minAmountOut to $0.51 so a $0.50 quote with 1% slippage cannot fall below the payout floor', async () => {
+  it('clamps minAmountOut to $0.53 so a $0.50 quote with 1% slippage cannot fall below the payout floor', async () => {
     const justAboveMinimum = { ...QUOTE, usdtOut: 500100n }; // $0.5001
     const slippageAdjusted = (justAboveMinimum.usdtOut * 9900n) / 10000n; // $0.495099
 
-    expect(MIN_AMOUNT_OUT).toBe(510000n); // $0.51 (Paycrest $0.50 + $0.01 fee margin)
+    expect(MIN_AMOUNT_OUT).toBe(530000n); // $0.53 (Paycrest $0.50 + $0.02 fee + margin)
     expect(slippageAdjusted).toBe(495099n);
-    expect(computeMinAmountOut(justAboveMinimum.usdtOut, 100)).toBe(510000n);
+    expect(computeMinAmountOut(justAboveMinimum.usdtOut, 100)).toBe(530000n);
 
     const writeContract = vi.fn().mockImplementation(async (args: { functionName: string }) => {
       if (args.functionName === 'approve') return '0xapprovehash' as `0x${string}`;
@@ -246,7 +246,7 @@ describe('executeRouterSwap', () => {
       amountG: 4400,
       quote: justAboveMinimum,
       slippageBps: 100,
-      walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+      walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
       isDemoMode: false,
       publicClient: publicClient as unknown as PublicClient,
       walletClient: { writeContract } as unknown as WalletClient,
@@ -257,7 +257,7 @@ describe('executeRouterSwap', () => {
     );
     expect(cashOutCall).toBeDefined();
     const cashOutArgs = (cashOutCall![0] as { args: readonly unknown[] }).args;
-    expect(cashOutArgs[2]).toBe(510000n);
+    expect(cashOutArgs[2]).toBe(530000n);
     expect(cashOutArgs[2] as bigint).toBeGreaterThan(slippageAdjusted);
   });
 
@@ -269,7 +269,7 @@ describe('executeRouterSwap', () => {
       amountG: 1000,
       quote: QUOTE,
       slippageBps: 100,
-      walletAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+      walletAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
       isDemoMode: true,
       publicClient: publicClient as unknown as PublicClient,
       walletClient: walletClient as unknown as WalletClient,

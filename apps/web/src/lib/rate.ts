@@ -1,3 +1,4 @@
+import { gToWei, nairaFromUsdt } from './units';
 import { getNetQuote } from './quote';
 
 export const PAYCREST_RATE_URL = 'https://api.paycrest.io/v2/rates/celo/USDT/1/NGN?side=sell';
@@ -5,7 +6,7 @@ export const ORDERS_API_BASE =
   (typeof import.meta !== 'undefined' &&
     (import.meta as { env?: { VITE_ORDERS_API_URL?: string } }).env?.VITE_ORDERS_API_URL) ??
   'http://localhost:8787';
-export const MIN_NET_USDT_REQUIRED = 0.51; // Unified swap floor ($0.50 Paycrest min + $0.01 fee margin)
+export const MIN_NET_USDT_REQUIRED = 0.53; // Unified swap floor ($0.50 Paycrest min + $0.02 Paycrest fee + margin)
 export const GOODCASH_G_TO_USD_RATE = 126_658_838_063_094n / 1_000_000_000_000_000n;
 
 export interface CashoutRate {
@@ -95,7 +96,7 @@ export async function fetchPaycrestRate(): Promise<number> {
 
 export function getCashoutRate(gAmount: number, dailyClaimG = 123.48, ngnPerUsdt?: number | null): CashoutRate {
   const safeGAmount = Number.isFinite(gAmount) && gAmount > 0 ? gAmount : 0;
-  const amountInRaw = BigInt(Math.floor(safeGAmount * 1e18));
+  const amountInRaw = gToWei(safeGAmount);
   const effectiveNgnRate = Number.isFinite(ngnPerUsdt) ? (ngnPerUsdt as number) : null;
   // The payout floor must depend only on USDT out and the G$ price, never on NGN.
   const quote = getNetQuote({ amountIn: amountInRaw });
@@ -104,7 +105,7 @@ export function getCashoutRate(gAmount: number, dailyClaimG = 123.48, ngnPerUsdt
   const netUsdt = Number(quote.usdtOut) / 1e6;
   const exitContributionG = safeGAmount * 0.1;
   const exitContributionUsd = grossUsd * 0.1;
-  const netNaira = effectiveNgnRate !== null ? netUsdt * effectiveNgnRate : Number.NaN;
+  const netNaira = effectiveNgnRate !== null ? nairaFromUsdt(netUsdt, effectiveNgnRate) : Number.NaN;
   const minimumReached = netUsdt >= MIN_NET_USDT_REQUIRED;
   const remainingUsdt = Math.max(0, MIN_NET_USDT_REQUIRED - netUsdt);
   const netUsdtPerG = safeGAmount > 0 ? netUsdt / safeGAmount : 0;
@@ -126,6 +127,16 @@ export function getCashoutRate(gAmount: number, dailyClaimG = 123.48, ngnPerUsdt
     rateUnavailable: effectiveNgnRate === null,
     ngnPerUsdt: effectiveNgnRate,
   };
+}
+
+/**
+ * Smallest cash out, in G$, that clears the payout floor at the current G$ price.
+ * Rounded up to the next 10 with a 1% margin so a small price move cannot push a customer under it.
+ */
+export function getMinimumCashOutG(): number {
+  const perG = getCashoutRate(5000).netUsdtPerG;
+  if (!perG) return 0;
+  return Math.ceil((MIN_NET_USDT_REQUIRED / perG) * 1.01 / 10) * 10;
 }
 
 export function getBalanceProgressPercent(gAmount: number): number {

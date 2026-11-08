@@ -1,3 +1,7 @@
+import { nairaFromUsdt } from '../lib/units';
+import { getNetQuote } from '../lib/quote';
+import { getMinimumCashOutG } from '../lib/rate';
+import { IS_DEMO_MODE } from '../lib/router';
 import React, { useState } from 'react';
 
 export interface MobileCashOutProps {
@@ -19,15 +23,22 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
   onClose,
   onReview,
 }) => {
-  const [rawInput, setRawInput] = useState('1000');
+  const [rawInput, setRawInput] = useState(import.meta.env.PROD ? '' : '1000');
 
   const maxG = Math.max(0, Math.floor(balanceG * 10) / 10);
   const amountG = Math.min(parseFloat(rawInput || '0') || 0, maxG);
 
-  const usdtEstimate = amountG * USDT_PER_G;
+  const usdtEstimate = (() => {
+    if (amountG <= 0) return 0;
+    try {
+      return Number(getNetQuote({ amountIn: BigInt(Math.floor(amountG)) * 10n ** 18n }).usdtOut) / 1e6;
+    } catch {
+      return amountG * USDT_PER_G;
+    }
+  })();
   const nairaEstimate =
     ngnPerUsdt && ngnPerUsdt > 0 && usdtEstimate > 0
-      ? Math.round(usdtEstimate * ngnPerUsdt)
+      ? Math.round(nairaFromUsdt(usdtEstimate, ngnPerUsdt))
       : null;
 
   const handleKey = (key: string) => {
@@ -50,7 +61,9 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
 
   const handleMax = () => setRawInput(String(maxG));
 
-  const canReview = amountG > 0 && amountG <= maxG;
+  const minG = getMinimumCashOutG();
+  const belowMinimum = !IS_DEMO_MODE && amountG > 0 && amountG < minG;
+  const canReview = amountG > 0 && amountG <= maxG && !belowMinimum;
 
   return (
     <div className="gc--mobile-shell fixed inset-0 bg-[#d4c5fb] z-40 overflow-y-auto">
@@ -94,7 +107,16 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
         </div>
       </div>
 
-      {/* YOU RECEIVE ABOUT card */}
+      <p
+        className="gc-sm"
+        role={belowMinimum ? 'alert' : undefined}
+        style={{ margin: '0 4px', textAlign: 'center', fontWeight: 800, color: belowMinimum ? '#b00020' : '#333' }}
+      >
+        {belowMinimum
+          ? `Minimum cash out is ${minG.toLocaleString()} G$. Enter a bit more to continue.`
+          : `Minimum cash out is about ${minG.toLocaleString()} G$`}
+      </p>
+
       <div className="gc-card gc-card--mint">
         <div className="gc-lab mb-1">
           YOU RECEIVE ABOUT
@@ -108,7 +130,7 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
           </span>
         </div>
         <div className="gc-sm mt-1">
-          at least {usdtEstimate > 0 ? usdtEstimate.toFixed(4) : '0.0000'} USDT
+          at least ${usdtEstimate > 0 ? usdtEstimate.toFixed(2) : '0.00'}
         </div>
       </div>
 

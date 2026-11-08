@@ -794,3 +794,31 @@ button {
     padding: 16px 16px 96px;
   }
 }
+
+/* ── Checkbox (sticker style) ───────────────────────────────── */
+.gc input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  border: 2.5px solid #111;
+  border-radius: 6px;
+  background: #fff;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+.gc input[type='checkbox']:checked {
+  background: var(--gc-pu);
+}
+.gc input[type='checkbox']:checked::after {
+  content: '✓';
+  color: #fff;
+  font: 800 13px Inter, sans-serif;
+  line-height: 1;
+}
+
+/* The "unfinished cash out" banner must never sit on top of an open pop-up */
+body:has([role="dialog"]) .gc-banner { display: none; }

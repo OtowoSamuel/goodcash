@@ -120,7 +120,7 @@ describe('HistoryCard', () => {
     expect(receiptLink).toHaveAttribute('target', '_blank');
   });
 
-  it('shows "Status unknown" when order status is undefined/unrecognized', () => {
+  it('shows "Checking status" when order status is undefined/unrecognized', () => {
     const unknownHistory: SwapHistoryItem[] = [
       {
         id: '1',
@@ -130,15 +130,15 @@ describe('HistoryCard', () => {
         amountOutUsdt: 0.114,
         route: 'Reserve → USDT',
         steps: {
-          swapped: 'completed',
-          sentToPartner: 'pending',
-          paidInNaira: 'pending',
+          swapped: 'unknown',
+          sentToPartner: 'unknown',
+          paidInNaira: 'unknown',
         },
       },
     ];
 
     render(<HistoryCard history={unknownHistory} onCashOutClick={() => {}} language="en" ngnPerUsdt={1500} />);
 
-    expect(screen.getByText(/Status unknown/i)).toBeInTheDocument();
+    expect(screen.getByText(/Checking status/i)).toBeInTheDocument();
   });
 });

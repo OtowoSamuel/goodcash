@@ -31,7 +31,7 @@ const anvilDescribe = RUN ? describe : describe.skip;
 
 const G_DOLLAR = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A' as Address;
 const USDT = '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e' as Address;
-const OWNER = '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6' as Address;
+const OWNER = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF' as Address;
 // Uniswap G$/USDm pool holds >8M G$ on Celo mainnet.
 const G_WHALE = '0x9491d57c5687AB75726423B55AC2d87D1cDa2c3F' as Address;
 

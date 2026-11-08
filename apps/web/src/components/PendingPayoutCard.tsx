@@ -61,7 +61,7 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
           <h2 className="mt-1 text-2xl font-black text-[#111]">Finish your payout</h2>
         </div>
         <span className="rounded-full border-2 border-[#111] bg-[#63f2b4] px-3 py-1 text-[11px] font-black uppercase text-[#111]">
-          {usdtReceived.toFixed(6)} USDT
+          ${usdtReceived.toFixed(2)}
         </span>
       </div>
 
@@ -72,13 +72,13 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
 
       <div className="mt-4 rounded-2xl border-2 border-[#111] bg-white p-4 shadow-[4px_4px_0px_#111]">
         <div className="flex items-center justify-between gap-3 border-b-2 border-dashed border-gray-300 pb-3 text-sm font-bold text-[#111]">
-          <span>Bank</span>
+          <span className="flex-none">Bank</span>
           <select
             aria-label="Bank"
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
-            className="rounded-xl border-2 border-[#111] bg-white pl-3 pr-12 py-2 text-sm font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
+            className="min-w-0 flex-1 max-w-full rounded-xl border-2 border-[#111] bg-white pl-3 pr-12 py-2 text-sm font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
           >
             <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
             {institutions.map((bank) => (
@@ -106,7 +106,7 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
             aria-live="polite"
             className="min-h-[48px] rounded-xl border-2 border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] shadow-[2px_2px_0px_#111]"
           >
-            {verificationStatus === 'loading' && <span className="text-gray-500">Verifying with Paycrest…</span>}
+            {verificationStatus === 'loading' && <span className="text-gray-500">Checking your account…</span>}
             {verificationStatus === 'idle' && <span className="text-gray-500">Enter a 10-digit account number</span>}
             {verificationStatus === 'error' && <span className="text-red-600">{verificationError}</span>}
             {verificationStatus === 'verified' && accountName && <span className="font-black">{accountName}</span>}
@@ -151,12 +151,19 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
       {/* Cancel Button */}
       {onCancel && (
         <button
-          onClick={onCancel}
+          onClick={() => {
+            if (window.confirm('This clears the reminder. Your funds stay safe in your wallet, and you can finish the payout later with the swap transaction hash. Continue?')) onCancel();
+          }}
           type="button"
           className="text-sm font-bold text-gray-600 hover:text-[#111] underline block mx-auto mt-4 text-center cursor-pointer"
         >
           Cancel and start new cash out
         </button>
+      )}
+      {onCancel && (
+        <p className="mt-2 text-center text-[11px] font-semibold text-gray-600">
+          Cancelling only clears this reminder. Your funds stay safe in your wallet.
+        </p>
       )}
     </div>
   );

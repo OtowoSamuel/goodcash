@@ -20,7 +20,7 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
 }) => {
   const amountStr = amountG != null && amountG > 0 ? `${amountG.toLocaleString()} G$` : '— G$';
   const nairaStr = nairaEstimate != null ? formatNaira(nairaEstimate) : '₦ -';
-  const usdtStr = usdtEstimate != null ? `${usdtEstimate.toFixed(4)} USDT` : '— USDT';
+  const usdtStr = usdtEstimate != null ? `$${usdtEstimate.toFixed(2)}` : '—';
   const shortHash = txHash && txHash.length > 12 ? `${txHash.slice(0, 6)}…${txHash.slice(-4)}` : txHash;
 
   return (
@@ -46,14 +46,14 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
 
         {/* Vertical Stepper Card */}
         <div className="gc-card">
-          {/* Step 1: Swapped to USDT */}
+          {/* Step 1: G$ converted */}
           <div className="gc-tl">
             <div className="gc-tl__col">
               <i className="gc-dot gc-dot--done" />
               <i className="gc-ln" />
             </div>
             <div className="gc-tl__step">
-              <b>Swapped to USDT</b>
+              <b>G$ converted</b>
               <p>Done · {amountStr} → {usdtStr}</p>
             </div>
           </div>

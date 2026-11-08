@@ -1,3 +1,4 @@
+import { gToWei } from './units';
 import {
   type Address,
   createPublicClient,
@@ -96,6 +97,81 @@ export const GOOD_CASH_ROUTER_ABI = parseAbi([
   'event CashOut(address indexed user, address indexed recipient, address indexed tokenOut, uint256 amountIn, uint256 amountOut, uint8 route, bytes32 ref)',
 ]);
 
+const ROUTER_STATE_ABI = parseAbi(['function paused() external view returns (bool)']);
+
+/** The swap was sent to the network but we could not confirm it yet. It may well have gone through. */
+export class SwapPendingError extends Error {
+  hash: string;
+  constructor(hash: string) {
+    super('Swap sent, still confirming');
+    this.name = 'SwapPendingError';
+    this.hash = hash;
+  }
+}
+
+/** The payment was sent to the network but we could not confirm it yet. Never ask the user to pay again. */
+export class DepositPendingError extends Error {
+  hash: string;
+  constructor(hash: string) {
+    super('Payment sent, still confirming');
+    this.name = 'DepositPendingError';
+    this.hash = hash;
+  }
+}
+
+const SENT_DEPOSITS_KEY = 'goodcash_sent_deposits';
+
+function readSentDeposits(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(SENT_DEPOSITS_KEY) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function rememberSentDeposit(orderId: string, hash: string | null): void {
+  try {
+    const all = readSentDeposits();
+    if (hash) all[orderId] = hash;
+    else delete all[orderId];
+    const keep = Object.entries(all).slice(-30);
+    localStorage.setItem(SENT_DEPOSITS_KEY, JSON.stringify(Object.fromEntries(keep)));
+  } catch {
+    // optional convenience only
+  }
+}
+
+/** Turn a wallet/RPC error into one short sentence a user can act on. */
+export function friendlySwapError(err: unknown): string {
+  const e = err as { name?: string; message?: string; shortMessage?: string; cause?: { name?: string } } | null;
+  const raw = `${e?.name ?? ''} ${e?.cause?.name ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
+  if (/SwapPendingError/.test(raw)) {
+    return "Your swap was sent and is still being confirmed. Please don't swap again. It will show in History, and we'll offer to finish your payout.";
+  }
+  if (/^\s*Minimum cash out/i.test(e?.message ?? '')) return (e?.message as string).trim();
+  if (/chain of the wallet|does not match the target chain|wrong network|chain mismatch|switch.*chain/i.test(raw)) {
+    return 'Your wallet is on the wrong network. Please switch it to Celo and try again.';
+  }
+  if (/user rejected|user denied|rejected the request|UserRejectedRequest/i.test(raw)) {
+    return 'You cancelled the request in your wallet. Nothing was sent.';
+  }
+  if (/EnforcedPause|0xd93c0665|paused/i.test(raw)) {
+    return 'Cash out is paused right now. Nothing was sent. Please try again later.';
+  }
+  if (/insufficient funds|gas required exceeds/i.test(raw)) {
+    return 'Not enough CELO in your wallet to pay the network fee.';
+  }
+  if (/approval transaction failed/i.test(raw)) return "The G$ approval didn't go through. Nothing was swapped. Please try again.";
+  if (/reverted on Celo|execution reverted|reverted/i.test(raw)) {
+    return "The swap didn't go through on Celo. Nothing was taken. Please refresh the quote and try again.";
+  }
+  if (/event log not found/i.test(raw)) {
+    return "Your swap was sent but we couldn't read the result. Check History for your receipt before trying again.";
+  }
+  if (/No Celo wallet/i.test(raw)) return 'No Celo wallet found. Open GoodCash in a wallet app or install a wallet extension.';
+  return 'The swap could not be completed. Nothing was taken. Please try again.';
+}
+
 export const ERC20_ABI = parseAbi([
   'function approve(address spender, uint256 amount) external returns (bool)',
   'function allowance(address owner, address spender) external view returns (uint256)',
@@ -116,6 +192,8 @@ export interface ExecuteSwapArgs {
   publicClient?: ReturnType<typeof createPublicClient>;
   /** Test/fork override; production always uses ROUTER_ADDRESS. */
   routerAddress?: Address;
+  /** Tells the screen which wallet confirmation is coming next, so the user is never left guessing. */
+  onStep?: (info: { kind: 'approve' | 'swap'; n: number; total: number }) => void;
 }
 
 export interface SwapExecutionResult {
@@ -133,7 +211,7 @@ export interface SwapExecutionResult {
  * 5. Returns real usdtReceived = amountOut / 1e6.
  */
 export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExecutionResult> {
-  const { amountG, quote, slippageBps, walletAddress, isDemoMode = IS_DEMO_MODE } = args;
+  const { amountG, quote, slippageBps, walletAddress, isDemoMode = IS_DEMO_MODE, onStep } = args;
   const routerAddress = args.routerAddress ?? ROUTER_ADDRESS;
 
   // Gate demo mode: only allowed if explicit demo flag is active
@@ -149,17 +227,21 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
   }
 
   // Real flow requires an Ethereum provider (e.g. MiniPay, MetaMask, Valora)
-  if (typeof window === 'undefined' || !(window as unknown as { ethereum?: unknown }).ethereum) {
-    throw new Error('No Celo wallet detected. Please open in MiniPay or connect a Web3 wallet.');
+  const injected = getEthereum();
+  if (!injected) {
+    throw new Error('No Celo wallet detected. Please connect a wallet first.');
   }
 
-  const ethereum = (window as unknown as { ethereum: Parameters<typeof custom>[0] }).ethereum;
+  const ethereum = injected as unknown as Parameters<typeof custom>[0];
   const publicClient =
     args.publicClient ??
     createPublicClient({
       chain: celo,
       transport: http(CELO_RPC_URL),
+      pollingInterval: 1000,
     });
+
+  if (!args.walletClient) await ensureCeloChain(injected as unknown as Eip1193);
 
   const walletClient =
     args.walletClient ??
@@ -169,11 +251,19 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
       account: walletAddress as Address,
     });
 
-  const amountInWei = BigInt(Math.floor(amountG * 1e18));
+  const amountInWei = gToWei(amountG);
   const minAmountOut = computeMinAmountOut(quote.usdtOut, slippageBps);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 1200); // 20 minutes
   const routeNum = ROUTE_NUMBER_BY_QUOTE_ROUTE[quote.route];
   const refBytes = pad(stringToHex('goodcash-ui'), { size: 32, dir: 'right' });
+
+  // 0. Stop early (before any wallet prompt) if the router is paused
+  const isPaused = await publicClient
+    .readContract({ address: routerAddress, abi: ROUTER_STATE_ABI, functionName: 'paused' })
+    .catch(() => false);
+  if (isPaused === true) {
+    throw new Error('Cash out is paused right now. Nothing was sent. Please try again later.');
+  }
 
   // 1. Check and set G$ allowance
   const currentAllowance = (await publicClient.readContract({
@@ -183,7 +273,11 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
     args: [walletAddress as Address, routerAddress],
   })) as bigint;
 
-  if (currentAllowance < amountInWei) {
+  const needsApproval = currentAllowance < amountInWei;
+  // Wallet confirmations the customer will see: allow G$ (first time), convert, then the final payment
+  const totalSteps = needsApproval ? 3 : 2;
+  if (needsApproval) {
+    onStep?.({ kind: 'approve', n: 1, total: totalSteps });
     const approveTx = await walletClient.writeContract({
       chain: celo,
       address: G_DOLLAR_ADDRESS,
@@ -199,6 +293,7 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
   }
 
   // 2. Call cashOut
+  onStep?.({ kind: 'swap', n: totalSteps - 1, total: totalSteps });
   const txHash = await walletClient.writeContract({
     chain: celo,
     address: routerAddress,
@@ -209,7 +304,13 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
   });
 
   // 3. Wait for swap receipt
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  let receipt;
+  try {
+    receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
+  } catch {
+    // The transaction was sent. We just could not read the result: it may still succeed.
+    throw new SwapPendingError(txHash);
+  }
   if (receipt.status !== 'success') {
     throw new Error('Swap transaction reverted on Celo');
   }
@@ -246,4 +347,275 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
     usdtReceived,
     amountG,
   };
+}
+
+type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+
+let activeProvider: Eip1193 | null = null;
+
+/** Use a connected WalletConnect session (or clear it) instead of the browser's own wallet. */
+export function setActiveProvider(provider: Eip1193 | null): void {
+  activeProvider = provider;
+}
+
+/** Tell the app when the wallet's account or network changes. Returns an unsubscribe function. */
+export function subscribeWalletEvents(
+  onAccounts: (accounts: string[]) => void,
+  onChain: (chainId: number) => void
+): () => void {
+  const p = getEthereum() as unknown as {
+    on?: (e: string, cb: (...a: unknown[]) => void) => void;
+    removeListener?: (e: string, cb: (...a: unknown[]) => void) => void;
+  } | null;
+  if (!p?.on) return () => undefined;
+  const a = (accounts: unknown) => onAccounts(Array.isArray(accounts) ? (accounts as string[]) : []);
+  const c = (id: unknown) => onChain(typeof id === 'string' ? parseInt(id, 16) : Number(id));
+  p.on('accountsChanged', a);
+  p.on('chainChanged', c);
+  return () => {
+    p.removeListener?.('accountsChanged', a);
+    p.removeListener?.('chainChanged', c);
+  };
+}
+
+export function hasInjectedWallet(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as unknown as { ethereum?: unknown }).ethereum);
+}
+
+function getEthereum(): Eip1193 | null {
+  if (activeProvider) return activeProvider;
+  if (typeof window === 'undefined') return null;
+  return ((window as unknown as { ethereum?: Eip1193 }).ethereum ?? null);
+}
+
+/**
+ * Make sure the wallet is on Celo mainnet before sending anything. A phone wallet is often left on
+ * Ethereum, and it then refuses Celo transactions. This asks it to switch (or to add Celo first).
+ */
+export async function ensureCeloChain(provider: Eip1193): Promise<void> {
+  const current = (await provider.request({ method: 'eth_chainId' })) as string;
+  if (parseInt(current, 16) === 42220) return;
+  try {
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xa4ec' }] });
+  } catch {
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId: '0xa4ec',
+          chainName: 'Celo',
+          nativeCurrency: { name: 'CELO', symbol: 'CELO', decimals: 18 },
+          rpcUrls: [CELO_RPC_URL],
+          blockExplorerUrls: ['https://celo.blockscout.com'],
+        },
+      ],
+    });
+  }
+}
+
+/** Ask the user's wallet for an account and make sure it is on Celo mainnet. */
+export async function connectInjectedWallet(): Promise<string> {
+  const ethereum = getEthereum();
+  if (!ethereum) throw new Error('No Celo wallet detected. Open GoodCash in a wallet browser or install one.');
+  const accounts = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[];
+  if (!accounts?.[0]) throw new Error('No account returned by the wallet.');
+  try {
+    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xa4ec' }] });
+  } catch {
+    await ethereum.request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId: '0xa4ec',
+          chainName: 'Celo',
+          nativeCurrency: { name: 'CELO', symbol: 'CELO', decimals: 18 },
+          rpcUrls: [CELO_RPC_URL],
+          blockExplorerUrls: ['https://celo.blockscout.com'],
+        },
+      ],
+    });
+  }
+  return accounts[0];
+}
+
+/** Read the wallet's real G$ balance from Celo (18 decimals). */
+export async function fetchGBalance(address: string): Promise<number> {
+  const client = createPublicClient({ chain: celo, transport: http(CELO_RPC_URL) });
+  const raw = (await client.readContract({
+    address: G_DOLLAR_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+  })) as bigint;
+  return Number(raw) / 1e18;
+}
+
+/**
+ * Look up a past GoodCash swap so an unfinished payout can be resumed.
+ * Only accepts a successful CashOut on the GoodCash router made by this same wallet.
+ */
+export async function fetchSwapForRecovery(
+  txHash: string,
+  walletAddress?: string
+): Promise<{ usdtReceived: number; amountG: number }> {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error('That does not look like a transaction hash.');
+  const client = createPublicClient({ chain: celo, transport: http(CELO_RPC_URL) });
+  const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
+  if (receipt.status !== 'success') throw new Error('That transaction did not succeed.');
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== ROUTER_ADDRESS.toLowerCase()) continue;
+    try {
+      const decoded = decodeEventLog({ abi: [CASH_OUT_EVENT_ABI], data: log.data, topics: log.topics });
+      if (decoded.eventName !== 'CashOut') continue;
+      const args = decoded.args as { user: string; recipient: string; amountIn: bigint; amountOut: bigint };
+      if (walletAddress && (args.user.toLowerCase() !== walletAddress.toLowerCase() || args.recipient.toLowerCase() !== walletAddress.toLowerCase())) {
+        throw new Error('That swap was made by a different wallet. Connect the wallet that made it.');
+      }
+      return { usdtReceived: Number(args.amountOut) / 1e6, amountG: Number(args.amountIn) / 1e18 };
+    } catch (e) {
+      if (e instanceof Error && /different wallet/.test(e.message)) throw e;
+    }
+  }
+  throw new Error('No GoodCash swap found in that transaction.');
+}
+
+/**
+ * Send the exact USDT deposit Paycrest asked for, from the connected wallet.
+ * Only ever sends USDT on Celo, to the address and amount given, and never more than `maxAmount`.
+ */
+/** Stand-in shown while a reopened order is still loading. It is NOT a real deposit address. */
+export const PLACEHOLDER_DEPOSIT_ADDRESS = '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75';
+
+export async function sendUsdtDeposit(args: {
+  from: string;
+  to: string;
+  amount: string;
+  maxAmount: number;
+  /** Used to remember a sent payment, so it can never be sent twice. */
+  orderId?: string;
+  /** Re-checks the order with our server right before paying. Throws if it can no longer be paid. */
+  checkOrder?: () => Promise<void>;
+}): Promise<string> {
+  const { from, to, amount, maxAmount, orderId, checkOrder } = args;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error('Invalid deposit address.');
+  if (to.toLowerCase() === PLACEHOLDER_DEPOSIT_ADDRESS.toLowerCase() || /^0x0{40}$/.test(to)) {
+    throw new Error('Payment details are still loading. Please wait a moment and try again.');
+  }
+  const value = Math.round(Number(amount) * 1e6);
+  if (!Number.isFinite(value) || value <= 0) throw new Error('Invalid deposit amount.');
+  if (value > Math.round(maxAmount * 1e6) + 1) throw new Error('Deposit amount is higher than your swap produced.');
+
+  const provider = getEthereum();
+  if (!provider) throw new Error('No Celo wallet detected. Please connect a wallet first.');
+
+  const publicClient = createPublicClient({ chain: celo, transport: http(CELO_RPC_URL), pollingInterval: 1000 });
+
+  // A payment for this order may already have been sent (even if this screen was closed meanwhile)
+  const earlier = orderId ? readSentDeposits()[orderId] : undefined;
+  if (orderId && earlier === 'detected') return earlier;
+  if (orderId && earlier) {
+    const prior = await publicClient.getTransactionReceipt({ hash: earlier as `0x${string}` }).catch(() => null);
+    if (prior?.status === 'success') return earlier;
+    if (!prior) throw new DepositPendingError(earlier);
+    rememberSentDeposit(orderId, null); // it failed on-chain, so paying again is safe
+  }
+
+  if (checkOrder) await checkOrder();
+
+  const balance = (await publicClient.readContract({
+    address: USDT_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [from as Address],
+  })) as bigint;
+  if (balance < BigInt(value)) throw new Error('Not enough balance in your wallet for this payment.');
+
+  await ensureCeloChain(provider);
+
+  const walletClient = createWalletClient({
+    chain: celo,
+    transport: custom(provider as unknown as Parameters<typeof custom>[0]),
+    account: from as Address,
+  });
+  let hash: `0x${string}`;
+  try {
+    hash = await walletClient.writeContract({
+      chain: celo,
+      address: USDT_ADDRESS,
+      abi: parseAbi(['function transfer(address to, uint256 amount) external returns (bool)']),
+      functionName: 'transfer',
+      args: [to as Address, BigInt(value)],
+      account: from as Address,
+    });
+  } catch (e) {
+    const raw = `${(e as { name?: string })?.name ?? ''} ${(e as { message?: string })?.message ?? ''}`;
+    if (/user rejected|user denied|rejected the request|UserRejectedRequest/i.test(raw)) throw e;
+    // A phone wallet can report an error even though the payment was approved a moment later.
+    // Watch the balance for a short while before telling the user it failed.
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 4000));
+      const now = (await publicClient
+        .readContract({ address: USDT_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf', args: [from as Address] })
+        .catch(() => balance)) as bigint;
+      if (balance - now >= (BigInt(value) * 99n) / 100n) {
+        if (orderId) rememberSentDeposit(orderId, 'detected');
+        throw new DepositPendingError('detected');
+      }
+    }
+    throw e;
+  }
+  if (orderId) rememberSentDeposit(orderId, hash);
+  let receipt;
+  try {
+    receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
+  } catch {
+    // Sent, but we could not read the result yet. Never tell the user nothing was taken.
+    throw new DepositPendingError(hash);
+  }
+  if (receipt.status !== 'success') {
+    if (orderId) rememberSentDeposit(orderId, null);
+    throw new Error('The payment did not go through.');
+  }
+  return hash;
+}
+
+/** Wallet balance of USDT on Celo (6 decimals). Used to check a past swap's funds are still there. */
+export async function fetchUsdtBalance(address: string): Promise<number> {
+  const client = createPublicClient({ chain: celo, transport: http(CELO_RPC_URL) });
+  const raw = (await client.readContract({
+    address: USDT_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+  })) as bigint;
+  return Number(raw) / 1e6;
+}
+
+/** Plain-language reason a payment to the payout partner did not go through. */
+export function friendlyPayError(err: unknown): string {
+  const e = err as { name?: string; message?: string; shortMessage?: string } | null;
+  const raw = `${e?.name ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
+  if (/user rejected|user denied|rejected the request|UserRejectedRequest/i.test(raw)) {
+    return 'You cancelled the payment. Nothing was sent.';
+  }
+  if (/DepositPendingError/.test(raw)) {
+    return "Your payment was sent and is being confirmed. Please don't pay again. We'll update this page.";
+  }
+  if (/ORDER_ALREADY_PAID/.test(raw)) {
+    return "We've already received a payment for this payout. We're finishing it now, so you don't need to pay again.";
+  }
+  if (/ORDER_EXPIRED/.test(raw)) {
+    return 'This payment window has closed and nothing was sent. Go back to Home to start a fresh one.';
+  }
+  if (/ORDER_UNKNOWN|ORDER_MISMATCH/.test(raw)) {
+    return "We couldn't confirm your payment details just now. Nothing was sent. Check your connection and try again.";
+  }
+  if (/not enough balance/i.test(raw)) {
+    return "There isn't enough balance in your wallet for this payment. If you already paid this one, check History.";
+  }
+  if (/insufficient funds|gas required exceeds/i.test(raw)) {
+    return 'Not enough CELO in your wallet to pay the network fee.';
+  }
+  if (/No Celo wallet/i.test(raw)) return 'No wallet found. Connect your wallet and try again.';
+  return "We couldn't send the payment from your wallet. Open your wallet app, clear any request that is still waiting, then come back and tap Pay now again. If the payment already went through, this page will update by itself.";
 }

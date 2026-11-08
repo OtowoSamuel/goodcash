@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { useBankDetails } from '../lib/useBankDetails';
 import type { BankDetailsState } from '../lib/useBankDetails';
-import { BankDetailsModal } from '../components/BankDetailsModal';
+import { BankDetailsModal, type SavedBank } from '../components/BankDetailsModal';
 import { formatNaira, getCashoutRate } from '../lib/rate';
 
 export interface MobileReviewViewProps {
@@ -9,11 +8,13 @@ export interface MobileReviewViewProps {
   nairaEstimate: number | null;
   usdtEstimate: number | null;
   onBack: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
+  errorMessage?: string | null;
   activeCashOutAmount?: string;
   setActiveCashOutAmount?: (amount: string) => void;
   savedBankDetails?: BankDetailsState | null;
   setSavedBankDetails?: (details: BankDetailsState | null) => void;
+  onBankSaved?: (bank: SavedBank | null) => void;
 }
 
 export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
@@ -22,22 +23,25 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
   usdtEstimate,
   onBack,
   onConfirm,
+  onBankSaved,
+  errorMessage,
 }) => {
+  const [busy, setBusy] = useState(false);
   const exitContributionG = amountG != null ? getCashoutRate(amountG).exitContributionG : 0;
-  const {
-    bankDetails,
-    setBankDetails,
-    clearBankDetails,
-  } = useBankDetails();
-
+  const [bank, setBank] = useState<SavedBank | null>(null);
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
 
-  const displayBankName = bankDetails.bankName
-    ? bankDetails.bankName
+  const displayBankName = bank
+    ? `${bank.bankName} •••• ${bank.accountNumber.slice(-4)}`
     : 'Your bank account';
 
+  const handleBankSaved = (b: SavedBank) => {
+    setBank(b);
+    onBankSaved?.(b);
+  };
+
   const nairaStr = nairaEstimate != null ? formatNaira(nairaEstimate) : '₦ -';
-  const usdtStr = usdtEstimate != null ? `${usdtEstimate.toFixed(4)} USDT` : '— USDT';
+  const usdtStr = usdtEstimate != null ? `$${usdtEstimate.toFixed(2)}` : '—';
   const amountStr = amountG != null ? `${amountG.toLocaleString()} G$` : '— G$';
 
   return (
@@ -76,12 +80,13 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           <div>
             <div className="gc-lab">Paid to</div>
             <div className="gc-sm">{displayBankName}</div>
+            {bank && <div className="gc-sm" style={{ color: '#333' }}>{bank.accountName}</div>}
           </div>
-          {bankDetails.bankName ? (
+          {bank ? (
             <button
               type="button"
               className="gc-pill gc-pill--white gc-hit"
-              onClick={clearBankDetails}
+              onClick={() => setIsBankModalOpen(true)}
             >
               Edit
             </button>
@@ -116,6 +121,12 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         <div className="gc-note">
           Quote refreshes while you review. Arrival time depends on the payout partner.
         </div>
+
+        {errorMessage && (
+          <div className="gc-note" role="alert" style={{ background: '#ff9b9b', overflowWrap: 'anywhere' }}>
+            {errorMessage}
+          </div>
+        )}
       </div>
 
       {/* Bottom Action Button */}
@@ -123,12 +134,23 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         className="fixed left-0 right-0 bottom-0 px-[14px] pb-[14px]"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}
       >
+        <div className="gc-note" style={{ marginBottom: 10 }}>
+          <b>You'll confirm in your wallet app up to 3 times.</b> Each time, open MetaMask, tap Confirm, then come back here.
+        </div>
         <button
           type="button"
-          onClick={onConfirm}
-          className="gc-btn gc-hit"
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onConfirm();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          disabled={!bank || busy}
+          className={`gc-btn gc-hit ${bank && !busy ? '' : 'gc-btn--dis'}`}
         >
-          Confirm cash out
+          {!bank ? 'Add bank to continue' : busy ? 'Working on it…' : 'Confirm cash out'}
         </button>
       </div>
 
@@ -137,7 +159,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         <BankDetailsModal
           isOpen={isBankModalOpen}
           onClose={() => setIsBankModalOpen(false)}
-          onSave={setBankDetails}
+          onSave={handleBankSaved}
         />
       )}
     </div>

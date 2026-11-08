@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
 import { getNetQuote, type QuoteResult, MAX_PRICE_IMPACT_BPS } from '../lib/quote';
-import { fetchPaycrestRate, getCashoutRate, formatNaira } from '../lib/rate';
+import { LIVE_QUOTES, getLiveNetQuote } from '../lib/liveQuote';
+import { fetchPaycrestRate, getCashoutRate, formatNaira, getMinimumCashOutG, MIN_NET_USDT_REQUIRED } from '../lib/rate';
 import { IS_DEMO_MODE } from '../lib/router';
 import type { BankDetailsState } from '../lib/useBankDetails';
 import { useBankAccountVerification } from '../lib/useOffRamp';
@@ -23,6 +24,10 @@ interface CashOutCardProps {
   ngnPerUsdt?: number | null;
   activeCashOutAmount?: string;
   setActiveCashOutAmount?: (amount: string) => void;
+  onPreviewUsdtChange?: (usdt: number | null) => void;
+  /** False when no wallet is connected: Review then asks the user to connect first. */
+  walletConnected?: boolean;
+  onConnectWallet?: () => void;
   savedBankDetails?: BankDetailsState | null;
   setSavedBankDetails?: (details: BankDetailsState | null) => void;
 }
@@ -32,16 +37,23 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   onInitiateCashOut,
   language,
   ngnPerUsdt: initialNgnRate = null,
+  onPreviewUsdtChange,
+  walletConnected = true,
+  onConnectWallet,
 }) => {
   const t = getTranslations(language);
 
-  const [inputAmountG, setInputAmountG] = useState<string>('1000');
+  const [inputAmountG, setInputAmountG] = useState<string>(import.meta.env.PROD ? '' : '1,000');
   const [quickPercent, setQuickPercent] = useState<number | null>(null);
   const [slippagePercent, setSlippagePercent] = useState<number>(1);
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(30);
   const [ngnPerUsdt, setNgnPerUsdt] = useState<number | null>(initialNgnRate);
+  useEffect(() => {
+    onPreviewUsdtChange?.(quote ? Number(quote.usdtOut) / 1e6 : null);
+  }, [quote, onPreviewUsdtChange]);
   const [rateError, setRateError] = useState<string | null>(null);
+  const [quoteTick, setQuoteTick] = useState(0);
   const [showBankDetails, setShowBankDetails] = useState<boolean>(false);
 
   const {
@@ -88,46 +100,61 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
     };
   }, [t.rateUnavailableTryAgain]);
 
-  // Update quote when input changes
+  // Update quote when input changes (live on-chain prices in production)
   useEffect(() => {
-    const rawAmount = parseFloat(inputAmountG);
-    if (!isNaN(rawAmount) && rawAmount > 0) {
+    const rawAmount = parseFloat(inputAmountG.replace(/,/g, ''));
+    if (isNaN(rawAmount) || rawAmount <= 0) {
+      setQuote(null);
+      return;
+    }
+    const amountWei = BigInt(Math.floor(rawAmount)) * 10n ** 18n;
+    setSecondsRemaining(30);
+    if (!LIVE_QUOTES) {
       try {
-        const amountWei = BigInt(Math.floor(rawAmount)) * 10n ** 18n;
         setQuote(getNetQuote({ amountIn: amountWei }));
-        setSecondsRemaining(30);
       } catch (err) {
         console.error('Quote calculation error:', err);
       }
-    } else {
-      setQuote(null);
+      return;
     }
-  }, [inputAmountG]);
+    let cancelled = false;
+    setQuote(null);
+    const debounce = setTimeout(() => {
+      getLiveNetQuote(amountWei)
+        .then((q) => {
+          if (cancelled) return;
+          setQuote(q);
+          setRateError(null);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setQuote(null);
+          setRateError(t.rateUnavailableTryAgain);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce);
+    };
+  }, [inputAmountG, quoteTick, t.rateUnavailableTryAgain]);
 
-  // Quote refresh timer
+  // Quote refresh timer: re-reads live prices every 30 seconds
   useEffect(() => {
     const timer = setInterval(() => {
       setSecondsRemaining((prev) => {
         if (prev <= 1) {
-          const rawAmount = parseFloat(inputAmountG);
-          if (!isNaN(rawAmount) && rawAmount > 0) {
-            try {
-              const amountWei = BigInt(Math.floor(rawAmount)) * 10n ** 18n;
-              setQuote(getNetQuote({ amountIn: amountWei }));
-            } catch {}
-          }
+          setQuoteTick((n) => n + 1);
           return 30;
         }
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(timer);
-  }, [inputAmountG]);
+  }, []);
 
   const handleQuickPercent = (pct: number) => {
     const calculated = Math.floor((balanceG * pct) / 100);
-    setInputAmountG(calculated.toString());
+    setInputAmountG(calculated.toLocaleString('en-US'));
     setQuickPercent(pct);
   };
 
@@ -135,7 +162,9 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const rate = getCashoutRate(amountNumber, 123.48, ngnPerUsdt);
   const isHighImpact = quote ? quote.priceImpactBps > MAX_PRICE_IMPACT_BPS : false;
   const isOverBalance = amountNumber > balanceG;
-  const isBelowMinimum = !rate.minimumReached && !IS_DEMO_MODE;
+  const minG = getMinimumCashOutG();
+  const isBelowMinimum =
+    !IS_DEMO_MODE && (!rate.minimumReached || (quote !== null && Number(quote.usdtOut) / 1e6 < MIN_NET_USDT_REQUIRED));
   const isRateUnavailable = rate.rateUnavailable || Boolean(rateError);
   const isValidAmount = amountNumber > 0 && !isOverBalance && !isHighImpact && !isBelowMinimum && !isRateUnavailable;
 
@@ -169,7 +198,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
               setInputAmountG(numericValue.toLocaleString('en-US'));
             }}
             placeholder="0"
-            className="gc-big"
+            className="gc-big relative z-10"
             style={{
               width: '100%',
               minWidth: 0,
@@ -194,6 +223,11 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             </button>
           ))}
         </div>
+        {!IS_DEMO_MODE && (
+          <div className="gc-sm" role={isBelowMinimum && amountNumber > 0 ? 'alert' : undefined} style={{ marginTop: 8, fontWeight: 700, color: isBelowMinimum && amountNumber > 0 ? '#b00020' : '#444' }}>
+            Minimum cash out is about {minG.toLocaleString()} G$
+          </div>
+        )}
       </div>
 
       {/* YOU RECEIVE ABOUT Card */}
@@ -239,18 +273,18 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       {!showBankDetails && (
         <button
           type="button"
-          onClick={() => setShowBankDetails(true)}
+          onClick={() => (walletConnected ? setShowBankDetails(true) : onConnectWallet?.())}
           className="gc-btn gc-hit w-full"
         >
-          Review
+          {walletConnected ? 'Review' : 'Connect wallet to continue'}
         </button>
       )}
 
       {/* Bank Details — revealed by the Review CTA */}
       <div className={`gc-card ${showBankDetails ? '' : 'hidden'}`}>
-        <div className="gc-row" style={{ marginBottom: '8px' }}>
-          <span className="gc-lab">Bank details</span>
-          <label className="gc-sm" htmlFor="bank-select">
+        <div className="gc-row" style={{ marginBottom: '8px', gap: '12px' }}>
+          <span className="gc-lab" style={{ whiteSpace: 'nowrap', flex: 'none' }}>Bank details</span>
+          <label className="sr-only" htmlFor="bank-select">
             Bank
           </label>
           <select
@@ -259,7 +293,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
-            className="rounded-xl border-2 border-[#111] bg-white pl-3 pr-12 py-2 text-sm text-[#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
+            className="min-w-0 flex-1 max-w-full rounded-xl border-2 border-[#111] bg-white pl-3 pr-12 py-2 text-sm text-[#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
           >
             <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
             {institutions.map((bank) => (
@@ -276,7 +310,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             value={accountIdentifier}
             onChange={(e) => setAccountIdentifier(e.target.value)}
             placeholder="10-digit account number"
-            className="w-full rounded-xl border-2 border-[#111] bg-white px-3 py-3 text-base text-[#111] outline-none placeholder:text-[#666]"
+            className="w-full rounded-xl border-2 border-[#111] bg-white px-3 py-3 text-base text-[#111] outline-none placeholder:text-[#666] relative z-10"
             style={{ marginTop: '4px' }}
           />
         </div>
@@ -286,7 +320,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             className="min-h-[48px] rounded-xl border-2 border-[#111] bg-white px-3 py-3 text-base text-[#111]"
             style={{ marginTop: '4px' }}
           >
-            {verificationStatus === 'loading' && <span className="text-[#666]">Verifying with Paycrest…</span>}
+            {verificationStatus === 'loading' && <span className="text-[#666]">Checking your account…</span>}
             {verificationStatus === 'idle' && <span className="text-[#666]">Enter a 10-digit account number</span>}
             {verificationStatus === 'error' && <span className="text-[#b91c1c]">{verificationError}</span>}
             {verificationStatus === 'verified' && accountName && <span className="font-semibold">{accountName}</span>}
@@ -344,7 +378,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             : isOverBalance
             ? 'Amount exceeds your balance'
             : isBelowMinimum
-            ? `Minimum cash out is ${Math.ceil(rate.remainingG)} G$`
+            ? `Minimum cash out is ${minG.toLocaleString()} G$`
             : isHighImpact
             ? 'Price impact is too high'
             : 'Enter a valid amount'}

@@ -54,7 +54,7 @@ function makeEnv(kv: MockKV, overrides: Partial<Env> = {}): Env {
 // ---------------------------------------------------------------------------
 const VALID_BODY = {
   amount: '0.50',
-  refundAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+  refundAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
   recipient: {
     institution: 'GTBINGLA',
     accountIdentifier: '0123456789',
@@ -223,6 +223,36 @@ describe('GET /orders/:id', () => {
     const data = await res.json() as Record<string, unknown>;
     expect(data.status).toBe('pending');
     expect(data.orderId).toBe('550e8400-e29b-41d4-a716-446655440000');
+  });
+
+  it('8b. Refreshes a non-final cached order from Paycrest (no webhook needed)', async () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    await kv.put(`order:${id}`, JSON.stringify({
+      status: 'initiated',
+      receiveAddress: '0xProviderAddress1234',
+      amountToTransfer: '0.50',
+      validUntil: '2026-11-04T22:00:00Z',
+      paymentReference: null,
+    }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'success', data: { id, status: 'settled', paymentReference: 'REF-1' } }), { status: 200 })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await worker.fetch(makeRequest('GET', `/orders/${id}`), env);
+    const data = await res.json() as Record<string, unknown>;
+    expect(data.status).toBe('settled');
+    expect(data.paymentReference).toBe('REF-1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+
+    // Now final: served from KV without another Paycrest call
+    const again = vi.fn();
+    vi.stubGlobal('fetch', again);
+    const res2 = await worker.fetch(makeRequest('GET', `/orders/${id}`), env);
+    expect(((await res2.json()) as Record<string, unknown>).status).toBe('settled');
+    expect(again).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('9. Rejects invalid order ID format with 400', async () => {
@@ -584,7 +614,8 @@ describe('Abuse protection', () => {
 
     const paycrestCall = fetchSpy.mock.calls.find(([url]) => String(url).includes('/v2/sender/orders'));
     const paycrestBody = JSON.parse(String((paycrestCall![1] as RequestInit).body));
-    expect(paycrestBody.senderFee).toBe('0');
+    expect(paycrestBody.senderFee).toBeUndefined();
+    expect(paycrestBody.senderFeeAddress).toBeUndefined();
     expect(paycrestBody.source.refundAddress).toBe(wallet);
   });
 
@@ -639,5 +670,397 @@ describe('Abuse protection', () => {
     expect(res.status).toBe(400);
     const data = await res.json() as { error: string };
     expect(data.error).toContain('swapTxHash is required');
+  });
+});
+
+
+const FIRST_BLOCK = 81917173;
+type FakeRow = { transactionHash: string; data: string; timeStamp: string };
+
+/** Pretends to be the Celo node (blockNumber, getLogs, getBlock) plus the payout partner. */
+function chainMock(rows: FakeRow[], paycrestStatus = 'initiated', opts: { rpcFails?: boolean } = {}) {
+  return vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+    const u = String(url);
+    if (u.includes('blockscout')) return new Response('slow down', { status: 429 });
+    if (u.includes('api.resend.com')) return new Response('{}', { status: 200 });
+    if (u.includes('forno') || u.includes('celo.org')) {
+      if (opts.rpcFails) return new Response('{}', { status: 500 });
+      const body = JSON.parse(String(init?.body ?? '{}')) as { method: string };
+      if (body.method === 'eth_blockNumber') return new Response(JSON.stringify({ result: '0x' + (FIRST_BLOCK + 100).toString(16) }), { status: 200 });
+      if (body.method === 'eth_getLogs') {
+        return new Response(JSON.stringify({ result: rows.map((r) => ({ transactionHash: r.transactionHash, data: r.data, blockNumber: '0x' + (FIRST_BLOCK + 50).toString(16) })) }), { status: 200 });
+      }
+      if (body.method === 'eth_getBlockByNumber') return new Response(JSON.stringify({ result: { timestamp: rows[0]?.timeStamp ?? '0x0' } }), { status: 200 });
+      return new Response(JSON.stringify({ result: null }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ data: { status: paycrestStatus } }), { status: 200 });
+  });
+}
+
+describe('Support tickets, unfinished swaps and duplicate-payout guard', () => {
+  let kv: MockKV;
+  let env: Env;
+  beforeEach(() => {
+    kv = new MockKV();
+    env = makeEnv(kv);
+  });
+  afterEach(() => {
+    kv.clear();
+    vi.unstubAllGlobals();
+  });
+
+  const WALLET = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
+  const TX = '0x' + 'ab'.repeat(32);
+
+  it('S1. Stores a support ticket and returns a reference', async () => {
+    const res = await worker.fetch(
+      makeRequest('POST', '/support', {
+        email: 'user@example.com',
+        topic: 'not_arrived',
+        message: 'My naira has not arrived after an hour',
+        context: { orderId: 'abc', txHash: TX, wallet: WALLET },
+      }),
+      env
+    );
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as { ticketId: string };
+    expect(data.ticketId).toMatch(/^GC-[A-Z0-9]{6}$/);
+    const saved = await kv.get(`ticket:${data.ticketId}`);
+    expect(saved).toContain('user@example.com');
+  });
+
+  it('S2. Rejects a support request with a bad email or a too-short message', async () => {
+    const bad = await worker.fetch(
+      makeRequest('POST', '/support', { email: 'nope', topic: 'other', message: 'long enough message here' }),
+      env
+    );
+    expect(bad.status).toBe(400);
+    const short = await worker.fetch(
+      makeRequest('POST', '/support', { email: 'a@b.com', topic: 'other', message: 'short' }),
+      env
+    );
+    expect(short.status).toBe(400);
+  });
+
+  it('S3. Emails the team when email is configured, without failing the ticket', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    env = makeEnv(kv, { RESEND_API_KEY: 'key', SUPPORT_TO: 'team@example.com' });
+    const res = await worker.fetch(
+      makeRequest('POST', '/support', { email: 'user@example.com', topic: 'other', message: 'Something odd happened here' }),
+      env
+    );
+    expect(res.status).toBe(201);
+    const call = fetchMock.mock.calls.find((c) => String(c[0]).includes('api.resend.com'));
+    expect(call).toBeTruthy();
+    const sent = JSON.parse((call![1] as RequestInit).body as string);
+    expect(sent.to).toEqual(['team@example.com']);
+    expect(sent.reply_to).toBe('user@example.com');
+  });
+
+  it('S4. Lists only swaps without a payout as unfinished', async () => {
+    const data = '0x' + (5000n * 10n ** 18n).toString(16).padStart(64, '0') + (573332n).toString(16).padStart(64, '0');
+    const now = Math.floor(Date.now() / 1000).toString(16);
+    const paidTx = '0x' + 'cd'.repeat(32);
+    await kv.put(`swap:${paidTx}`, 'order-paid');
+    vi.stubGlobal('fetch', chainMock(
+      [{ transactionHash: TX, data, timeStamp: `0x${now}` }, { transactionHash: paidTx, data, timeStamp: `0x${now}` }],
+      'settled'
+    ));
+    const res = await worker.fetch(makeRequest('GET', `/swaps/unfinished?wallet=${WALLET}`), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { swaps: Array<{ txHash: string; amountG: string; usdtReceived: string }> };
+    expect(body.swaps).toHaveLength(1);
+    expect(body.swaps[0].txHash).toBe(TX);
+    expect(body.swaps[0].amountG).toBe('5000');
+    expect(body.swaps[0].usdtReceived).toBe('0.573332');
+  });
+
+  it('S6. Refuses a second order for a swap that is already being paid out', async () => {
+    await kv.put(`swap:${TX}`, 'order-live');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { status: 'pending' } }), { status: 200 }))
+    );
+    const res = await worker.fetch(makeRequest('POST', '/orders', { ...VALID_BODY, swapTxHash: TX }), env);
+    expect(res.status).toBe(409);
+  });
+
+  it('S7. Quiet error reports are accepted and never echo anything back', async () => {
+    const res = await worker.fetch(makeRequest('POST', '/diag', { kind: 'deposit_failed', message: 'boom', orderId: 'o1' }), env);
+    expect(res.status).toBe(204);
+  });
+
+  it('S8. Looks up the payout order that belongs to a swap', async () => {
+    await kv.put(`swap:${TX}`, 'order-xyz');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { status: 'settled' } }), { status: 200 })));
+    const ok = await worker.fetch(makeRequest('GET', `/swaps/${TX}`), env);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ orderId: 'order-xyz', status: 'settled' });
+    const missing = await worker.fetch(makeRequest('GET', `/swaps/0x${'cd'.repeat(32)}`), env);
+    expect(missing.status).toBe(404);
+  });
+
+  it('S9. Wallet history lists every swap with its payout status', async () => {
+    const data = '0x' + (5000n * 10n ** 18n).toString(16).padStart(64, '0') + (573332n).toString(16).padStart(64, '0');
+    const t1 = Math.floor(Date.now() / 1000).toString(16);
+    const paidTx = '0x' + 'cd'.repeat(32);
+    await kv.put(`swap:${paidTx}`, 'order-paid');
+    await kv.put(`naira:${paidTx}`, '757.37');
+    vi.stubGlobal('fetch', chainMock(
+      [{ transactionHash: TX, data, timeStamp: `0x${t1}` }, { transactionHash: paidTx, data, timeStamp: `0x${t1}` }],
+      'settled'
+    ));
+    const res = await worker.fetch(makeRequest('GET', `/history?wallet=${WALLET}`), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { swaps: Array<{ txHash: string; status?: string; naira?: string; orderId?: string }> };
+    expect(body.swaps).toHaveLength(2);
+    const paid = body.swaps.find((x) => x.txHash === paidTx)!;
+    expect(paid.status).toBe('settled');
+    expect(paid.naira).toBe('757.37');
+    expect(paid.orderId).toBe('order-paid');
+    expect(body.swaps.find((x) => x.txHash === TX)!.orderId).toBeUndefined();
+    expect(await kv.get(`done:${paidTx}`)).toBe('settled');
+  });
+
+  it('S9b. Reads swaps from the chain itself and never needs the rate-limited block explorer', async () => {
+    const data = '0x' + (5000n * 10n ** 18n).toString(16).padStart(64, '0') + (573332n).toString(16).padStart(64, '0');
+    const t1 = Math.floor(Date.now() / 1000).toString(16);
+    const mock = chainMock([{ transactionHash: TX, data, timeStamp: `0x${t1}` }]);
+    vi.stubGlobal('fetch', mock);
+    const res = await worker.fetch(makeRequest('GET', `/history?wallet=${WALLET}`), env);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { swaps: unknown[] }).swaps).toHaveLength(1);
+    expect(mock.mock.calls.some((c) => String(c[0]).includes('blockscout'))).toBe(false);
+    // progress is remembered so the next refresh only looks at new blocks
+    expect(await kv.get(`wscan:${WALLET.toLowerCase()}`)).toContain(TX);
+  });
+
+  it('S10. Falls back to the last known list when both the node and the explorer fail', async () => {
+    const data = '0x' + (5000n * 10n ** 18n).toString(16).padStart(64, '0') + (573332n).toString(16).padStart(64, '0');
+    const t1 = Math.floor(Date.now() / 1000).toString(16);
+    await kv.put(`wscan:${WALLET.toLowerCase()}`, JSON.stringify({ fwd: 1, back: 1, rows: [{ transactionHash: TX, data, timeStamp: `0x${t1}` }] }));
+    vi.stubGlobal('fetch', chainMock([], 'initiated', { rpcFails: true }));
+    const res = await worker.fetch(makeRequest('GET', `/history?wallet=${WALLET}`), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { swaps: Array<{ txHash: string }> };
+    expect(body.swaps.map((x) => x.txHash)).toEqual([TX]);
+  });
+
+  it('S11. Says so plainly when there is neither a live answer nor a saved one', async () => {
+    vi.stubGlobal('fetch', chainMock([], 'initiated', { rpcFails: true }));
+    const res = await worker.fetch(makeRequest('GET', `/history?wallet=${WALLET}`), env);
+    expect(res.status).toBe(503);
+  });
+
+  it('N1. Stores an opt-in email for one order only, and rejects bad input', async () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { status: 'initiated' } }), { status: 200 })));
+    const ok = await worker.fetch(makeRequest('POST', '/notify', { orderId: id, email: 'me@example.com' }), env);
+    expect(ok.status).toBe(204);
+    expect(await kv.get(`notify:${id}`)).toBe('me@example.com');
+    const badEmail = await worker.fetch(makeRequest('POST', '/notify', { orderId: id, email: 'nope' }), env);
+    expect(badEmail.status).toBe(400);
+    const badOrder = await worker.fetch(makeRequest('POST', '/notify', { orderId: 'x', email: 'me@example.com' }), env);
+    expect(badOrder.status).toBe(400);
+  });
+
+  it('N2. Emails the customer exactly once when the payout lands', async () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    env = makeEnv(kv, { RESEND_API_KEY: 'key', RESEND_FROM: 'GoodCash <hello@goodcash.xyz>' });
+    await kv.put(`swap:${TX}`, id);
+    await kv.put(`notify:${id}`, 'me@example.com');
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('api.resend.com')) return new Response('{}', { status: 200 });
+      return new Response(JSON.stringify({ data: { status: 'settled' } }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await worker.fetch(makeRequest('GET', `/swaps/${TX}`), env);
+    await worker.fetch(makeRequest('GET', `/swaps/${TX}`), env);
+    await worker.fetch(makeRequest('GET', `/orders/${id}`), env);
+
+    const sends = fetchMock.mock.calls.filter((c) => String(c[0]).includes('api.resend.com'));
+    expect(sends).toHaveLength(1);
+    const sent = JSON.parse((sends[0][1] as RequestInit).body as string);
+    expect(sent.to).toEqual(['me@example.com']);
+    expect(sent.from).toBe('GoodCash <hello@goodcash.xyz>');
+    expect(sent.text).not.toMatch(/USDT|Paycrest/i);
+    expect(await kv.get(`notify:${id}`)).toBeNull();
+  });
+
+  it('N3. Does not email while the payout is still on its way', async () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    env = makeEnv(kv, { RESEND_API_KEY: 'key' });
+    await kv.put(`swap:${TX}`, id);
+    await kv.put(`notify:${id}`, 'me@example.com');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { status: 'pending' } }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await worker.fetch(makeRequest('GET', `/swaps/${TX}`), env);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('api.resend.com'))).toBe(false);
+    expect(await kv.get(`notify:${id}`)).toBe('me@example.com');
+  });
+
+  it('S5. Rejects a malformed wallet address', async () => {
+    const res = await worker.fetch(makeRequest('GET', '/swaps/unfinished?wallet=0x123'), env);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('rate limiting without storage writes', () => {
+  it('R1. Uses the Cloudflare limiter when present and writes nothing to KV', async () => {
+    const kv2 = new MockKV();
+    const limit = vi.fn().mockResolvedValue({ success: true });
+    const env2 = makeEnv(kv2, { RATE_LIMITER: { limit }, RATE_LIMITER_STRICT: { limit } } as never);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
+    await worker.fetch(makeRequest('POST', '/diag', { kind: 'x', message: 'y' }), env2);
+    expect(limit).toHaveBeenCalled();
+    expect([...(kv2 as unknown as { store?: Map<string, string> }).store?.keys() ?? []].filter((k) => k.startsWith('rl:'))).toHaveLength(0);
+  });
+  it('R2. Answers 429 when the limiter says no', async () => {
+    const env2 = makeEnv(new MockKV(), { RATE_LIMITER: { limit: vi.fn().mockResolvedValue({ success: false }) } } as never);
+    const res = await worker.fetch(makeRequest('POST', '/verify-account', { institution: 'GTBINGLA', accountIdentifier: '0123456789' }), env2);
+    expect(res.status).toBe(429);
+  });
+});
+
+
+describe('findings 6, 8, 11, 14', () => {
+  const ID = '550e8400-e29b-41d4-a716-446655440000';
+  const SWAP = '0x' + 'ab'.repeat(32);
+
+  it('F6. Hands back the still-open order instead of creating a second one', async () => {
+    const kv3 = new MockKV();
+    const env3 = makeEnv(kv3);
+    await kv3.put(`swap:${SWAP}`, ID);
+    await kv3.put(`swaprec:${SWAP}`, await fingerprintOf(VALID_BODY));
+    const future = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const open = { ...MOCK_PAYCREST_RESPONSE, providerAccount: { ...MOCK_PAYCREST_RESPONSE.providerAccount, validUntil: future } };
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify(open), { status: 201 });
+      return new Response(JSON.stringify({ data: open }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await worker.fetch(makeRequest('POST', '/orders', { ...VALID_BODY, swapTxHash: SWAP }), env3);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { orderId: string };
+    expect(body.orderId).toBe(ID);
+    expect(fetchMock.mock.calls.some((c) => (c[1] as RequestInit | undefined)?.method === 'POST')).toBe(false);
+  });
+
+  it('F6b. Replaces an order whose payment window has closed', async () => {
+    const kv3 = new MockKV();
+    const env3 = makeEnv(kv3);
+    await kv3.put(`swap:${SWAP}`, ID);
+    const past = new Date(Date.now() - 60 * 1000).toISOString();
+    const stale = { ...MOCK_PAYCREST_RESPONSE, providerAccount: { ...MOCK_PAYCREST_RESPONSE.providerAccount, validUntil: past } };
+    const fresh = { ...MOCK_PAYCREST_RESPONSE, id: '650e8400-e29b-41d4-a716-446655440000' };
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify(fresh), { status: 201 });
+      return new Response(JSON.stringify({ data: stale }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await worker.fetch(makeRequest('POST', '/orders', { ...VALID_BODY, swapTxHash: SWAP }), env3);
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { orderId: string }).orderId).toBe('650e8400-e29b-41d4-a716-446655440000');
+  });
+
+  it('F11. A late "pending" message never undoes "settled"', async () => {
+    const kv3 = new MockKV();
+    const env3 = makeEnv(kv3);
+    await kv3.put(`order:${ID}`, JSON.stringify({ status: 'settled', receiveAddress: '0xP', amountToTransfer: '0.5', validUntil: 'x', paymentReference: 'R' }));
+    const payload = JSON.stringify({ event: 'payment_order.pending', data: { id: ID, status: 'pending' } });
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', enc.encode('test-secret'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sig = Array.from(new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(payload)))).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const res = await worker.fetch(new Request('https://orders.goodcash.workers.dev/webhooks/paycrest', { method: 'POST', headers: { 'X-Paycrest-Signature': sig }, body: payload }), env3);
+    expect(res.status).toBe(200);
+    expect(JSON.parse((await kv3.get(`order:${ID}`))!).status).toBe('settled');
+  });
+
+  it('F8. Read endpoints are rate limited on their own, looser limiter', async () => {
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    const env3 = makeEnv(new MockKV(), { RATE_LIMITER_READ: { limit } } as never);
+    const res = await worker.fetch(makeRequest('GET', `/orders/${ID}`), env3);
+    expect(res.status).toBe(429);
+    expect(limit).toHaveBeenCalled();
+  });
+
+  it('F14. Refuses oversized support requests', async () => {
+    const req = new Request('https://orders.goodcash.workers.dev/support', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': '50000' },
+      body: JSON.stringify({ message: 'x' }),
+    });
+    const res = await worker.fetch(req, makeEnv(new MockKV()));
+    expect(res.status).toBe(413);
+  });
+});
+
+
+describe('branded payout email', () => {
+  const ID = '550e8400-e29b-41d4-a716-446655440000';
+  const TXH = '0x' + 'ab'.repeat(32);
+  it('E1. Sends an HTML email with the naira amount, and no partner or token names', async () => {
+    const kv4 = new MockKV();
+    const env4 = makeEnv(kv4, { RESEND_API_KEY: 'key', RESEND_FROM: 'GoodCash <hello@goodcash.xyz>' });
+    await kv4.put(`swap:${TXH}`, ID);
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('api.resend.com')) return new Response('{}', { status: 200 });
+      return new Response(JSON.stringify({ data: { status: 'initiated' } }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const ok = await worker.fetch(makeRequest('POST', '/notify', { orderId: ID, email: 'me@example.com', naira: '₦786' }), env4);
+    expect(ok.status).toBe(204);
+    const bad = await worker.fetch(makeRequest('POST', '/notify', { orderId: ID, email: 'me@example.com', naira: '<script>' }), env4);
+    expect(bad.status).toBe(204); // junk amount is ignored, not an error
+    await kv4.put(`notify:${ID}`, JSON.stringify({ email: 'me@example.com', naira: '₦786' }));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('api.resend.com')) return new Response('{}', { status: 200 });
+      return new Response(JSON.stringify({ data: { status: 'settled' } }), { status: 200 });
+    }));
+    const calls: unknown[][] = [];
+    const spy = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      calls.push([url, init]);
+      if (String(url).includes('api.resend.com')) return new Response('{}', { status: 200 });
+      return new Response(JSON.stringify({ data: { status: 'settled' } }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', spy);
+    await worker.fetch(makeRequest('GET', `/swaps/${TXH}`), env4);
+    const sent = calls.find((c) => String(c[0]).includes('api.resend.com'));
+    expect(sent).toBeTruthy();
+    const mail = JSON.parse((sent![1] as RequestInit).body as string);
+    expect(mail.html).toContain('₦786');
+    expect(mail.subject).toContain('₦786');
+    expect(mail.html + mail.text).not.toMatch(/USDT|Paycrest/i);
+  });
+});
+
+
+async function fingerprintOf(body: { recipient: { institution: string; accountIdentifier: string }; refundAddress: string }): Promise<string> {
+  const data = new TextEncoder().encode(`${body.recipient.institution}|${body.recipient.accountIdentifier}|${body.refundAddress.toLowerCase()}`);
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data))).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+describe('nobody else can get a customer paid out to their own bank', () => {
+  it('X1. An open order made for a DIFFERENT bank account is never handed to the customer', async () => {
+    const ID = '550e8400-e29b-41d4-a716-446655440000';
+    const SWAP = '0x' + 'cd'.repeat(32);
+    const kv5 = new MockKV();
+    const env5 = makeEnv(kv5);
+    await kv5.put(`swap:${SWAP}`, ID);
+    // the earlier (attacker's) order was made for another bank account
+    await kv5.put(`swaprec:${SWAP}`, await fingerprintOf({ ...VALID_BODY, recipient: { ...VALID_BODY.recipient, accountIdentifier: '9999999999' } }));
+    const future = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const rogue = { ...MOCK_PAYCREST_RESPONSE, providerAccount: { ...MOCK_PAYCREST_RESPONSE.providerAccount, validUntil: future } };
+    const mine = { ...MOCK_PAYCREST_RESPONSE, id: '750e8400-e29b-41d4-a716-446655440000' };
+    const fetchMock = vi.fn().mockImplementation(async (_u: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify(mine), { status: 201 });
+      return new Response(JSON.stringify({ data: rogue }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await worker.fetch(makeRequest('POST', '/orders', { ...VALID_BODY, swapTxHash: SWAP }), env5);
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { orderId: string }).orderId).toBe('750e8400-e29b-41d4-a716-446655440000');
   });
 });

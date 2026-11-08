@@ -22,6 +22,15 @@ export interface Env {
   ALLOWED_ORIGINS?: string;       // Comma-separated browser origins
   CELO_RPC_URL?: string;          // On-chain swap verification RPC
   ROUTER_ADDRESS?: string;        // GoodCashRouter address override
+  SENDER_FEE?: string;            // Optional GoodCash fee in USDT (needs SENDER_FEE_ADDRESS)
+  SENDER_FEE_ADDRESS?: string;    // Wallet that receives SENDER_FEE
+  RESEND_API_KEY?: string;        // Optional: emails support tickets to SUPPORT_TO (secret)
+  SUPPORT_TO?: string;            // Where support tickets are emailed
+  RATE_LIMITER_READ?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };   // looser, for status polling
+  RATE_LIMITER_STRICT?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }; // tight, for email-sending endpoints
+  RATE_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }; // Cloudflare rate-limit binding (no storage writes)
+  RESEND_FROM?: string;           // Sender for customer emails, e.g. "GoodCash <hello@goodcash.xyz>" (needs a verified domain)
+  BLOCKSCOUT_URL?: string;        // Indexer used to find a wallet's swaps (default celo.blockscout.com)
   VERIFY_SWAP_ONCHAIN?: string;   // "false" disables swap-proof checks (tests/local only)
   RATE_LIMIT_MAX?: string;        // Requests per window per IP
   RATE_LIMIT_WINDOW_SECONDS?: string;
@@ -317,8 +326,21 @@ function clientIp(request: Request): string {
 async function checkRateLimit(
   request: Request,
   env: Env,
-  bucket: string
+  bucket: string,
+  tier: 'normal' | 'read' | 'strict' = 'normal'
 ): Promise<Response | null> {
+  // Preferred: Cloudflare's built-in rate limiter. It costs no storage writes, so it can never use up the KV quota.
+  const limiter = tier === 'read' ? env.RATE_LIMITER_READ : tier === 'strict' ? env.RATE_LIMITER_STRICT : env.RATE_LIMITER;
+  if (limiter) {
+    try {
+      const { success } = await limiter.limit({ key: `${bucket}:${clientIp(request)}` });
+      return success ? null : err('Too many requests. Please try again later.', 429);
+    } catch (e) {
+      console.error('[orders] rate limiter unavailable:', e);
+      return null; // never block customers because the limiter itself failed
+    }
+  }
+
   const max = Number(env.RATE_LIMIT_MAX ?? '30');
   if (!Number.isFinite(max) || max <= 0) return null;
 
@@ -432,6 +454,528 @@ async function verifySwapOnChain(
   return null;
 }
 
+
+// ---------------------------------------------------------------------------
+// Swap <-> order bookkeeping, unfinished-swap detection and support tickets
+// ---------------------------------------------------------------------------
+
+/** Statuses meaning no money has reached the payout partner for this order. */
+const UNPAID_STATUSES = new Set(['initiated', 'expired', 'refunded', 'cancelled', 'error']);
+const ROUTER_DEPLOY_BLOCK = 81917173;
+const THIRTY_DAYS_S = 60 * 60 * 24 * 30;
+
+
+const PAID_STATUSES = new Set(['settled', 'validated']);
+
+const FINAL_STATUSES = new Set(['settled', 'refunded', 'expired', 'cancelled', 'error']);
+const STATUS_RANK: Record<string, number> = { initiated: 0, deposited: 1, pending: 2, fulfilling: 3, validated: 4, settling: 5, settled: 6 };
+
+/** True when `next` would undo progress already recorded (or change a final status). */
+function statusMovesBackwards(current: string | undefined, next: string): boolean {
+  if (!current || current === next) return false;
+  if (FINAL_STATUSES.has(current)) return true;
+  if (FINAL_STATUSES.has(next)) return false;
+  return (STATUS_RANK[next] ?? 0) < (STATUS_RANK[current] ?? 0);
+}
+
+/** The "your naira is sent" email, in GoodCash's look. Inline styles only, because email apps ignore the rest. */
+function paidEmailHtml(orderId: string, naira: string | null): string {
+  const ref = orderId.slice(0, 8);
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#cdb8ff;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#cdb8ff;padding:28px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;">
+<tr><td style="padding:0 4px 14px;font-family:Arial,Helvetica,sans-serif;font-size:24px;font-weight:900;color:#111;letter-spacing:-0.5px;"><img src="https://goodcash.xyz/email-logo.png" width="44" height="44" alt="" style="vertical-align:middle;border:0;margin-right:10px;">GoodCash</td></tr>
+<tr><td style="background:#ffffff;border:3px solid #111;border-radius:22px;box-shadow:5px 5px 0 #111;padding:26px 22px;text-align:center;font-family:Arial,Helvetica,sans-serif;color:#111;">
+<div style="display:inline-block;width:54px;height:54px;line-height:54px;border-radius:50%;background:#8cf0c0;border:3px solid #111;font-size:28px;font-weight:900;">&#10003;</div>
+<div style="font-size:12px;font-weight:800;letter-spacing:1.5px;margin-top:14px;">CASH OUT COMPLETE</div>
+<div style="font-size:40px;font-weight:900;line-height:1.1;margin:8px 0 4px;">${naira ? naira : 'Your naira'}</div>
+<div style="font-size:16px;font-weight:700;">${naira ? 'has been sent to your bank' : 'has been sent to your bank'}</div>
+<div style="font-size:14px;line-height:1.5;margin:16px 0 20px;color:#333;">It can take a few minutes to show up in your account.</div>
+<a href="https://goodcash.xyz" style="display:inline-block;background:#7b39fc;color:#ffffff;text-decoration:none;font-weight:900;font-size:16px;padding:14px 26px;border:3px solid #111;border-radius:16px;box-shadow:3px 3px 0 #111;">Open GoodCash</a>
+</td></tr>
+<tr><td style="padding:16px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#2b1d55;text-align:center;">
+Reference: ${ref}<br>Not there after an hour? Open GoodCash, go to History, tap your cash out and choose Contact support.
+</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+/**
+ * If the customer asked to be emailed when their naira lands, send it once and forget the address.
+ * Safe to call as often as we like: it does nothing unless an address is waiting.
+ */
+async function sendPaidEmailIfRequested(orderId: string, env: Env): Promise<void> {
+  if (!env.RESEND_API_KEY) return;
+  const key = `notify:${orderId}`;
+  const stored = await env.ORDER_STORE.get(key);
+  if (!stored) return;
+  // Older entries are just the address; newer ones also carry the naira amount to show in the email
+  let email = stored;
+  let naira: string | null = null;
+  if (stored.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(stored) as { email?: string; naira?: string };
+      email = parsed.email ?? '';
+      naira = parsed.naira ?? null;
+    } catch {
+      return;
+    }
+  }
+  if (!email) return;
+  // Forget it first, so a retry or a second poll can never send a duplicate
+  await env.ORDER_STORE.delete(key);
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: env.RESEND_FROM || 'GoodCash <onboarding@resend.dev>',
+        to: [email],
+        subject: naira ? `Your ${naira} is on its way to your bank` : 'Your naira is on its way to your bank',
+        html: paidEmailHtml(orderId, naira),
+        text: [
+          'Good news: your GoodCash cash out is complete.',
+          '',
+          naira
+            ? `Your ${naira} has been sent to your bank account. It can take a few minutes to show up in your account.`
+            : 'Your naira has been sent to your bank account. It can take a few minutes to show up in your account.',
+          '',
+          `Reference: ${orderId.slice(0, 8)}`,
+          '',
+          'If it has not arrived after an hour, open GoodCash, go to History, tap your cash out and choose Contact support.',
+        ].join('\n'),
+      }),
+    });
+  } catch (e) {
+    console.error('[notify] email failed:', e);
+  }
+}
+
+/** POST /notify - "email me when it lands". Stores the address for this order only, for three days. */
+async function handleNotify(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'notify', 'strict');
+  if (limited) return limited;
+  let body: { orderId?: unknown; email?: unknown; naira?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const orderId = typeof body.orderId === 'string' ? body.orderId : '';
+  const email = typeof body.email === 'string' ? body.email.trim() : '';
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return err('Invalid order', 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 200) return err('Enter a valid email address.', 400);
+  // The amount is only for display in the email, so accept nothing but a plain ₦ figure
+  const naira = typeof body.naira === 'string' && /^₦[\d,]{1,12}$/.test(body.naira) ? body.naira : null;
+  await env.ORDER_STORE.put(`notify:${orderId}`, naira ? JSON.stringify({ email, naira }) : email, { expirationTtl: 60 * 60 * 24 * 3 });
+  // If it already landed, tell them now
+  const status = await lookupOrderStatus(orderId, env);
+  if (status && PAID_STATUSES.has(status)) await sendPaidEmailIfRequested(orderId, env);
+  return new Response(null, { status: 204 });
+}
+
+/** Current status of an order, preferring a live Paycrest answer over the saved copy. */
+async function lookupOrderStatus(orderId: string, env: Env): Promise<string | null> {
+  try {
+    const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${orderId}`, {
+      headers: { 'API-Key': env.PAYCREST_API_KEY },
+    });
+    if (res.ok) {
+      const data = unwrapPaycrestData<{ status?: string }>(await res.json());
+      if (data?.status) {
+        if (PAID_STATUSES.has(data.status)) await sendPaidEmailIfRequested(orderId, env);
+        return data.status;
+      }
+    }
+  } catch {
+    // fall through to the saved copy
+  }
+  const cached = await env.ORDER_STORE.get(`order:${orderId}`);
+  if (cached) {
+    try {
+      return (JSON.parse(cached) as { status?: string }).status ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+
+type SwapRow = { transactionHash: string; data: string; timeStamp: string };
+
+/**
+ * A wallet's GoodCash swaps. The free block explorer allows only about 10 requests and shared servers
+ * exhaust it (HTTP 429), so we read the chain ourselves instead: Celo's public node answers log queries
+ * quickly but only 5,000 blocks at a time. We scan in small windows and remember where we got to, so a
+ * normal refresh costs one or two windows. Answers are cached for 3 minutes, and if the node is
+ * unavailable we serve the last list we saw.
+ */
+const LOG_WINDOW = 5000;
+
+interface ScanState {
+  fwd: number; // next block not yet scanned going forward
+  back: number; // highest block not yet scanned going backward (older history)
+  rows: SwapRow[];
+}
+
+async function scanWalletSwapsViaRpc(wallet: string, env: Env): Promise<SwapRow[]> {
+  const router = (env.ROUTER_ADDRESS || DEFAULT_ROUTER_ADDRESS).toLowerCase();
+  const w = wallet.toLowerCase();
+  const topic1 = `0x${'0'.repeat(24)}${w.slice(2)}`;
+  const stateKey = `wscan:${w}`;
+
+  const latest = parseInt((await rpcCall(env, 'eth_blockNumber', [])) as string, 16);
+  const saved = await env.ORDER_STORE.get(stateKey);
+  let state: ScanState = saved ? (JSON.parse(saved) as ScanState) : { fwd: latest + 1, back: latest, rows: [] };
+  const start = JSON.stringify({ back: state.back, rowsLen: state.rows.length, fwd: state.fwd });
+
+  const found = new Map(state.rows.map((r) => [r.transactionHash.toLowerCase(), r] as const));
+  const logsIn = async (from: number, to: number) => {
+    const logs = (await rpcCall(env, 'eth_getLogs', [
+      { fromBlock: `0x${from.toString(16)}`, toBlock: `0x${to.toString(16)}`, address: router, topics: [CASH_OUT_TOPIC, topic1] },
+    ])) as Array<{ transactionHash: string; data: string; blockNumber: string }>;
+    for (const l of logs) {
+      if (found.has(l.transactionHash.toLowerCase())) continue;
+      const block = (await rpcCall(env, 'eth_getBlockByNumber', [l.blockNumber, false])) as { timestamp?: string } | null;
+      found.set(l.transactionHash.toLowerCase(), {
+        transactionHash: l.transactionHash,
+        data: l.data,
+        timeStamp: block?.timestamp ?? '0x0',
+      });
+    }
+  };
+
+  // Forward: everything since the last scan, newest first so recent swaps always appear
+  let to = latest;
+  let windows = 0;
+  while (to >= state.fwd && windows < 12) {
+    const from = Math.max(state.fwd, to - LOG_WINDOW + 1);
+    await logsIn(from, to);
+    to = from - 1;
+    windows++;
+  }
+  const fwd = to >= state.fwd ? state.fwd : latest + 1; // finished the gap, or keep working next time
+
+  // Backward: older history, a few windows per call until the router's first block
+  let back = state.back;
+  let backWindows = 0;
+  while (back >= ROUTER_DEPLOY_BLOCK && backWindows < (saved ? 6 : 12)) {
+    const from = Math.max(ROUTER_DEPLOY_BLOCK, back - LOG_WINDOW + 1);
+    await logsIn(from, back);
+    back = from - 1;
+    backWindows++;
+  }
+
+  const rows = [...found.values()];
+  state = { fwd, back, rows };
+  const changed =
+    start !== JSON.stringify({ back: state.back, rowsLen: rows.length, fwd: state.fwd }) &&
+    (rows.length !== (saved ? (JSON.parse(saved) as ScanState).rows.length : 0) ||
+      back !== (saved ? (JSON.parse(saved) as ScanState).back : latest) ||
+      latest + 1 - (saved ? (JSON.parse(saved) as ScanState).fwd : latest + 1) >= LOG_WINDOW);
+  if (!saved || changed) await env.ORDER_STORE.put(stateKey, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 120 });
+  return rows;
+}
+
+async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
+  const w = wallet.toLowerCase();
+  const edge = typeof caches !== 'undefined' ? (caches as unknown as { default?: Cache }).default : undefined;
+  const cacheKey = new Request(`https://cache.goodcash.invalid/wallet-swaps/${w}`);
+  if (edge) {
+    const hit = await edge.match(cacheKey);
+    if (hit) {
+      try {
+        return (await hit.json()) as SwapRow[];
+      } catch {
+        // fall through to a fresh read
+      }
+    }
+  }
+
+  let rows: SwapRow[] | null = null;
+  try {
+    rows = await scanWalletSwapsViaRpc(w, env);
+  } catch (e) {
+    console.error('[orders] chain scan failed:', e);
+  }
+
+  // Last resort: the public block explorer (tight limits, so only when the node failed)
+  if (!rows) {
+    try {
+      const router = (env.ROUTER_ADDRESS || DEFAULT_ROUTER_ADDRESS).toLowerCase();
+      const base = env.BLOCKSCOUT_URL || 'https://celo.blockscout.com';
+      const topic1 = `0x${'0'.repeat(24)}${w.slice(2)}`;
+      const res = await fetch(
+        `${base}/api?module=logs&action=getLogs&fromBlock=${ROUTER_DEPLOY_BLOCK}&toBlock=latest` +
+          `&address=${router}&topic0=${CASH_OUT_TOPIC}&topic1=${topic1}&topic0_1_opr=and`
+      );
+      if (!res.ok) throw new Error(`indexer ${res.status}`);
+      const payload = (await res.json()) as { result?: unknown };
+      rows = Array.isArray(payload.result) ? (payload.result as SwapRow[]) : [];
+    } catch (e) {
+      console.error('[orders] swap indexer lookup failed:', e);
+    }
+  }
+
+  if (rows) {
+    if (edge) {
+      await edge.put(cacheKey, new Response(JSON.stringify(rows), { headers: { 'Cache-Control': 'public, max-age=180' } }));
+    }
+    return rows;
+  }
+
+  const state = await env.ORDER_STORE.get(`wscan:${w}`);
+  if (state) {
+    try {
+      return (JSON.parse(state) as ScanState).rows;
+    } catch {
+      // unreadable
+    }
+  }
+  throw new Error('swap lookup unavailable');
+}
+
+/**
+ * GET /swaps/unfinished?wallet=0x...
+ * Finds recent GoodCash swaps made by this wallet that never got a payout (or whose payout
+ * order was never paid), so the app can offer to finish them without the customer doing anything.
+ */
+async function handleUnfinishedSwaps(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'unfinished');
+  if (limited) return limited;
+
+  const wallet = new URL(request.url).searchParams.get('wallet') ?? '';
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) return err('Invalid wallet address', 400);
+
+  let rows: SwapRow[];
+  try {
+    rows = await getWalletSwapRows(wallet, env);
+  } catch {
+    return err('Could not check your swaps right now.', 503);
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const recent = rows
+    .map((r) => ({
+      txHash: r.transactionHash,
+      at: parseInt(r.timeStamp, 16),
+      data: r.data.startsWith('0x') ? r.data.slice(2) : r.data,
+    }))
+    .filter((r) => r.data.length >= 128 && now - r.at <= THIRTY_DAYS_S)
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 8);
+
+  const swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number }> = [];
+  for (const r of recent) {
+    const orderId = await env.ORDER_STORE.get(`swap:${r.txHash.toLowerCase()}`);
+    if (orderId) {
+      const status = await lookupOrderStatus(orderId, env);
+      if (status && !UNPAID_STATUSES.has(status)) continue; // already paid out or in progress
+    }
+    const amountIn = BigInt(`0x${r.data.slice(0, 64)}`);
+    const amountOut = BigInt(`0x${r.data.slice(64, 128)}`);
+    swaps.push({
+      txHash: r.txHash,
+      amountG: (Number(amountIn) / 1e18).toString(),
+      usdtReceived: (Number(amountOut) / 1e6).toString(),
+      at: r.at,
+    });
+  }
+  return json({ swaps });
+}
+
+const SupportSchema = z.object({
+  email: z.string().trim().email().max(200),
+  topic: z.enum(['not_arrived', 'payment_failed', 'wrong_amount', 'charged_nothing', 'other']),
+  message: z.string().trim().min(10).max(2000),
+  context: z
+    .object({
+      orderId: z.string().max(80).optional(),
+      txHash: z.string().max(80).optional(),
+      wallet: z.string().max(60).optional(),
+      status: z.string().max(60).optional(),
+      amountG: z.string().max(40).optional(),
+      naira: z.string().max(40).optional(),
+      createdAt: z.string().max(60).optional(),
+      page: z.string().max(200).optional(),
+      userAgent: z.string().max(300).optional(),
+    })
+    .default({}),
+});
+
+const TOPIC_LABELS: Record<string, string> = {
+  not_arrived: 'Naira has not arrived',
+  payment_failed: "Payment didn't go through",
+  wrong_amount: 'Amount looks wrong',
+  charged_nothing: 'Charged but nothing happened',
+  other: 'Something else',
+};
+
+/** POST /support - store a help request and (if configured) email it to the team. */
+async function handleSupport(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'support', 'strict');
+  if (limited) return limited;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const parsed = SupportSchema.safeParse(body);
+  if (!parsed.success) return err('Please check your email and describe the problem (at least 10 characters).');
+
+  const { email, topic, message, context } = parsed.data;
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  const ticketId = `GC-${Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')}`;
+
+  await env.ORDER_STORE.put(
+    `ticket:${ticketId}`,
+    JSON.stringify({ ticketId, email, topic, message, context, createdAt: new Date().toISOString() }),
+    { expirationTtl: 60 * 60 * 24 * 90 }
+  );
+  // The team's log gets the ticket id and topic only; the email address stays in the ticket itself.
+  console.error(`[support] ticket ${ticketId} topic=${topic} order=${context.orderId ?? '-'}`);
+
+  if (env.RESEND_API_KEY && env.SUPPORT_TO) {
+    const text = [
+      `Ticket ${ticketId}`,
+      `Topic: ${TOPIC_LABELS[topic]}`,
+      `Customer email: ${email}`,
+      '',
+      message,
+      '',
+      '--- Attached automatically ---',
+      `Order reference: ${context.orderId ?? '-'}`,
+      `Swap transaction: ${context.txHash ? `https://celo.blockscout.com/tx/${context.txHash}` : '-'}`,
+      `Wallet: ${context.wallet ?? '-'}`,
+      `Status shown: ${context.status ?? '-'}`,
+      `Amount: ${context.amountG ?? '-'} G$ -> ${context.naira ?? '-'}`,
+      `Cash out time: ${context.createdAt ?? '-'}`,
+      `Page: ${context.page ?? '-'}`,
+      `Browser: ${context.userAgent ?? '-'}`,
+    ].join('\n');
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'GoodCash Support <onboarding@resend.dev>',
+          to: [env.SUPPORT_TO],
+          reply_to: email,
+          subject: `[${ticketId}] ${TOPIC_LABELS[topic]}`,
+          text,
+        }),
+      });
+    } catch (e) {
+      console.error('[support] email notification failed:', e);
+    }
+  }
+
+  return json({ ticketId }, 201);
+}
+
+
+/**
+ * POST /diag - quiet error reports from the app. Goes to the team's logs only, never shown to users.
+ * Carries a short code and message; no bank details and no email addresses.
+ */
+async function handleDiag(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'diag', 'strict');
+  if (limited) return new Response(null, { status: 204 });
+  try {
+    const body = (await request.json()) as { kind?: unknown; message?: unknown; orderId?: unknown; txHash?: unknown };
+    const clean = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/[\r\n]+/g, ' ').slice(0, n) : '-');
+    console.error(
+      `[diag] kind=${clean(body.kind, 40)} order=${clean(body.orderId, 60)} tx=${clean(body.txHash, 70)} msg=${clean(body.message, 300)}`
+    );
+  } catch {
+    // ignore malformed reports
+  }
+  return new Response(null, { status: 204 });
+}
+
+/** GET /swaps/:txHash - which payout order belongs to a swap, and its current status. */
+async function handleSwapOrder(txHash: string, env: Env): Promise<Response> {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) return err('Invalid transaction hash', 400);
+  const orderId = await env.ORDER_STORE.get(`swap:${txHash.toLowerCase()}`);
+  if (!orderId) return err('No payout order for this swap', 404);
+  const status = await lookupOrderStatus(orderId, env);
+  return json({ orderId, status: status ?? 'initiated' });
+}
+
+
+/**
+ * GET /history?wallet=0x...
+ * Every GoodCash swap this wallet has made, with the payout status of each, so the same wallet shows
+ * the same History on any phone or laptop. Public swap data plus order status only: no bank details.
+ */
+async function handleWalletHistory(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'history');
+  if (limited) return limited;
+
+  const wallet = new URL(request.url).searchParams.get('wallet') ?? '';
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) return err('Invalid wallet address', 400);
+
+  let rows: SwapRow[];
+  try {
+    rows = await getWalletSwapRows(wallet, env);
+  } catch {
+    return err('Could not load your history right now.', 503);
+  }
+
+  const swaps = rows
+    .map((r) => ({
+      txHash: r.transactionHash,
+      at: parseInt(r.timeStamp, 16),
+      data: r.data.startsWith('0x') ? r.data.slice(2) : r.data,
+    }))
+    .filter((r) => r.data.length >= 128)
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 25);
+
+  let liveLookups = 0;
+  const out: Array<{
+    txHash: string;
+    amountG: string;
+    usdtReceived: string;
+    at: number;
+    orderId?: string;
+    status?: string;
+    naira?: string;
+  }> = [];
+  for (const r of swaps) {
+    const key = r.txHash.toLowerCase();
+    const orderId = await env.ORDER_STORE.get(`swap:${key}`);
+    let status: string | undefined;
+    if (orderId) {
+      const done = await env.ORDER_STORE.get(`done:${key}`);
+      if (done) {
+        status = done;
+      } else if (liveLookups < 8) {
+        liveLookups += 1;
+        status = (await lookupOrderStatus(orderId, env)) ?? undefined;
+        if (status === 'settled' || status === 'validated') {
+          await env.ORDER_STORE.put(`done:${key}`, status, { expirationTtl: 60 * 60 * 24 * 400 });
+        }
+      }
+    }
+    const naira = (await env.ORDER_STORE.get(`naira:${key}`)) ?? undefined;
+    out.push({
+      txHash: r.txHash,
+      amountG: (Number(BigInt(`0x${r.data.slice(0, 64)}`)) / 1e18).toString(),
+      usdtReceived: (Number(BigInt(`0x${r.data.slice(64, 128)}`)) / 1e6).toString(),
+      at: r.at,
+      ...(orderId ? { orderId } : {}),
+      ...(status ? { status } : {}),
+      ...(naira ? { naira } : {}),
+    });
+  }
+  return json({ swaps: out });
+}
+
 // ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
@@ -440,6 +984,42 @@ async function verifySwapOnChain(
  * POST /orders
  * Create a Paycrest off-ramp order. The Paycrest API key stays server-side.
  */
+/** A one-way fingerprint of where an order pays out, so we can tell whether two orders are for the same bank account. */
+async function recipientFingerprint(input: { recipient: { institution: string; accountIdentifier: string } ; refundAddress: string }): Promise<string> {
+  const data = new TextEncoder().encode(`${input.recipient.institution}|${input.recipient.accountIdentifier}|${input.refundAddress.toLowerCase()}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function toClientOrder(o: PaycrestOrderResponse): ClientOrderResponse {
+  return {
+    orderId: o.id,
+    receiveAddress: o.providerAccount.receiveAddress,
+    amountToSend: o.providerAccount.amountToTransfer,
+    currency: o.providerAccount.currency,
+    network: o.providerAccount.network,
+    memo: o.providerAccount.memo,
+    amount: o.amount,
+    rate: o.rate,
+    expectedNaira: expectedNairaFromOrder(o),
+    senderFee: o.senderFee ?? '0',
+    transactionFee: o.transactionFee,
+    validUntil: o.providerAccount.validUntil,
+    status: o.status ?? 'initiated',
+  };
+}
+
+async function fetchPaycrestOrder(orderId: string, env: Env): Promise<PaycrestOrderResponse | null> {
+  try {
+    const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${orderId}`, { headers: { 'API-Key': env.PAYCREST_API_KEY } });
+    if (!res.ok) return null;
+    const o = unwrapPaycrestData<PaycrestOrderResponse>(await res.json());
+    return o?.providerAccount ? { ...o, id: o.id ?? orderId } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleCreateOrder(request: Request, env: Env): Promise<Response> {
   const limited = await checkRateLimit(request, env, 'orders');
   if (limited) return limited;
@@ -465,14 +1045,40 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
   );
   if (swapCheck) return swapCheck;
 
+  // One swap should only ever be paid out once. An earlier order that is still unpaid may be replaced.
+  const swapKey = parsed.data.swapTxHash ? `swap:${parsed.data.swapTxHash.toLowerCase()}` : null;
+  const previousOrderId = swapKey ? await env.ORDER_STORE.get(swapKey) : null;
+  if (previousOrderId) {
+    const previous = await lookupOrderStatus(previousOrderId, env);
+    if (previous && !UNPAID_STATUSES.has(previous)) {
+      return err('This swap already has a payout in progress.', 409);
+    }
+    // An order that is still open (and may be mid-payment) is handed back, never replaced by a second one.
+    // Only when it was made for the SAME bank account: anyone can ask for an order on a public swap, and a
+    // customer must never be handed an order that pays out to somebody else's bank.
+    const sameRecipient =
+      swapKey !== null && (await env.ORDER_STORE.get(`swaprec:${swapKey.slice(5)}`)) === (await recipientFingerprint(parsed.data));
+    if (previous === 'initiated' && sameRecipient) {
+      const open = await fetchPaycrestOrder(previousOrderId, env);
+      const until = open?.providerAccount?.validUntil ? new Date(open.providerAccount.validUntil).getTime() : 0;
+      if (open && open.status === 'initiated' && until - Date.now() > 120_000 && open.providerAccount.amountToTransfer) {
+        const sameAmount = Math.abs(Number(open.providerAccount.amountToTransfer) - Number(parsed.data.amount)) < 0.05;
+        if (sameAmount) return json(toClientOrder(open), 200);
+      }
+    }
+  }
+
   const input: CreateOrderInput = parsed.data;
   const reference = input.reference ?? generateRef();
 
   const paycrestBody = {
     amount: input.amount,
-    // Explicitly zero the GoodCash sender fee so amountToTransfer is only
-    // `amount + transactionFee`; the client reserves room for that fee.
-    senderFee: '0',
+    // Paycrest rejects an explicit zero fee ("Sender fee must be greater than zero") and
+    // requires a fee address whenever a fee is set. So send no fee at all unless the
+    // team configures both SENDER_FEE and SENDER_FEE_ADDRESS.
+    ...(env.SENDER_FEE && Number(env.SENDER_FEE) > 0 && env.SENDER_FEE_ADDRESS
+      ? { senderFee: env.SENDER_FEE, senderFeeAddress: env.SENDER_FEE_ADDRESS }
+      : {}),
     source: {
       type: 'crypto',
       currency: 'USDT',
@@ -507,7 +1113,7 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
       const errText = await res.text();
       // Sanitise: do not forward raw Paycrest error which may contain internal details
       console.error(`[orders] Paycrest error ${res.status}: ${errText.slice(0, 200)}`);
-      return err(`Off-ramp provider error (${res.status}). Please try again.`, 502);
+      return err('The payout partner could not create the order right now. Please try again shortly.', 502);
     }
 
 
@@ -531,23 +1137,16 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
     { expirationTtl: 86400 }, // 24 hours
   );
 
-  const clientResponse: ClientOrderResponse = {
-    orderId: paycrestResponse.id,
-    receiveAddress: paycrestResponse.providerAccount.receiveAddress,
-    amountToSend: paycrestResponse.providerAccount.amountToTransfer,
-    currency: paycrestResponse.providerAccount.currency,
-    network: paycrestResponse.providerAccount.network,
-    memo: paycrestResponse.providerAccount.memo,
-    amount: paycrestResponse.amount,
-    rate: paycrestResponse.rate,
-    expectedNaira: expectedNairaFromOrder(paycrestResponse),
-    senderFee: paycrestResponse.senderFee,
-    transactionFee: paycrestResponse.transactionFee,
-    validUntil: paycrestResponse.providerAccount.validUntil,
-    status: paycrestResponse.status ?? 'initiated',
-  };
+  if (swapKey) {
+    await env.ORDER_STORE.put(swapKey, paycrestResponse.id, { expirationTtl: 60 * 60 * 24 * 400 });
+    await env.ORDER_STORE.put(`swaprec:${swapKey.slice(5)}`, await recipientFingerprint(parsed.data), { expirationTtl: 60 * 60 * 3 });
+    const naira = expectedNairaFromOrder(paycrestResponse);
+    if (naira) {
+      await env.ORDER_STORE.put(`naira:${swapKey.slice(5)}`, naira, { expirationTtl: 60 * 60 * 24 * 400 });
+    }
+  }
 
-  return json(clientResponse, 201);
+  return json(toClientOrder(paycrestResponse), 201);
 }
 
 /**
@@ -560,49 +1159,66 @@ async function handleGetOrder(orderId: string, env: Env): Promise<Response> {
     return err('Invalid order ID format', 400);
   }
 
-  // Try KV first (fast path)
-  const cached = await env.ORDER_STORE.get(`order:${orderId}`);
-  if (cached) {
-    const state = JSON.parse(cached) as {
-      status: string;
-      receiveAddress: string;
-      amountToTransfer: string;
-      validUntil: string;
-      paymentReference: string | null;
-    };
-    const clientStatus: ClientStatusResponse = {
-      orderId,
-      status: state.status,
-      receiveAddress: state.receiveAddress,
-      amountToSend: state.amountToTransfer,
-      validUntil: state.validUntil,
-      paymentReference: state.paymentReference,
-    };
-    return json(clientStatus);
-  }
+  // Statuses that never change again can be served straight from KV
+  const TERMINAL = new Set(['settled', 'refunded', 'expired', 'cancelled', 'error']);
 
-  // Fallback: fetch from Paycrest
+  type CachedState = {
+    status: string;
+    receiveAddress: string;
+    amountToTransfer: string;
+    validUntil: string;
+    paymentReference: string | null;
+  };
+  const cachedRaw = await env.ORDER_STORE.get(`order:${orderId}`);
+  const cached = cachedRaw ? (JSON.parse(cachedRaw) as CachedState) : null;
+
+  const fromCache = (state: CachedState): ClientStatusResponse => ({
+    orderId,
+    status: state.status,
+    receiveAddress: state.receiveAddress,
+    amountToSend: state.amountToTransfer,
+    validUntil: state.validUntil,
+    paymentReference: state.paymentReference,
+  });
+
+  if (cached && TERMINAL.has(cached.status)) return json(fromCache(cached));
+
+  // Not final yet: ask Paycrest, because the webhook may not be set up or may be late
   let res: Response;
   try {
     res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${orderId}`, {
       headers: { 'API-Key': env.PAYCREST_API_KEY },
     });
   } catch {
-    return err('Off-ramp provider is unreachable.', 503);
+    if (cached) return json(fromCache(cached));
+    return err('The payout partner is unreachable right now.', 503);
   }
 
   if (res.status === 404) return err('Order not found', 404);
-  if (!res.ok) return err(`Off-ramp provider error (${res.status})`, 502);
+  if (!res.ok) {
+    console.error(`[orders] Paycrest order lookup error ${res.status}`);
+    if (cached) return json(fromCache(cached));
+    return err('The payout partner could not be reached right now.', 502);
+  }
 
-  const data = (await res.json()) as PaycrestStatusResponse;
+  const data = unwrapPaycrestData<PaycrestStatusResponse>(await res.json());
+  if (PAID_STATUSES.has(data.status)) await sendPaidEmailIfRequested(orderId, env);
   const clientStatus: ClientStatusResponse = {
-    orderId: data.id,
+    orderId: data.id ?? orderId,
     status: data.status,
-    receiveAddress: data.providerAccount?.receiveAddress,
-    amountToSend: data.providerAccount?.amountToTransfer,
-    validUntil: data.providerAccount?.validUntil,
-    paymentReference: data.paymentReference ?? null,
+    receiveAddress: data.providerAccount?.receiveAddress ?? cached?.receiveAddress,
+    amountToSend: data.providerAccount?.amountToTransfer ?? cached?.amountToTransfer,
+    validUntil: data.providerAccount?.validUntil ?? cached?.validUntil,
+    paymentReference: data.paymentReference ?? cached?.paymentReference ?? null,
   };
+
+  if (cached && data.status && data.status !== cached.status) {
+    await env.ORDER_STORE.put(
+      `order:${orderId}`,
+      JSON.stringify({ ...cached, status: data.status, paymentReference: clientStatus.paymentReference ?? null }),
+      { expirationTtl: 86400 }
+    );
+  }
   return json(clientStatus);
 }
 
@@ -638,10 +1254,13 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const existing = await env.ORDER_STORE.get(`order:${id}`);
   if (existing) {
     const state = JSON.parse(existing);
-    state.status = status ?? state.status;
+    // A late or repeated message must never move an order backwards (e.g. "settled" back to "pending")
+    if (status && !statusMovesBackwards(state.status, status)) state.status = status;
     state.paymentReference = paymentReference ?? state.paymentReference ?? null;
     await env.ORDER_STORE.put(`order:${id}`, JSON.stringify(state), { expirationTtl: 86400 });
   }
+
+  if (status && PAID_STATUSES.has(status)) await sendPaidEmailIfRequested(id, env);
 
   // Return 200 quickly so Paycrest does not retry
   return new Response('OK', { status: 200 });
@@ -744,7 +1363,24 @@ async function handleVerifyAccount(request: Request, env: Env): Promise<Response
  * GET /rates
  * Proxies Paycrest rates endpoint with CORS headers.
  */
+async function edgeCached(key: string, ttlSeconds: number, make: () => Promise<Response>): Promise<Response> {
+  const edge = typeof caches !== 'undefined' ? (caches as unknown as { default?: Cache }).default : undefined;
+  if (!edge) return make();
+  const cacheKey = new Request(`https://cache.goodcash.invalid/${key}`);
+  const hit = await edge.match(cacheKey);
+  if (hit) return new Response(hit.body, { status: hit.status, headers: { 'Content-Type': 'application/json' } });
+  const fresh = await make();
+  if (fresh.ok) {
+    await edge.put(cacheKey, new Response(await fresh.clone().text(), { headers: { 'Cache-Control': `public, max-age=${ttlSeconds}`, 'Content-Type': 'application/json' } }));
+  }
+  return fresh;
+}
+
 async function handleGetRates(env: Env): Promise<Response> {
+  return edgeCached('rates', 15, () => fetchRates(env));
+}
+
+async function fetchRates(env: Env): Promise<Response> {
   const base = env.PAYCREST_BASE_URL || 'https://api.paycrest.io';
   try {
     const res = await fetch(`${base}/v2/rates/celo/USDT/1/NGN?side=sell`, {
@@ -779,6 +1415,17 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return new Response(null, { status: 204 });
   }
 
+  // Read-only endpoints share a looser limit (many people sit behind one phone-network address)
+  if (m === 'GET' && (pathname === '/rates' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname))) {
+    const limited = await checkRateLimit(request, env, 'read', 'read');
+    if (limited) return limited;
+  }
+
+  // Requests that carry free text can't be huge
+  if (m === 'POST' && ['/support', '/diag', '/notify'].includes(pathname)) {
+    if (Number(request.headers.get('Content-Length') ?? '0') > 16_384) return err('Request too large', 413);
+  }
+
   // GET /rates — CORS-safe proxy for Paycrest rates
   if (m === 'GET' && pathname === '/rates') {
     return handleGetRates(env);
@@ -787,7 +1434,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   // GET /institutions/:currency — Paycrest's supported institution list
   const institutionMatch = pathname.match(/^\/institutions\/([A-Za-z]{3})$/);
   if (m === 'GET' && institutionMatch) {
-    return handleGetInstitutions(institutionMatch[1].toUpperCase(), env);
+    return edgeCached(`institutions-${institutionMatch[1].toUpperCase()}`, 3600, () => handleGetInstitutions(institutionMatch[1].toUpperCase(), env));
   }
 
   // POST /verify-account — resolve bank account name through Paycrest
@@ -804,6 +1451,37 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const orderMatch = pathname.match(/^\/orders\/([^/]+)$/i);
   if (m === 'GET' && orderMatch) {
     return handleGetOrder(orderMatch[1], env);
+  }
+
+  // GET /history?wallet=0x... - this wallet's cash outs on any device
+  if (m === 'GET' && pathname === '/history') {
+    return handleWalletHistory(request, env);
+  }
+
+  // GET /swaps/unfinished?wallet=0x... - swaps that still need a payout
+  if (m === 'GET' && pathname === '/swaps/unfinished') {
+    return handleUnfinishedSwaps(request, env);
+  }
+
+  // POST /diag - quiet error reports for the team
+  if (m === 'POST' && pathname === '/diag') {
+    return handleDiag(request, env);
+  }
+
+  // GET /swaps/:txHash - the payout order for a swap
+  const swapOrderMatch = pathname.match(/^\/swaps\/(0x[0-9a-fA-F]{64})$/);
+  if (m === 'GET' && swapOrderMatch) {
+    return handleSwapOrder(swapOrderMatch[1], env);
+  }
+
+  // POST /notify - email me when my naira lands
+  if (m === 'POST' && pathname === '/notify') {
+    return handleNotify(request, env);
+  }
+
+  // POST /support - help requests
+  if (m === 'POST' && pathname === '/support') {
+    return handleSupport(request, env);
   }
 
   // POST /webhooks/paycrest

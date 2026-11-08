@@ -1,24 +1,14 @@
+import { nairaFromUsdt } from '../lib/units';
 import React from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
-import { getBalanceProgressPercent, getCashoutRate, MIN_NET_USDT_REQUIRED } from '../lib/rate';
+import { getBalanceProgressPercent, getCashoutRate, MIN_NET_USDT_REQUIRED, getMinimumCashOutG } from '../lib/rate';
 import type { SwapHistoryItem } from './HistoryCard';
-
-/** Subset of the useClaim hook state needed by the Home claim card. */
-export interface HomeClaimState {
-  status: 'idle' | 'loading' | 'can_claim' | 'already_claimed' | 'not_verified' | 'error';
-  entitlement: bigint;
-  nextClaimTime: Date | null;
-  verificationUrl: string | null;
-  error: string | null;
-  isLoading: boolean;
-}
 
 interface ReadinessCardProps {
   balanceG: number;
   dailyClaimG?: number;
   onCashOutClick: () => void;
-  onClaimClick: () => void;
   language: Language;
   isLoading?: boolean;
   isStale?: boolean;
@@ -27,10 +17,6 @@ interface ReadinessCardProps {
   history?: SwapHistoryItem[];
   /** Called when the user taps the Last cash out card. */
   onLastCashOutClick?: () => void;
-  /** Claim hook state from useClaim (wired in App.tsx). */
-  claimState?: HomeClaimState;
-  /** Refresh the claim state (for the error retry pill). */
-  onClaimRefresh?: () => void;
 }
 
 function formatG(amount: number): string {
@@ -39,14 +25,6 @@ function formatG(amount: number): string {
 
 function formatNaira(naira: number): string {
   return '₦' + Math.round(naira).toLocaleString();
-}
-
-function formatCountdown(date: Date): string {
-  const diff = date.getTime() - Date.now();
-  if (diff <= 0) return 'soon';
-  const h = Math.floor(diff / 3_600_000);
-  const m = Math.floor((diff % 3_600_000) / 60_000);
-  return `${h}h ${m}m`;
 }
 
 function formatDateShort(ts: number): string {
@@ -58,13 +36,10 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   balanceG,
   dailyClaimG = 0,
   onCashOutClick,
-  onClaimClick,
   isStale = false,
   ngnPerUsdt = null,
   history = [],
   onLastCashOutClick,
-  claimState,
-  onClaimRefresh,
 }) => {
   const t = getTranslations('en');
   const rate = getCashoutRate(balanceG, dailyClaimG, ngnPerUsdt);
@@ -77,18 +52,11 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
     : formatNaira(rate.netNaira);
 
   const minNaira = ngnPerUsdt != null && Number.isFinite(ngnPerUsdt)
-    ? formatNaira(MIN_NET_USDT_REQUIRED * ngnPerUsdt)
+    ? formatNaira(nairaFromUsdt(MIN_NET_USDT_REQUIRED, ngnPerUsdt))
     : t.nairaUnavailable;
 
   // Last cash out from history
   const lastCashOut = history.length > 0 ? history[0] : null;
-
-  // Claim card helpers
-  const cs = claimState;
-  const entitlementG = cs ? Number(cs.entitlement) / 1e18 : 0;
-
-  // Single purple button rule: claim button is purple when cash-out button is NOT purple
-  const claimBtnClass = minimumReached ? 'gc-btn gc-btn--white' : 'gc-btn';
 
   return (
     <>
@@ -115,77 +83,8 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
       <div className="gc-card">
         <div className="gc-lab">{t.firstPayout}</div>
         <div className="gc-sm" style={{ marginTop: '2px' }}>
-          {t.minimumCashOutAbout.replace('{naira}', minNaira)}
+          {t.minimumCashOutAbout.replace('{g}', getMinimumCashOutG().toLocaleString()).replace('{naira}', minNaira)}
         </div>
-      </div>
-
-      {/* ── Claim card ──────────────────────────────────────────────── */}
-      <div className="gc-card">
-        <div className="gc-lab">{t.todayClaim}</div>
-        {cs?.isLoading ? (
-          <div style={{ height: '42px', background: '#ede6ff', borderRadius: '8px', marginTop: '4px' }} />
-        ) : (
-          <div className="gc-big">{cs ? formatG(entitlementG) : '0.0'}</div>
-        )}
-        {/* Status line */}
-        {cs?.status === 'can_claim' && (
-          <div className="gc-sm" style={{ marginTop: '2px' }}>{t.availableToClaimNow}</div>
-        )}
-        {cs?.status === 'already_claimed' && cs.nextClaimTime && (
-          <div className="gc-sm" style={{ marginTop: '2px' }}>
-            {t.nextClaimIn.replace('{time}', formatCountdown(cs.nextClaimTime))}
-          </div>
-        )}
-        {cs?.status === 'not_verified' && (
-          <>
-            <div className="gc-sm" style={{ marginTop: '2px' }}>{t.verificationNeeded}</div>
-            {cs.verificationUrl && (
-              <a
-                href={cs.verificationUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="gc-sm"
-                style={{ display: 'block', marginTop: '2px', color: 'var(--gc-pu)', textDecoration: 'underline' }}
-              >
-                {t.verifyAtGoodDollar}
-              </a>
-            )}
-          </>
-        )}
-        {cs?.status === 'error' && (
-          <div className="gc-note" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-            <span>{t.couldNotLoadClaim}</span>
-            {onClaimRefresh && (
-              <button type="button" onClick={onClaimRefresh} className="gc-pill gc-hit" style={{ cursor: 'pointer' }}>
-                {t.retry}
-              </button>
-            )}
-          </div>
-        )}
-        {cs?.status === 'idle' && !cs?.isLoading && (
-          <div className="gc-sm" style={{ marginTop: '2px' }}>—</div>
-        )}
-        {/* Claim button — opens Claim screen, does NOT claim directly */}
-        {cs?.status === 'can_claim' && (
-          <button
-            type="button"
-            onClick={onClaimClick}
-            className={`${claimBtnClass} gc-hit`}
-            style={{ marginTop: '10px' }}
-          >
-            {t.claimTodayG}
-          </button>
-        )}
-        {cs?.status === 'already_claimed' && (
-          <button type="button" disabled className="gc-btn gc-btn--dis gc-hit" style={{ marginTop: '10px' }}>
-            {t.comeBackLater}
-          </button>
-        )}
-        {cs?.status === 'not_verified' && (
-          <button type="button" disabled className="gc-btn gc-btn--dis gc-hit" style={{ marginTop: '10px' }}>
-            {t.claimTodayG}
-          </button>
-        )}
       </div>
 
       {/* ── Last cash out (mobile only) ─────────────────────────────── */}
@@ -199,7 +98,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
             <div>
               <div className="gc-lab">{t.lastCashOut}</div>
               <div className="gc-sm" style={{ marginTop: '2px' }}>
-                {lastCashOut.amountInG.toLocaleString()} G$ → ₦{Math.round((lastCashOut.amountOutUsdt || 0) * (ngnPerUsdt || 0)).toLocaleString()}
+                {lastCashOut.amountInG.toLocaleString()} G$ → ₦{Math.round(nairaFromUsdt(lastCashOut.amountOutUsdt || 0, ngnPerUsdt || 0)).toLocaleString()}
               </div>
             </div>
             <span className="gc-sm">{formatDateShort(lastCashOut.timestamp)}</span>

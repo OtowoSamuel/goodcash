@@ -1,4 +1,3 @@
-import { fileURLToPath, URL } from 'node:url';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
@@ -61,11 +60,6 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ],
-  resolve: {
-    alias: {
-      'lz-string': fileURLToPath(new URL('./src/lib/lz-string-shim.ts', import.meta.url)),
-    },
-  },
   build: {
     sourcemap: false,
     target: 'es2020',
@@ -73,7 +67,7 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks: {
           react: ['react', 'react-dom'],
-          web3: ['viem', 'wagmi'],
+          web3: ['viem'],
         },
       },
     },

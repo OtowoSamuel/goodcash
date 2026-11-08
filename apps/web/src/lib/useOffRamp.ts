@@ -9,6 +9,8 @@
  *   5. On expiry, call `renewOrder()` to create a fresh order (never reuse an address).
  */
 
+import { PAYOUT_FEE_RESERVE_USDT } from './units';
+import { friendlyApiError } from './userMessage';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { IS_DEMO_MODE } from './router';
 
@@ -64,14 +66,15 @@ export interface CreateOrderInput {
  * documented transaction fee so the user never has to send more than the
  * swap produced.
  */
-export const PAYCREST_FEE_RESERVE_USDT = 0.01;
+export const PAYCREST_FEE_RESERVE_USDT = PAYOUT_FEE_RESERVE_USDT;
 export const PAYCREST_MIN_ORDER_USDT = 0.5;
 const MAX_FEE_OVERFLOW_ATTEMPTS = 3;
 const ONE_USDT_ATOMIC = 1_000_000;
 
 export function paycrestOrderAmount(usdtReceived: number): string {
   if (!Number.isFinite(usdtReceived) || usdtReceived <= 0) return '0.000000';
-  const atomic = Math.floor((usdtReceived - PAYCREST_FEE_RESERVE_USDT) * ONE_USDT_ATOMIC);
+  // Whole micro-dollars, so floating-point noise can never shave a unit off the order amount
+  const atomic = Math.round(usdtReceived * ONE_USDT_ATOMIC) - Math.round(PAYCREST_FEE_RESERVE_USDT * ONE_USDT_ATOMIC);
   return (Math.max(0, atomic) / ONE_USDT_ATOMIC).toFixed(6);
 }
 
@@ -179,6 +182,13 @@ async function apiGet<T>(path: string): Promise<T> {
   return data;
 }
 
+/** Real payment details for an existing order (address, exact amount, deadline, status). */
+export async function fetchOrderDetails(orderId: string) {
+  return apiGet<{ orderId: string; status: string; receiveAddress?: string; amountToSend?: string; validUntil?: string }>(
+    `/orders/${orderId}`
+  );
+}
+
 export async function fetchInstitutions(currency = 'NGN'): Promise<BankInstitution[]> {
   const data = await apiGet<{ institutions: BankInstitution[] }>(`/institutions/${currency}`);
   return Array.isArray(data.institutions) ? data.institutions : [];
@@ -243,7 +253,7 @@ export async function createPaycrestOrder(input: CreateOrderInput): Promise<OffR
       if (IS_DEMO_MODE) {
         const mockOrder: OffRampOrder = {
           orderId: `mock-ord-${Date.now()}`,
-          receiveAddress: '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',
+          receiveAddress: '0x0000000000000000000000000000000000000000',
           amountToSend: fromAtomic6(amountAtomic),
           currency: 'USDT',
           network: 'celo',
@@ -446,7 +456,7 @@ export function useBankAccountVerification(currency = 'NGN'): BankAccountVerific
           setInstitutionsError(null);
         } else {
           setInstitutions([]);
-          setInstitutionsError(error instanceof Error ? error.message : 'Could not load banks');
+          setInstitutionsError(friendlyApiError(error, 'Could not load banks. Please try again.'));
         }
       })
       .finally(() => {
@@ -492,7 +502,7 @@ export function useBankAccountVerification(currency = 'NGN'): BankAccountVerific
           } else {
             setAccountName(null);
             setVerificationStatus('error');
-            setVerificationError(error instanceof Error ? error.message : 'Could not verify account name');
+            setVerificationError(friendlyApiError(error, "We couldn't verify this account. Check the number and bank."));
           }
         });
     }, 350);
@@ -521,4 +531,40 @@ export function useBankAccountVerification(currency = 'NGN'): BankAccountVerific
     confirmed,
     setConfirmed,
   };
+}
+
+export interface UnfinishedSwap {
+  txHash: string;
+  amountG: number;
+  usdtReceived: number;
+  at: number;
+}
+
+/** Recent swaps by this wallet that never got a payout (or whose payout was never paid). Asks our service. */
+export async function fetchUnfinishedSwaps(wallet: string): Promise<UnfinishedSwap[]> {
+  const data = await apiGet<{ swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number }> }>(
+    `/swaps/unfinished?wallet=${encodeURIComponent(wallet)}`
+  );
+  return (data.swaps ?? []).map((s) => ({
+    txHash: s.txHash,
+    amountG: Number(s.amountG),
+    usdtReceived: Number(s.usdtReceived),
+    at: s.at,
+  }));
+}
+
+/** Every swap this wallet has made, with payout status, from our service. Works on any device. */
+export async function fetchWalletHistory(wallet: string): Promise<import('./historySync').ServerSwap[]> {
+  const data = await apiGet<{
+    swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number; orderId?: string; status?: string; naira?: string }>;
+  }>(`/history?wallet=${encodeURIComponent(wallet)}`);
+  return (data.swaps ?? []).map((s) => ({
+    txHash: s.txHash,
+    amountG: Number(s.amountG),
+    usdtReceived: Number(s.usdtReceived),
+    at: s.at,
+    orderId: s.orderId,
+    status: s.status,
+    naira: s.naira ? Number(s.naira) : undefined,
+  }));
 }

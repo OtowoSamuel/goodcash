@@ -1,136 +1,140 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useBankAccountVerification } from '../lib/useOffRamp';
+import { Modal } from './Modal';
+
+export interface SavedBank {
+  bankName: string;
+  bankCode: string;
+  accountNumber: string;
+  accountName: string;
+}
 
 interface BankDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (bankName: string, accountNumber: string, accountName: string | null) => void;
-  initialBank?: string;
-  initialAccountNumber?: string;
+  onSave: (bank: SavedBank) => void;
 }
 
-export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({
-  isOpen,
-  onClose,
-  onSave,
-  initialBank,
-  initialAccountNumber,
-}) => {
-  const [bankName, setBankName] = useState(initialBank || '');
-  const [accountNumber, setAccountNumber] = useState(initialAccountNumber || '');
-  const [accountName, setAccountName] = useState<string | null>(null);
+const SELECT_BG =
+  "bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]";
 
-  const handleBankChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setBankName(e.target.value);
-  };
+/**
+ * Mobile bank sheet. Uses the same Paycrest institution list and account-name
+ * verification as the desktop card, and requires the user to confirm the name.
+ */
+export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({ isOpen, onClose, onSave }) => {
+  const {
+    institutions,
+    institutionsLoading,
+    institutionsError,
+    institutionCode,
+    setInstitutionCode,
+    selectedInstitution,
+    accountIdentifier,
+    setAccountIdentifier,
+    accountName,
+    verificationStatus,
+    verificationError,
+    confirmed,
+    setConfirmed,
+  } = useBankAccountVerification('NGN');
 
-  const handleAccountNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    setAccountNumber(value);
-    if (value.length === 10) {
-      // Simulate account name resolution when 10 digits entered
-      setAccountName(`Beneficiary for ${bankName}`);
-    } else {
-      setAccountName(null);
-    }
-  };
+  if (!isOpen) return null;
+
+  const canSave =
+    verificationStatus === 'verified' &&
+    Boolean(accountName) &&
+    confirmed &&
+    /^\d{10}$/.test(accountIdentifier) &&
+    institutionCode.length > 0;
 
   const handleSave = () => {
-    onSave(bankName, accountNumber, accountName);
+    if (!canSave || !accountName) return;
+    onSave({
+      bankName: selectedInstitution?.name ?? institutionCode,
+      bankCode: institutionCode,
+      accountNumber: accountIdentifier,
+      accountName,
+    });
     onClose();
   };
 
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
-    >
-      <div
-        className="relative z-[10000] bg-white w-full max-w-md border-4 border-[#111] rounded-3xl p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-black text-[#111]">Bank Details</h2>
+    <Modal
+      label="Bank details"
+      title="Bank details"
+      closeLabel="Close modal"
+      onClose={onClose}
+      z={80}
+      tone="white"
+      footer={
+        <>
           <button
             type="button"
-            onClick={onClose}
-            aria-label="Close modal"
-            className="bg-white border-2 border-[#111] rounded-xl w-9 h-10 flex items-center justify-center font-bold shadow-[2px_2px_0px_#111]"
+            onClick={handleSave}
+            disabled={!canSave}
+            className={`gc-btn gc-hit ${canSave ? '' : 'gc-btn--dis'}`}
+            style={{ height: 46, width: 'auto', flex: '1 1 0', minWidth: 0 }}
           >
-            ✕
+            Save details
           </button>
-        </div>
+          <button type="button" onClick={onClose} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: 'auto', flex: '1 1 0', minWidth: 0 }}>
+            Cancel
+          </button>
+        </>
+      }
+    >
+      <div>
+      <label className="gc-lab block mb-1.5" htmlFor="sheet-bank">Bank</label>
+      <select
+        id="sheet-bank"
+        value={institutionCode}
+        onChange={(e) => setInstitutionCode(e.target.value)}
+        disabled={institutionsLoading}
+        className={`w-full rounded-xl border-[2.5px] border-[#111] bg-white pl-4 pr-12 py-3 text-base font-bold text-[#111] outline-none appearance-none ${SELECT_BG}`}
+      >
+        <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
+        {institutions.map((bank) => (
+          <option key={bank.code} value={bank.code}>{bank.name}</option>
+        ))}
+      </select>
+      {institutionsError && <p className="gc-sm mt-1" style={{ color: '#b00020' }}>{institutionsError}</p>}
 
-        {/* Bank Name Selector */}
-        <div className="mb-5">
-          <label className="block text-sm font-bold text-[#111] mb-2">
-            Bank Name
-          </label>
-          <select
-            value={bankName}
-            onChange={handleBankChange}
-            className="w-full rounded-xl border-2 border-[#111] bg-white pl-4 pr-12 py-3 text-base font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
-          >
-            <option value="">Select a bank</option>
-            <option value="Access Bank">Access Bank</option>
-            <option value="GTBank">GTBank</option>
-            <option value="Zenith Bank">Zenith Bank</option>
-            <option value="First Bank">First Bank</option>
-            <option value="UBA">UBA</option>
-            <option value="Fidelity Bank">Fidelity Bank</option>
-            <option value="Stanbic IBTC">Stanbic IBTC</option>
-          </select>
-        </div>
+      <label className="gc-lab block mt-4 mb-1.5" htmlFor="sheet-account">Account number</label>
+      <input
+        id="sheet-account"
+        type="text"
+        inputMode="numeric"
+        maxLength={10}
+        value={accountIdentifier}
+        onChange={(e) => setAccountIdentifier(e.target.value.replace(/\D/g, ''))}
+        placeholder="10-digit account number"
+        className="w-full rounded-xl border-[2.5px] border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] outline-none"
+      />
 
-        {/* Account Number */}
-        <div className="mb-5">
-          <label className="block text-sm font-bold text-[#111] mb-2">
-            Account Number
-          </label>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={10}
-            value={accountNumber}
-            onChange={handleAccountNumberChange}
-            placeholder="10-digit account number"
-            className="w-full rounded-xl border-2 border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] shadow-[2px_2px_0px_#111] outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-          {accountName && (
-            <div className="mt-2 text-sm text-[#666]">
-              {accountName}
-            </div>
-          )}
-        </div>
-
-        {/* Validation state */}
-        {!accountName && accountNumber.length > 0 && (
-          <div className="mt-2 text-sm text-[#FCA5A5]">
-            Please enter a 10-digit account number
-          </div>
+      <div className="gc-note mt-3" style={{ background: verificationStatus === 'verified' ? '#8cf0c0' : '#fff' }}>
+        {verificationStatus === 'loading' && 'Checking your account…'}
+        {verificationStatus === 'idle' && 'Enter a 10-digit account number'}
+        {verificationStatus === 'error' && (verificationError || 'Could not verify this account')}
+        {verificationStatus === 'verified' && accountName && (
+          <>
+            <div className="gc-lab">Account name</div>
+            <b>{accountName}</b>
+          </>
         )}
-
-        {/* Save Button */}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!accountName || accountNumber.length !== 10}
-          className="w-full bg-[#7b39fc] text-white border-2 border-[#111] rounded-2xl py-3 text-xl font-bold shadow-[4px_4px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:bg-[#8b4aff] disabled:opacity-80 disabled:cursor-not-allowed"
-        >
-          Save Details
-        </button>
-
-        {/* Cancel Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full mt-4 bg-white text-[#111] border-2 border-[#111] rounded-2xl py-3 text-xl font-bold shadow-[4px_4px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
-        >
-          Cancel
-        </button>
       </div>
-    </div>
+
+      {verificationStatus === 'verified' && accountName && (
+        <label className="gc-sm" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+          />
+          I confirm this is my account name
+        </label>
+      )}
+      </div>
+    </Modal>
   );
 };

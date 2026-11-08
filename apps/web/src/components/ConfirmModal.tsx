@@ -20,6 +20,12 @@ interface ConfirmModalProps {
   errorMessage?: string | null;
   onRetryPayout?: () => Promise<void>;
   hasConfirmedSwap?: boolean;
+  /** Which stage the confirm is in once Confirm is pressed */
+  stage?: 'swap' | 'order' | 'pay' | null;
+  /** Set once the swap and payout order are done: the modal then shows the result */
+  result?: { settled: boolean; paid?: boolean; nairaText: string; reference: string | null } | null;
+  /** Called from the result screen ("Done" / "Track payout") */
+  onFinish?: () => void;
 }
 
 type StepId = 'review' | 'swap' | 'order' | 'done';
@@ -45,6 +51,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   errorMessage,
   onRetryPayout,
   hasConfirmedSwap = false,
+  stage = null,
+  result = null,
+  onFinish,
   language,
 }) => {
   const t = getTranslations(language);
@@ -65,6 +74,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     return baseSteps.map((step) => {
       if (step.id === currentStep) {
         foundCurrent = true;
+        if (result && step.id === 'done') return { ...step, status: 'completed' as StepStatus };
         return {
           ...step,
           status: (errorMessage ? 'error' : isSwapping ? 'active' : 'active') as StepStatus,
@@ -93,14 +103,16 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   useEffect(() => {
     // Update step based on state
-    if (hasConfirmedSwap) {
+    if (result) {
+      setCurrentStep('done');
+    } else if (hasConfirmedSwap || stage === 'order' || stage === 'pay') {
       setCurrentStep('order');
     } else if (isSwapping) {
       setCurrentStep('swap');
     } else {
       setCurrentStep('review');
     }
-  }, [hasConfirmedSwap, isSwapping]);
+  }, [hasConfirmedSwap, isSwapping, stage, result]);
 
   if (!isOpen) return null;
 
@@ -130,7 +142,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-wider font-bold text-[#111]">{t.reviewLabel || 'REVIEW'}</p>
+            <p className="text-xs uppercase tracking-wider font-bold text-[#111]">{result ? 'DONE' : t.reviewLabel || 'REVIEW'}</p>
             <h3 className="mt-1 text-2xl font-black text-[#111]">{t.cashOut}</h3>
           </div>
           <button
@@ -184,6 +196,40 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </div>
         </div>
 
+        {result ? (
+          <>
+            <div className="bg-[#8cf0c0] border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111] mb-4 text-center">
+              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#111] bg-white text-2xl font-black shadow-[3px_3px_0px_#111]">✓</div>
+              <div className="text-xs font-bold uppercase tracking-wider">
+                {result.settled ? 'Cash out complete' : result.paid ? 'Payment sent' : 'One more step'}
+              </div>
+              <div className="mt-1 text-4xl font-black">
+                {result.settled ? (t.nairaDelivered || 'Naira Delivered!') : result.paid ? 'On its way!' : result.nairaText}
+              </div>
+              <div className="mt-1 text-sm font-semibold">
+                {result.settled ? `${result.nairaText} ${t.paidToYourBank || 'paid to your bank'}` : result.paid ? `${result.nairaText} is on its way to your bank` : 'Confirm the payment in your wallet to finish'}
+              </div>
+            </div>
+            <div className="bg-white border-2 border-[#111] rounded-2xl p-4 shadow-[4px_4px_0px_#111] mb-4">
+              <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+                <span className="font-medium text-[#111]">{t.gAmountLabel || 'G$ amount'}</span>
+                <span className="font-bold text-[#111]">{amountG.toLocaleString(undefined, { maximumFractionDigits: 2 })} G$</span>
+              </div>
+              <div className="flex items-center justify-between pt-2.5">
+                <span className="font-medium text-[#111]">{result.settled ? 'Bank reference' : 'Status'}</span>
+                <span className="font-bold text-[#111] font-mono text-sm">{result.settled ? result.reference ?? '—' : result.paid ? 'Paying your bank' : 'Waiting for your payment'}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onFinish}
+              className="w-full py-3.5 text-lg font-bold bg-[#7b39fc] text-white border-2 border-[#111] rounded-xl shadow-[4px_4px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_#111] transition-all"
+            >
+              {result.settled ? (t.doneButton || 'Done') : result.paid ? 'Track payout' : 'Continue'}
+            </button>
+          </>
+        ) : (
+          <>
         {/* Details Panel */}
         <div className="bg-white border-2 border-[#111] rounded-2xl p-4 shadow-[4px_4px_0px_#111] mb-4">
           <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
@@ -218,7 +264,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </div>
 
           <div className="flex items-center justify-between pt-2.5">
-            <span className="font-medium text-[#111]">{t.quoteRefreshesIn.replace('{seconds}', '')}</span>
+            <span className="font-medium text-[#111]">{t.quoteRefreshesIn.replace('{seconds}s', '').trim()}</span>
             <span className={`font-mono font-bold ${isExpired ? 'text-[#ff6b6b]' : 'text-[#7b39fc]'}`}>
               {secondsLeft}s
             </span>
@@ -226,8 +272,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         </div>
 
         {errorMessage && (
-          <div className="mb-4 bg-[#ff6b6b] text-white border-2 border-[#111] p-3 rounded-xl font-bold shadow-[2px_2px_0px_#111]">
-            <span className="font-black">{t.swapFailed || 'Swap failed'}: </span>
+          <div className="mb-4 bg-[#ff6b6b] text-white border-2 border-[#111] p-3 rounded-xl font-bold shadow-[2px_2px_0px_#111] break-words" style={{ overflowWrap: "anywhere" }}>
+            <span className="font-black">{hasConfirmedSwap ? 'Almost there' : t.swapFailed || 'Swap failed'}: </span>
             {errorMessage}
           </div>
         )}
@@ -273,6 +319,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             ? t.swapAlreadyConfirmed || 'Swap confirmed'
             : t.confirmButton || 'Confirm'}
         </button>
+          </>
+        )}
         </div>
       </div>
     </div>

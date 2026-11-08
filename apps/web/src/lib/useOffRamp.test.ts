@@ -11,7 +11,7 @@ import {
 // Paycrest docs: providerAccount.amountToTransfer =
 // amount + senderFee + transactionFee.
 const SENDER_FEE = 0;
-const TRANSACTION_FEE = 0.01;
+const TRANSACTION_FEE = 0.02;
 
 function amountToSendFor(usdtReceived: number): number {
   return Number(paycrestOrderAmount(usdtReceived)) + SENDER_FEE + TRANSACTION_FEE;
@@ -22,17 +22,18 @@ describe('paycrestOrderAmount', () => {
     const usdtReceived = 0.55;
     const amount = paycrestOrderAmount(usdtReceived);
 
-    expect(amount).toBe('0.540000');
-    for (const received of [0.51, 0.55, 1, 5, 100]) {
+    expect(amount).toBe('0.530000');
+    for (const received of [0.53, 0.55, 1, 5, 100]) {
       expect(amountToSendFor(received)).toBeLessThanOrEqual(received);
     }
   });
 
-  it('keeps the payout at the $0.50 partner minimum at the $0.51 floor', () => {
-    const usdtReceived = 0.51;
+  it('keeps the payout above the $0.50 partner minimum at the $0.53 floor', () => {
+    const usdtReceived = 0.53;
     const amount = paycrestOrderAmount(usdtReceived);
 
-    expect(amount).toBe('0.500000');
+    expect(amount).toBe('0.510000');
+    expect(Number(amount)).toBeGreaterThanOrEqual(0.5);
     expect(amountToSendFor(usdtReceived)).toBeLessThanOrEqual(usdtReceived);
   });
 
@@ -48,7 +49,7 @@ describe('paycrestOrderAmount', () => {
 });
 
 const SWAP_TX_HASH = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-const REFUND_ADDRESS = '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6';
+const REFUND_ADDRESS = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
 
 function mockOrder(amountToSend: string, transactionFee = '0.1') {
   return new Response(
@@ -99,7 +100,7 @@ describe('createPaycrestOrder fee overflow', () => {
     expect(order.amountToSend).toBe('0.999999');
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const secondBody = JSON.parse(fetchMock.mock.calls[1][1]!.body as string);
-    expect(secondBody.amount).toBe('0.899999');
+    expect(secondBody.amount).toBe('0.889999');
     expect(Number(order.amountToSend)).toBeLessThanOrEqual(1);
   });
 

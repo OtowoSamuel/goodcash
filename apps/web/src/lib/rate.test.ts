@@ -1,3 +1,4 @@
+import { nairaFromUsdt } from './units';
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
@@ -50,7 +51,7 @@ describe('shared rate conversion', () => {
       const homeRate = getCashoutRate(amount, 123.48, fakeNgnRate);
       const quote = getNetQuote({ amountIn: BigInt(Math.floor(amount * 1e18)), ngnPerUsdt: fakeNgnRate });
       const quoteUsdt = Number(quote.usdtOut) / 1e6;
-      const quoteNaira = quoteUsdt * fakeNgnRate;
+      const quoteNaira = nairaFromUsdt(quoteUsdt, fakeNgnRate);
 
       expect(Math.abs(homeRate.netUsdt - quoteUsdt)).toBeLessThan(0.000001);
       expect(Math.abs(homeRate.netNaira - quoteNaira)).toBeLessThan(0.02);
@@ -60,7 +61,6 @@ describe('shared rate conversion', () => {
           balanceG: amount,
           dailyClaimG: 123.48,
           onCashOutClick: () => undefined,
-          onClaimClick: () => undefined,
           language: 'en',
           ngnPerUsdt: fakeNgnRate,
         })
@@ -91,7 +91,6 @@ describe('shared rate conversion', () => {
           balanceG: amount,
           dailyClaimG: 123.48,
           onCashOutClick: () => undefined,
-          onClaimClick: () => undefined,
           language: 'en',
           ngnPerUsdt: fakeNgnRate,
         }),
@@ -111,13 +110,13 @@ describe('shared rate conversion', () => {
     });
   });
 
-  it('treats 4,473 G$ as below the minimum and 4,474 G$ as above it', () => {
-    const below = getCashoutRate(4473, 123.48, fakeNgnRate);
-    const above = getCashoutRate(4474, 123.48, fakeNgnRate);
+  it('treats 4,649 G$ as below the minimum and 4,650 G$ as above it', () => {
+    const below = getCashoutRate(4649, 123.48, fakeNgnRate);
+    const above = getCashoutRate(4650, 123.48, fakeNgnRate);
 
     expect(below.minimumReached).toBe(false);
     expect(above.minimumReached).toBe(true);
-    expect(below.remainingUsdt).toBeCloseTo(0.51 - below.netUsdt, 8);
+    expect(below.remainingUsdt).toBeCloseTo(0.53 - below.netUsdt, 8);
     expect(above.remainingUsdt).toBe(0);
   });
 
@@ -142,8 +141,8 @@ describe('shared rate conversion', () => {
   it('keeps the G$ minimum identical across different NGN rates', () => {
     const rates = [1500, 1373.05];
 
-    const first = rates.map((ngn) => getCashoutRate(4474, 123.48, ngn));
-    const belowFirst = rates.map((ngn) => getCashoutRate(4473, 123.48, ngn));
+    const first = rates.map((ngn) => getCashoutRate(4650, 123.48, ngn));
+    const belowFirst = rates.map((ngn) => getCashoutRate(4649, 123.48, ngn));
 
     for (const rate of first) {
       expect(rate.netUsdt).toBeCloseTo(first[0].netUsdt, 8);
@@ -156,8 +155,8 @@ describe('shared rate conversion', () => {
       expect(rate.minimumReached).toBe(false);
     }
 
-    expect(belowFirst[0].netUsdt).toBeCloseTo(0.50989, 5);
-    expect(first[0].netUsdt).toBeCloseTo(0.510004, 5);
+    expect(belowFirst[0].netUsdt).toBeCloseTo(0.529953, 5);
+    expect(first[0].netUsdt).toBeCloseTo(0.530067, 5);
   });
 
   it('with empty or invalid bank fields the Review cash out button is disabled', async () => {
@@ -172,8 +171,8 @@ describe('shared rate conversion', () => {
       })
     );
 
-    const input = screen.getByDisplayValue('1000');
-    fireEvent.change(input, { target: { value: '4500' } });
+    const input = screen.getByDisplayValue('1,000');
+    fireEvent.change(input, { target: { value: '5000' } });
 
     const reviewBtn = screen.getByRole('button', { name: /review cash out/i });
 
@@ -229,15 +228,15 @@ describe('shared rate conversion', () => {
     expect(await screen.findByText('JANE DOE')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /confirm this is my account name/i }));
 
-    const input = screen.getByDisplayValue('1000');
-    // 4473 G$ is below the $0.51 floor
-    fireEvent.change(input, { target: { value: '4473' } });
+    const input = screen.getByDisplayValue('1,000');
+    // 4649 G$ is below the $0.53 floor
+    fireEvent.change(input, { target: { value: '4649' } });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /review cash out/i })).toBeDisabled();
     });
 
-    // 4474 G$ reaches the $0.51 floor
-    fireEvent.change(input, { target: { value: '4474' } });
+    // 4650 G$ reaches the $0.53 floor
+    fireEvent.change(input, { target: { value: '4650' } });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /review cash out/i })).not.toBeDisabled();
     });
@@ -261,7 +260,7 @@ describe('shared rate conversion', () => {
       })
     );
 
-    const input = screen.getByDisplayValue('1000');
+    const input = screen.getByDisplayValue('1,000');
     fireEvent.change(input, { target: { value: '1000' } });
 
     await waitFor(() => {
@@ -309,7 +308,7 @@ describe('shared rate conversion', () => {
     await waitFor(() => {
       // Check that both components show a Naira value
       expect(document.body.textContent).toContain('₦');
-      expect(document.body.textContent).toMatch(/₦17[01]/); // accepts ₦170 or ₦171 due to rounding
+      expect(document.body.textContent).toMatch(/₦14[01]/); // 1,000 G$ after the payout fee, with rounding
     });
   });
 

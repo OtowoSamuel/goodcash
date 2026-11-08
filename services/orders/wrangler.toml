@@ -5,22 +5,46 @@ compatibility_flags = ["nodejs_compat"]
 
 # KV namespace binding — set up "ORDER_STORE" in CF dashboard
 # or via `wrangler kv:namespace create ORDER_STORE`
-# and replace <KV_NAMESPACE_ID> with the real ID before deploy
+# and replace c7897f6e178b431d99d7fef60dd0c81e with the real ID before deploy
 [[kv_namespaces]]
 binding = "ORDER_STORE"
-id = "<KV_NAMESPACE_ID>"
+id = "c7897f6e178b431d99d7fef60dd0c81e"
 
 # Secrets — set via `wrangler secret put PAYCREST_API_KEY` etc.
 # Never put real values in this file.
+# Rate limiting without storage writes (30 requests per minute per visitor and endpoint)
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
+[[unsafe.bindings]]
+name = "RATE_LIMITER_READ"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 120, period = 60 }
+
+[[unsafe.bindings]]
+name = "RATE_LIMITER_STRICT"
+type = "ratelimit"
+namespace_id = "1003"
+simple = { limit = 5, period = 60 }
+
+[observability]
+enabled = true
+
 [vars]
 # Production-only origins. Dev origins live in [env.development.vars] so they
 # are never shipped to production.
+RESEND_FROM = "GoodCash <hello@goodcash.xyz>"
 PAYCREST_BASE_URL = "https://api.paycrest.io"
 CELO_RPC_URL = "https://forno.celo.org"
 VERIFY_SWAP_ONCHAIN = "true"
 RATE_LIMIT_MAX = "30"
 RATE_LIMIT_WINDOW_SECONDS = "60"
-ALLOWED_ORIGINS = "https://goodcash.app,https://www.goodcash.app,https://goodcash.pages.dev"
+ALLOWED_ORIGINS = "https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"
+SUPPORT_TO = "support@example.invalid"
 
 [env.development.vars]
-ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.app,https://www.goodcash.app,https://goodcash.pages.dev"
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"

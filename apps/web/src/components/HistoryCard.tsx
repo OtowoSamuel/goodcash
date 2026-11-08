@@ -1,7 +1,9 @@
+import { nairaFromUsdt } from '../lib/units';
 import React, { useState } from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
-import { ORDERS_API_BASE, getCashoutRate, formatNaira } from '../lib/rate';
+import { ORDERS_API_BASE, formatNaira } from '../lib/rate';
+import { HistoryDetailModal } from './HistoryDetailModal';
 
 export interface SwapHistoryItem {
   id: string;
@@ -20,11 +22,28 @@ export interface SwapHistoryItem {
   bankReference?: string;
 }
 
+export type HistoryStatus = 'paid' | 'onItsWay' | 'unknown';
+
+/** Status from what we have saved locally (no live lookup). Shared by desktop and mobile History. */
+export function getSavedHistoryStatus(item: SwapHistoryItem): HistoryStatus {
+  if (item.steps?.paidInNaira === 'completed') return 'paid';
+  if (item.steps?.paidInNaira === 'processing' || item.steps?.sentToPartner === 'completed' || item.steps?.swapped === 'completed') return 'onItsWay';
+  return 'unknown';
+}
+
+/** Naira for a history row: the recorded amount, else USDT received at the current rate. */
+export function getHistoryNaira(item: SwapHistoryItem, ngnPerUsdt?: number | null): number | null {
+  if (item.nairaAmount != null) return item.nairaAmount;
+  if (ngnPerUsdt && ngnPerUsdt > 0 && item.amountOutUsdt > 0) return nairaFromUsdt(item.amountOutUsdt, ngnPerUsdt);
+  return null;
+}
+
 interface HistoryCardProps {
   history: SwapHistoryItem[];
   onCashOutClick: () => void;
   language: Language;
   ngnPerUsdt?: number | null;
+  walletAddress?: string | null;
 }
 
 type FilterType = 'all' | 'onItsWay' | 'paid';
@@ -38,9 +57,10 @@ function formatDisplayDate(timestamp: number): string {
   return `${day} ${month} ${year}`;
 }
 
-export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClick: _onCashOutClick, language, ngnPerUsdt = null }) => {
+export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClick: _onCashOutClick, language, ngnPerUsdt = null, walletAddress = null }) => {
   const t = getTranslations(language);
   const [currentFilter, setCurrentFilter] = useState<FilterType>('all');
+  const [openId, setOpenId] = React.useState<string | null>(null);
   const [orderStatuses, setOrderStatuses] = React.useState<
     Record<string, { status: string; paymentReference?: string | null }>
   >({});
@@ -128,18 +148,31 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
       {filteredHistory.length === 0 ? (
         <div className="border-[2.5px] border-dashed border-[#111] rounded-2xl p-6 text-left">
           <div className="text-xs font-semibold text-[#111]">
-            Empty state: "{t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.'}"
+            {t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.'}
           </div>
         </div>
       ) : (
         <div className="space-y-3">
           {filteredHistory.map((item) => {
-            const estimatedNaira =
-              item.nairaAmount ?? (ngnPerUsdt && ngnPerUsdt > 0 ? getCashoutRate(item.amountInG, 123.48, ngnPerUsdt).netNaira : null);
+            const estimatedNaira = getHistoryNaira(item, ngnPerUsdt);
             const status = getItemStatus(item);
 
             return (
-              <div key={item.id} className="gc-card">
+              <div
+                key={item.id}
+                className="gc-card"
+                role="button"
+                tabIndex={0}
+                aria-label={`Open details for ${item.amountInG.toLocaleString()} G$ cash out`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setOpenId(item.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setOpenId(item.id);
+                  }
+                }}
+              >
                 {/* Top Row: Conversion text left, Status pill right */}
                 <div className="flex justify-between items-start gap-2">
                   <div>
@@ -150,7 +183,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                         : '—'}
                     </div>
                     <div className="text-xs font-semibold text-[#666] mt-2">
-                      {formatDisplayDate(item.timestamp)} · {item.amountOutUsdt.toFixed(4)} USDT
+                      {formatDisplayDate(item.timestamp)} · ${item.amountOutUsdt.toFixed(2)}
                     </div>
                   </div>
                   <span
@@ -165,6 +198,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                   href={`https://celo.blockscout.com/tx/${item.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   className="text-xs font-mono text-[#111] mt-8 gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
                 >
                   {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
@@ -174,6 +208,20 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
           })}
         </div>
       )}
+
+      {openId && (() => {
+        const item = history.find((h) => h.id === openId);
+        if (!item) return null;
+        return (
+          <HistoryDetailModal
+            item={item}
+            naira={getHistoryNaira(item, ngnPerUsdt)}
+            savedStage={getItemStatus(item)}
+            wallet={walletAddress}
+            onClose={() => setOpenId(null)}
+          />
+        );
+      })()}
     </>
   );
 };

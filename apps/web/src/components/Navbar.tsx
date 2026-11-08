@@ -4,8 +4,8 @@ import { getTranslations } from '../lib/i18n';
 import { ROUTER_ADDRESS, BLOCKSCOUT_URL } from './SafetyBanner';
 
 export interface NavbarProps {
-  currentTab: 'home' | 'cashout' | 'history' | 'claim' | 'offramp';
-  onSelectTab: (tab: 'home' | 'cashout' | 'claim' | 'history' | 'offramp') => void;
+  currentTab: 'home' | 'cashout' | 'history' | 'offramp';
+  onSelectTab: (tab: 'home' | 'cashout' | 'history' | 'offramp') => void;
   walletAddress: string | null;
   onConnectWallet: () => void;
   onDisconnectWallet: () => void;

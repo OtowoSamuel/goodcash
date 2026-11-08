@@ -1,35 +1,43 @@
-import React, { useState, useEffect } from 'react';
+import { gToWei, nairaFromUsdt } from './lib/units';
+import { Modal } from './components/Modal';
+import { getWalletLink, openWalletApp } from './lib/walletConnect';
+import { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { SafetyBanner } from './components/SafetyBanner';
 import { ReadinessCard } from './components/ReadinessCard';
-import { ClaimCard } from './components/ClaimCard';
 import { CashOutCard } from './components/CashOutCard';
 import { MobileCashOut } from './components/MobileCashOut';
 import { MobileReviewView } from './components/MobileReviewView';
 import { MobileProcessingView } from './components/MobileProcessingView';
 import { MobileSuccessView } from './components/MobileSuccessView';
 import { MobileHistoryView } from './components/MobileHistoryView';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { ConfirmModal } from './components/ConfirmModal';
 import { CashOutTracker } from './components/CashOutTracker';
-import { HistoryCard, type SwapHistoryItem } from './components/HistoryCard';
+import { HistoryCard, getHistoryNaira, type SwapHistoryItem } from './components/HistoryCard';
 import type { BankDetailsState } from './lib/useBankDetails';
 import type { Language } from './lib/i18n';
 import { getTranslations } from './lib/i18n';
-import { getCashoutRate } from './lib/rate';
+import { fetchPaycrestRate, MIN_NET_USDT_REQUIRED, ORDERS_API_BASE, getMinimumCashOutG, formatNaira } from './lib/rate';
 import { BLOCKSCOUT_URL } from './components/SafetyBanner';
 import { getNetQuote, type QuoteResult } from './lib/quote';
+import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE } from './lib/router';
-import { createPaycrestOrder, paycrestOrderAmount, type OffRampOrder } from './lib/useOffRamp';
+import { executeRouterSwap, IS_DEMO_MODE, connectInjectedWallet, fetchGBalance, friendlySwapError, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents } from './lib/router';
+import { createPaycrestOrder, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder } from './lib/useOffRamp';
+import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
+import { WALLETCONNECT_ENABLED, connectWithWalletConnect, restoreWalletConnect, disconnectWalletConnect } from './lib/walletConnect';
 import { PendingPayoutCard } from './components/PendingPayoutCard';
+import { reportIssue } from './lib/diag';
 
 export const PENDING_PAYOUT_KEY = 'goodcash_pending_payout';
 
 export interface PendingPayoutRecord {
   txHash: string;
   usdtReceived: number;
+  amountG?: number;
 }
 
 function readPendingPayout(): PendingPayoutRecord | null {
@@ -39,7 +47,11 @@ function readPendingPayout(): PendingPayoutRecord | null {
   try {
     const parsed = JSON.parse(saved) as Partial<PendingPayoutRecord>;
     if (typeof parsed?.txHash === 'string' && typeof parsed?.usdtReceived === 'number') {
-      return { txHash: parsed.txHash, usdtReceived: parsed.usdtReceived };
+      return {
+        txHash: parsed.txHash,
+        usdtReceived: parsed.usdtReceived,
+        ...(typeof parsed.amountG === 'number' ? { amountG: parsed.amountG } : {}),
+      };
     }
   } catch {
     // Ignore malformed records.
@@ -50,6 +62,26 @@ function readPendingPayout(): PendingPayoutRecord | null {
 function savePendingPayout(record: PendingPayoutRecord): void {
   if (typeof localStorage === 'undefined') return;
   localStorage.setItem(PENDING_PAYOUT_KEY, JSON.stringify(record));
+}
+
+const DISMISSED_KEY = 'goodcash_dismissed_swaps';
+
+function readDismissedSwaps(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function dismissSwap(txHash: string): void {
+  try {
+    const set = readDismissedSwaps();
+    set.add(txHash.toLowerCase());
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...set].slice(-50)));
+  } catch {
+    // optional convenience only
+  }
 }
 
 function clearPendingPayout(): void {
@@ -80,9 +112,9 @@ export interface AppProps {
 
 export function App({
   isDemoMode = IS_DEMO_MODE,
-  walletAddress: initialWalletAddress = '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+  walletAddress: initialWalletAddress = !import.meta.env.PROD ? '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF' : null,
 }: AppProps = {}) {
-  const [currentTab, setCurrentTab] = useState<'home' | 'cashout' | 'claim' | 'history' | 'offramp'>('home');
+  const [currentTab, setCurrentTab] = useState<'home' | 'cashout' | 'history' | 'offramp'>('home');
   const [language] = useState<Language>('en');
   const [miniPayBlocked, setMiniPayBlocked] = useState<boolean>(() => detectMiniPay());
   const [walletAddress, setWalletAddress] = useState<string | null>(initialWalletAddress);
@@ -94,6 +126,7 @@ export function App({
   } | null>(() => readPendingPayout());
 
   const [balanceG, setBalanceG] = useState<number>(() => {
+    if (import.meta.env.PROD) return 0;
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_balance_g') : null;
     const parsed = cached !== null ? parseFloat(cached) : NaN;
     if (Number.isFinite(parsed) && (parsed > 0 || !isDemoMode)) return parsed;
@@ -108,8 +141,43 @@ export function App({
 
   const [history, setHistory] = useState<SwapHistoryItem[]>(() => {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('goodcash_history') : null;
-    return cached ? JSON.parse(cached) : INITIAL_HISTORY;
+    if (!cached) return import.meta.env.PROD ? [] : INITIAL_HISTORY;
+    const parsed: SwapHistoryItem[] = JSON.parse(cached);
+    // The sample row was a developer test swap; real users must never see it
+    const visible = import.meta.env.PROD ? parsed.filter((h) => h.id !== 'tx-mainnet-test') : parsed;
+    // Older versions saved a row for every payout order; keep one row per swap (the paid one if any)
+    const bySwap = new Map<string, SwapHistoryItem>();
+    for (const h of visible) {
+      const key = (h.txHash || h.id).toLowerCase();
+      const existing = bySwap.get(key);
+      if (!existing) {
+        bySwap.set(key, h);
+        continue;
+      }
+      const keepNew = h.steps?.paidInNaira === 'completed' && existing.steps?.paidInNaira !== 'completed';
+      const base = keepNew ? h : existing;
+      bySwap.set(key, { ...base, amountInG: base.amountInG || existing.amountInG || h.amountInG, nairaAmount: base.nairaAmount ?? existing.nairaAmount ?? h.nairaAmount });
+    }
+    return [...bySwap.values()];
   });
+
+  // A swap is one cash out, however many times its payout order is retried
+  const upsertHistory = (item: SwapHistoryItem) => {
+    setHistory((prev) => {
+      const i = prev.findIndex((h) => h.txHash.toLowerCase() === item.txHash.toLowerCase());
+      if (i === -1) return [item, ...prev];
+      const old = prev[i];
+      const merged: SwapHistoryItem = {
+        ...old,
+        ...item,
+        id: old.id,
+        timestamp: old.timestamp,
+        amountInG: item.amountInG || old.amountInG,
+        steps: old.steps?.paidInNaira === 'completed' ? old.steps : item.steps,
+      };
+      return prev.map((h, idx) => (idx === i ? merged : h));
+    });
+  };
 
   const [pendingQuote, setPendingQuote] = useState<{
     quote: QuoteResult;
@@ -132,12 +200,17 @@ export function App({
     ngnPerUsdt?: number | null;
     orderId?: string;
     initialOrder?: OffRampOrder;
+    depositSent?: boolean;
   } | null>(() => {
     if (typeof localStorage !== 'undefined') {
       const saved = localStorage.getItem('goodcash_active_tracker');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
+          // An unpaid order's payment window is short. Drop a stale one so the swap is offered again fresh.
+          if (parsed && typeof parsed === 'object' && !parsed.depositSent && parsed.savedAt && Date.now() - parsed.savedAt > 25 * 60 * 1000) {
+            return null;
+          }
           if (parsed && typeof parsed === 'object') {
             return {
               txHash: parsed.txHash || '',
@@ -145,6 +218,7 @@ export function App({
               usdtReceived: parsed.usdtReceived || 0,
               amountGSwapped: parsed.amountGSwapped || 0,
               ngnPerUsdt: parsed.ngnPerUsdt || null,
+              depositSent: Boolean(parsed.depositSent),
             };
           }
         } catch {}
@@ -155,19 +229,98 @@ export function App({
 
   const [showPrivacy, setShowPrivacy] = useState(false);
 
+  // Live NGN rate for Home / History so naira figures are not blank
+  const [confirmStage, setConfirmStage] = useState<'swap' | 'order' | 'pay' | null>(null);
+  // Which wallet confirmation is the customer being asked for right now (shown as plain words)
+  const [walletStep, setWalletStep] = useState<{ kind: 'approve' | 'swap' | 'order' | 'pay'; n: number; total: number } | null>(null);
+  const stepTotalRef = useRef(3);
+  useEffect(() => {
+    if (!confirmStage) setWalletStep(null);
+  }, [confirmStage]);
+  const phoneWallet = !hasInjectedWallet() ? getWalletLink() : null;
+  const walletName = phoneWallet?.name ?? 'your wallet';
+  const walletStepTitle = walletStep
+    ? walletStep.kind === 'order'
+      ? 'Setting up your payout'
+      : `Step ${walletStep.n} of ${walletStep.total}`
+    : null;
+  const walletStepBody = walletStep
+    ? walletStep.kind === 'approve'
+      ? 'Allow GoodCash to use your G$ for this cash out.'
+      : walletStep.kind === 'swap'
+      ? 'Confirm the cash out. Your G$ is converted to dollars in your wallet.'
+      : walletStep.kind === 'order'
+      ? 'Nothing to confirm yet. This only takes a moment.'
+      : 'Send the payment. After this, your naira is on its way to your bank.'
+    : null;
+  const [confirmResult, setConfirmResult] = useState<{ settled: boolean; paid?: boolean; nairaText: string; reference: string | null } | null>(null);
+  const [walletMessage, setWalletMessage] = useState<string | null>(null);
+  const [okNotice, setOkNotice] = useState<string | null>(null);
+  const [previewUsdt, setPreviewUsdt] = useState<number | null>(null);
+  const [liveNgnRate, setLiveNgnRate] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchPaycrestRate()
+      .then((r) => { if (alive) setLiveNgnRate(r); })
+      .catch(() => { if (alive && IS_DEMO_MODE) setLiveNgnRate(1452.6); });
+    return () => { alive = false; };
+  }, []);
+
   // Debug view toggle for mobile testing
   const [mobileView, setMobileView] = useState<
-    'home' | 'cashout' | 'claim' | 'history' | 'offramp' | 'review' | 'processing' | 'success'
+    'home' | 'cashout' | 'history' | 'offramp' | 'review' | 'processing' | 'success' | 'finish'
   >('home');
 
   const t = getTranslations(language);
 
-  // Auto-navigate to cashout tab if there's a pending payout on mount
+  // Mobile has no tracker screen: watch the order and move to Success when it settles
   useEffect(() => {
-    if (pendingSwapResult && currentTab === 'home') {
-      setCurrentTab('cashout');
-    }
-  }, [pendingSwapResult, currentTab]); // Auto-resume a pending payout
+    const orderId = trackerData?.orderId;
+    if (mobileView !== 'processing' || !orderId) return;
+    let alive = true;
+    const finish = () => {
+      if (!alive) return;
+      const naira = trackerData?.ngnPerUsdt ? nairaFromUsdt(trackerData.usdtReceived, trackerData.ngnPerUsdt) : null;
+      setHistory((prev) =>
+        prev.map((h) =>
+          h.orderId === orderId
+            ? {
+                ...h,
+                ...(naira !== null ? { nairaAmount: naira } : {}),
+                steps: { swapped: 'completed', sentToPartner: 'completed', paidInNaira: 'completed' },
+              }
+            : h
+        )
+      );
+      setMobileView('success');
+    };
+    const check = async () => {
+      if (trackerData?.initialOrder?.status === 'settled' || trackerData?.initialOrder?.status === 'validated') return finish();
+      try {
+        const order = await fetchOrderStatus(orderId);
+        if (order.status === 'settled' || order.status === 'validated') finish();
+      } catch {
+        // Demo mode has no payout API: treat the mock order as settled after a short wait
+        if (isDemoMode) finish();
+      }
+    };
+    const first = setTimeout(check, 2500);
+    const iv = setInterval(check, 6000);
+    return () => {
+      alive = false;
+      clearTimeout(first);
+      clearInterval(iv);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileView, trackerData?.orderId]);
+
+  // Auto-navigate to cashout tab if there's a pending payout on mount
+  // Only on first load: jump straight to the unfinished payout. Never again after that,
+  // or the Home tab would bounce the user back to Cash out and trap them there.
+  useEffect(() => {
+    if (pendingSwapResult) setCurrentTab('cashout');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (typeof localStorage !== 'undefined') {
@@ -177,6 +330,18 @@ export function App({
           JSON.stringify({
             orderId: trackerData.orderId,
             txHash: trackerData.txHash,
+            usdtReceived: trackerData.usdtReceived,
+            amountGSwapped: trackerData.amountGSwapped,
+            ngnPerUsdt: trackerData.ngnPerUsdt ?? null,
+            depositSent: trackerData.depositSent ?? false,
+            savedAt: (() => {
+              try {
+                const prev = JSON.parse(localStorage.getItem('goodcash_active_tracker') ?? '{}') as { orderId?: string; savedAt?: number };
+                return prev.orderId === trackerData.orderId && prev.savedAt ? prev.savedAt : Date.now();
+              } catch {
+                return Date.now();
+              }
+            })(),
           })
         );
       } else {
@@ -209,18 +374,78 @@ export function App({
     }
   }, [history]);
 
-  const handleConnectWallet = () => {
-    if (miniPayBlocked || detectMiniPay()) return;
-    setWalletAddress('0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6');
-    emitAnalyticsEvent('wallet_connected', {
-      wallet: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
-      wallet_type: 'other',
-      referral_tag: 'direct',
+  // Reuse an earlier WalletConnect session after a reload
+  useEffect(() => {
+    if (isDemoMode || initialWalletAddress) return;
+    let alive = true;
+    restoreWalletConnect(() => setWalletAddress(null)).then((acct) => {
+      if (alive && acct) setWalletAddress(acct);
     });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleConnectWallet = async () => {
+    if (miniPayBlocked || detectMiniPay()) return;
+    try {
+      // Demo keeps the fixed test wallet; production asks the user's wallet.
+      let address: string;
+      if (isDemoMode) {
+        address = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
+      } else if (hasInjectedWallet()) {
+        address = await connectInjectedWallet();
+      } else if (WALLETCONNECT_ENABLED) {
+        // No wallet in this browser (e.g. a phone browser): use WalletConnect
+        address = await connectWithWalletConnect(() => setWalletAddress(null));
+      } else {
+        throw new Error('No Celo wallet detected. Open GoodCash in your wallet app or install a wallet extension.');
+      }
+      setWalletAddress(address);
+      setWalletMessage(null);
+      emitAnalyticsEvent('wallet_connected', {
+        wallet: address,
+        wallet_type: 'other',
+        referral_tag: 'direct',
+      });
+    } catch (err) {
+      setWalletMessage(friendlySwapError(err));
+    }
   };
 
+  useEffect(() => {
+    if (!okNotice) return;
+    const t = setTimeout(() => setOkNotice(null), 12000);
+    return () => clearTimeout(t);
+  }, [okNotice]);
+
+  useEffect(() => {
+    if (!walletMessage) return;
+    const t = setTimeout(() => setWalletMessage(null), 8000);
+    return () => clearTimeout(t);
+  }, [walletMessage]);
+
+  // No wallet, no balance (production)
+  useEffect(() => {
+    if (!isDemoMode && !walletAddress) setBalanceG(0);
+  }, [isDemoMode, walletAddress]);
+
+  // Real G$ balance from Celo (production only; demo keeps its mock balance)
+  useEffect(() => {
+    if (isDemoMode || !walletAddress) return;
+    let alive = true;
+    const load = () =>
+      fetchGBalance(walletAddress)
+        .then((b) => { if (alive) setBalanceG(Math.floor(b * 100) / 100); })
+        .catch(() => {});
+    load();
+    const iv = setInterval(load, 30000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [isDemoMode, walletAddress]);
+
   const handleDisconnectWallet = () => {
+    void disconnectWalletConnect();
     setWalletAddress(null);
+    if (!isDemoMode) setBalanceG(0);
   };
 
   const balanceIsStale = Date.now() - balanceUpdatedAt > 1000 * 60 * 10;
@@ -239,14 +464,6 @@ export function App({
       });
     }
   }, [balanceG, currentTab, walletAddress]);
-
-  const handleClaimSuccess = (claimedG: number) => {
-    setBalanceG((prev) => prev + claimedG);
-    emitAnalyticsEvent('claim_confirmed', {
-      wallet: walletAddress ?? '0x0000000000000000000000000000000000000000',
-      amount: claimedG,
-    });
-  };
 
   const handleInitiateCashOut = (
     quote: QuoteResult,
@@ -269,15 +486,15 @@ export function App({
     });
   };
 
-  const handleRefreshQuote = () => {
+  const handleRefreshQuote = async () => {
     if (!pendingQuote) return;
-    setPendingQuote((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        quote: getNetQuote({ amountIn: BigInt(Math.floor(prev.amountG * 1e18)) }),
-      };
-    });
+    const amountWei = gToWei(pendingQuote.amountG);
+    try {
+      const quote = LIVE_QUOTES ? await getLiveNetQuote(amountWei) : getNetQuote({ amountIn: amountWei });
+      setPendingQuote((prev) => (prev ? { ...prev, quote } : prev));
+    } catch {
+      setSwapError("We couldn't get a live price right now. Please try again.");
+    }
   };
 
   const handleConfirmSwap = async () => {
@@ -287,9 +504,11 @@ export function App({
       return;
     }
     const refundAddress = walletAddress;
-    const { amountG, quote, slippageBps } = pendingQuote;
+    const { amountG, slippageBps } = pendingQuote;
+    let quote = pendingQuote.quote;
 
     setSwapError(null);
+    setConfirmStage('swap');
 
     emitAnalyticsEvent('swap_submitted', {
       amount: amountG,
@@ -298,19 +517,32 @@ export function App({
     });
 
     try {
+      // Re-read live prices right before sending, so the minimum payout reflects the market now
+      if (LIVE_QUOTES) {
+        quote = await getLiveNetQuote(gToWei(amountG));
+        if (Number(quote.usdtOut) / 1e6 < MIN_NET_USDT_REQUIRED) {
+          throw new Error(`Minimum cash out is about ${getMinimumCashOutG().toLocaleString()} G$. Your amount is a little below it.`);
+        }
+      }
       const swapResult = await executeRouterSwap({
         amountG,
         quote,
         slippageBps,
         walletAddress: refundAddress,
         isDemoMode,
+        onStep: (info) => {
+          stepTotalRef.current = info.total;
+          setWalletStep(info);
+        },
       });
 
       const realUsdtReceived = swapResult.usdtReceived;
       const realTxHash = swapResult.txHash;
 
-      savePendingPayout({ txHash: realTxHash, usdtReceived: realUsdtReceived });
+      savePendingPayout({ txHash: realTxHash, usdtReceived: realUsdtReceived, amountG });
       setPendingSwapResult({ txHash: realTxHash, usdtReceived: realUsdtReceived, amountG });
+      setConfirmStage('order');
+      setWalletStep({ kind: 'order', n: 0, total: stepTotalRef.current });
 
       let order: OffRampOrder;
       try {
@@ -328,8 +560,8 @@ export function App({
         });
       } catch (orderErr: unknown) {
         setPendingSwapResult({ txHash: realTxHash, usdtReceived: realUsdtReceived, amountG });
-        const orderMsg = orderErr instanceof Error ? orderErr.message : 'Order creation failed';
-        setSwapError(`Swap confirmed (${realTxHash.slice(0, 10)}…) but payout order failed: ${orderMsg}`);
+        setSwapError(`Your swap went through, but the payout order couldn't be created yet. Your funds are safe in your wallet. Use Retry payout in a moment.`);
+        setConfirmStage(null);
         return;
       }
 
@@ -349,6 +581,7 @@ export function App({
             ? 'GoodDollar Reserve → Uniswap V3 (fee 100)'
             : 'Uniswap V3 (G$/USDm) → Uniswap V3 (USDm/USDT)',
         orderId: order.orderId,
+        nairaAmount: order.expectedNaira && Number(order.expectedNaira) > 0 ? Number(order.expectedNaira) : undefined,
         steps: {
           swapped: 'completed',
           sentToPartner: 'pending',
@@ -356,7 +589,7 @@ export function App({
         },
       };
 
-      setHistory((prev) => [newHistoryItem, ...prev]);
+      upsertHistory(newHistoryItem);
 
       emitAnalyticsEvent(
         'CashOut',
@@ -364,7 +597,7 @@ export function App({
           user: walletAddress ?? '0x0000000000000000000000000000000000000000',
           recipient: '0x0000000000000000000000000000000000000000',
           tokenOut: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e',
-          amountIn: BigInt(Math.floor(amountG * 1e18)),
+          amountIn: gToWei(amountG),
           amountOut: BigInt(Math.floor(realUsdtReceived * 1e6)),
           route: quote.route,
           ref: 'goodcash-ui',
@@ -384,10 +617,44 @@ export function App({
         initialOrder: order,
       });
 
-      setPendingQuote(null);
+      // The customer never handles the dollar token: pay the partner automatically,
+      // so their only wallet prompts are approve, convert and pay.
+      setConfirmStage('pay');
+      const paid = await autoPayDeposit(order, realUsdtReceived);
+
+      const rate = pendingQuote.ngnPerUsdt ?? null;
+      const naira = rate ? nairaFromUsdt(realUsdtReceived, rate) : null;
+      setConfirmResult({
+        settled: order.status === 'settled',
+        paid: paid || order.status === 'settled',
+        nairaText: naira !== null ? `₦${Math.round(naira).toLocaleString()}` : '—',
+        reference: order.paymentReference ?? null,
+      });
+      setConfirmStage(null);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Swap transaction failed';
-      setSwapError(msg);
+      if (err instanceof SwapPendingError && walletAddress) {
+        // The swap was sent but not confirmed yet. Keep watching for it, then offer to finish the payout.
+        const hash = err.hash;
+        const wallet = walletAddress;
+        void (async () => {
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 6000));
+            try {
+              const found = await fetchSwapForRecovery(hash, wallet);
+              savePendingPayout({ txHash: hash, usdtReceived: found.usdtReceived, amountG: found.amountG });
+              setPendingSwapResult({ txHash: hash, usdtReceived: found.usdtReceived, amountG: found.amountG });
+              return;
+            } catch {
+              // not confirmed yet
+            }
+          }
+        })();
+      }
+      setSwapError(friendlySwapError(err));
+      if (!/user rejected|user denied|rejected the request/i.test(String((err as Error)?.message ?? ''))) {
+        reportIssue('swap_failed', err);
+      }
+      setConfirmStage(null);
       throw err;
     }
   };
@@ -429,9 +696,10 @@ export function App({
           ? 'GoodDollar Reserve \u2192 Uniswap V3 (fee 100)'
           : 'Uniswap V3 (G$/USDm) \u2192 Uniswap V3 (USDm/USDT)',
         orderId: order.orderId,
+        nairaAmount: order.expectedNaira && Number(order.expectedNaira) > 0 ? Number(order.expectedNaira) : undefined,
         steps: { swapped: 'completed', sentToPartner: 'pending', paidInNaira: 'pending' },
       };
-      setHistory((prev) => [newHistoryItem, ...prev]);
+      upsertHistory(newHistoryItem);
 
       setTrackerData({
         txHash: pendingSwapResult.txHash,
@@ -446,13 +714,286 @@ export function App({
       });
 
       clearPendingPayout();
+      stepTotalRef.current = 1;
+      const recoveredUsdt = pendingSwapResult.usdtReceived;
       setPendingSwapResult(null);
-      setPendingQuote(null);
+      setConfirmStage('pay');
+      const paidNow = await autoPayDeposit(order, recoveredUsdt);
+      setConfirmStage(null);
+      const rate = pendingQuote.ngnPerUsdt ?? null;
+      setConfirmResult({
+        settled: order.status === 'settled',
+        paid: paidNow || order.status === 'settled',
+        nairaText: rate ? `₦${Math.round(nairaFromUsdt(recoveredUsdt, rate)).toLocaleString()}` : '—',
+        reference: order.paymentReference ?? null,
+      });
     } catch (retryErr: unknown) {
-      const msg = retryErr instanceof Error ? retryErr.message : 'Retry failed';
-      setSwapError(`Retry payout failed: ${msg}`);
+      setSwapError(`We still couldn't set up your payout. Your funds are safe. Please try again in a moment.`);
     }
   };
+
+  // Everything saved on this device (history, unfinished payout, tracker) belongs to one wallet.
+  // If a different wallet connects, start clean so nobody sees or finishes someone else's cash out.
+  useEffect(() => {
+    if (!walletAddress || isDemoMode) return;
+    const now = walletAddress.toLowerCase();
+    try {
+      const last = localStorage.getItem('goodcash_last_wallet');
+      if (last && last !== now) {
+        setHistory([]);
+        setTrackerData(null);
+        setPendingSwapResult(null);
+        setPendingQuote(null);
+        setConfirmResult(null);
+        setMobileView('home');
+        setCurrentTab('home');
+        ['goodcash_history', 'goodcash_active_tracker', PENDING_PAYOUT_KEY, 'goodcash_pending_swap', DISMISSED_KEY].forEach((k) => localStorage.removeItem(k));
+      }
+      localStorage.setItem('goodcash_last_wallet', now);
+    } catch {
+      // optional convenience only
+    }
+  }, [walletAddress, isDemoMode]);
+
+  // Follow the wallet: switching account or network inside it must never leave the app out of step
+  useEffect(() => {
+    if (isDemoMode || !walletAddress) return;
+    return subscribeWalletEvents(
+      (accounts) => {
+        const next = accounts[0] ?? null;
+        if (!next) {
+          setWalletAddress(null);
+          setWalletMessage('Your wallet was disconnected. Connect it again to continue.');
+        } else if (next.toLowerCase() !== walletAddress.toLowerCase()) {
+          setWalletAddress(next);
+          setWalletMessage('You switched wallets. GoodCash is now showing the new one.');
+        }
+      },
+      (chainId) => {
+        if (chainId !== 42220) setWalletMessage("Your wallet isn't on the Celo network. We'll switch it for you when you cash out.");
+      }
+    );
+  }, [walletAddress, isDemoMode]);
+
+  // The payment window closed or the order can't be paid: drop it so a fresh payout is offered
+  const handleOrderClosed = () => {
+    setTrackerData(null);
+    try { localStorage.removeItem('goodcash_active_tracker'); } catch { /* optional */ }
+    setCurrentTab('home');
+    setMobileView('home');
+  };
+
+  // Remove swaps the owner asked to scrap from this device's saved state
+  useEffect(() => {
+    setHistory((prev) => (prev.some((h) => isHiddenSwap(h.txHash)) ? prev.filter((h) => !isHiddenSwap(h.txHash)) : prev));
+    if (pendingSwapResult && isHiddenSwap(pendingSwapResult.txHash)) {
+      setPendingSwapResult(null);
+      clearPendingPayout();
+    }
+    if (trackerData && isHiddenSwap(trackerData.txHash)) {
+      setTrackerData(null);
+      try { localStorage.removeItem('goodcash_active_tracker'); } catch { /* optional */ }
+    }
+  }, [pendingSwapResult, trackerData]);
+
+  // Same wallet, same History on every device: pull this wallet's swaps from our service and merge them in
+  useEffect(() => {
+    if (isDemoMode || !walletAddress) return;
+    let alive = true;
+    const sync = () =>
+      fetchWalletHistory(walletAddress)
+        .then((server) => {
+          if (alive) setHistory((prev) => mergeServerHistory(prev, server));
+        })
+        .catch(() => {});
+    void sync();
+    const iv = setInterval(sync, 180000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [walletAddress, isDemoMode]);
+
+  // Repair history rows saved with 0 G$ (older recovery bug) by reading the swap back from Celo
+  useEffect(() => {
+    if (isDemoMode) return;
+    const broken = history.filter((h) => !h.amountInG && h.txHash);
+    if (broken.length === 0) return;
+    let alive = true;
+    broken.forEach((h) => {
+      fetchSwapForRecovery(h.txHash)
+        .then(({ amountG }) => {
+          if (!alive || !amountG) return;
+          setHistory((prev) => prev.map((x) => (x.id === h.id ? { ...x, amountInG: amountG } : x)));
+        })
+        .catch(() => {});
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.length]);
+
+  // Announce each payout once only, on this device, however many times its status is re-checked
+  const announcePaid = (key: string, naira: number | null) => {
+    const id = key.toLowerCase();
+    try {
+      const seen = JSON.parse(localStorage.getItem('goodcash_announced') ?? '[]') as string[];
+      if (seen.includes(id)) return;
+      localStorage.setItem('goodcash_announced', JSON.stringify([...seen, id].slice(-40)));
+    } catch {
+      // if storage is unavailable, fall through and announce
+    }
+    setOkNotice(
+      naira
+        ? `Your ${formatNaira(naira)} has been sent. It can take a few minutes to show in your bank.`
+        : 'Your naira has been sent. It can take a few minutes to show in your bank.'
+    );
+  };
+
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const liveNgnRateRef = useRef<number | null>(null);
+  liveNgnRateRef.current = liveNgnRate;
+
+  // Keep History honest without the customer opening anything: ask which order belongs to each unpaid swap
+  const unpaidSwapKey = history
+    .filter((h) => h.steps?.paidInNaira !== 'completed' && h.txHash)
+    .map((h) => h.txHash.toLowerCase())
+    .slice(0, 6)
+    .join(',');
+  useEffect(() => {
+    if (isDemoMode || !unpaidSwapKey) return;
+    let alive = true;
+    const check = async () => {
+      for (const hash of unpaidSwapKey.split(',')) {
+        try {
+          const res = await fetch(`${ORDERS_API_BASE}/swaps/${hash}`);
+          if (!res.ok) continue;
+          const data = (await res.json()) as { orderId?: string; status?: string };
+          if (alive && (data.status === 'settled' || data.status === 'validated')) {
+            const row = historyRef.current.find((h) => h.txHash.toLowerCase() === hash);
+            const naira = row ? getHistoryNaira(row, liveNgnRateRef.current) : null;
+            announcePaid(data.orderId ?? hash, naira);
+            setHistory((prev) =>
+              prev.map((h) =>
+                h.txHash.toLowerCase() === hash
+                  ? { ...h, orderId: data.orderId ?? h.orderId, steps: { swapped: 'completed', sentToPartner: 'completed', paidInNaira: 'completed' } }
+                  : h
+              )
+            );
+          }
+        } catch {
+          // try again at the next check
+        }
+      }
+    };
+    void check();
+    const iv = setInterval(check, 15000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [unpaidSwapKey, isDemoMode]);
+
+  const handleTrackerSettled = ({ orderId, nairaAmount }: { orderId: string; nairaAmount: number | null }) => {
+    announcePaid(orderId, nairaAmount);
+    setHistory((prev) =>
+      prev.map((h) =>
+        h.orderId === orderId
+          ? {
+              ...h,
+              ...(nairaAmount !== null ? { nairaAmount } : {}),
+              steps: { swapped: 'completed', sentToPartner: 'completed', paidInNaira: 'completed' },
+            }
+          : h
+      )
+    );
+  };
+
+  // Right before paying, ask our server whether this order can still be paid. Fails closed.
+  const orderPayableCheck = (orderId: string, to: string, amount: string) => async () => {
+    let d: Awaited<ReturnType<typeof fetchOrderDetails>>;
+    try {
+      if (!/^[0-9a-f-]{36}$/i.test(orderId)) throw new Error('bad id');
+      d = await fetchOrderDetails(orderId);
+    } catch {
+      throw new Error('ORDER_UNKNOWN');
+    }
+    if (d.status !== 'initiated') {
+      throw new Error(['expired', 'refunded', 'cancelled', 'error'].includes(d.status) ? 'ORDER_EXPIRED' : 'ORDER_ALREADY_PAID');
+    }
+    if (!d.receiveAddress || d.receiveAddress.toLowerCase() !== to.toLowerCase()) throw new Error('ORDER_MISMATCH');
+    if (d.amountToSend && Math.abs(Number(d.amountToSend) - Number(amount)) > 0.000001) throw new Error('ORDER_MISMATCH');
+    if (d.validUntil && new Date(d.validUntil).getTime() - Date.now() < 60_000) throw new Error('ORDER_EXPIRED');
+  };
+
+  // Pays the payout partner automatically after an order is created. Returns true if the payment went through.
+  const autoPayDeposit = async (order: OffRampOrder, usdtReceived: number): Promise<boolean> => {
+    if (isDemoMode || !walletAddress || order.status === 'settled' || !order.receiveAddress) return false;
+    setWalletStep({ kind: 'pay', n: stepTotalRef.current, total: stepTotalRef.current });
+    try {
+      await sendUsdtDeposit({
+        from: walletAddress,
+        to: order.receiveAddress,
+        amount: order.amountToSend,
+        maxAmount: usdtReceived,
+        orderId: order.orderId,
+        checkOrder: orderPayableCheck(order.orderId, order.receiveAddress, order.amountToSend),
+      });
+      setTrackerData((prev) => (prev ? { ...prev, depositSent: true } : prev));
+      return true;
+    } catch (e) {
+      // Sent but not yet confirmed: it will land, so never offer a second payment
+      if (e instanceof DepositPendingError) {
+        setTrackerData((prev) => (prev ? { ...prev, depositSent: true } : prev));
+        return true;
+      }
+      return false; // cancelled or failed: the tracker offers "Pay now"
+    } finally {
+      setWalletStep(null);
+    }
+  };
+
+  // One-tap USDT deposit to Paycrest from the connected wallet (never more than the swap produced)
+  const sendDeposit =
+    walletAddress && trackerData
+      ? async (to: string, amount: string, orderId: string) => {
+          await sendUsdtDeposit({
+            from: walletAddress,
+            to,
+            amount,
+            maxAmount: trackerData.usdtReceived,
+            orderId,
+            checkOrder: orderPayableCheck(orderId, to, amount),
+          });
+        }
+      : undefined;
+
+  // Automatically find a swap that went through but was never paid out, so nobody has to dig for a transaction hash.
+  useEffect(() => {
+    if (isDemoMode || !walletAddress || pendingSwapResult || trackerData || pendingQuote) return;
+    let alive = true;
+    (async () => {
+      try {
+        const swaps = await fetchUnfinishedSwaps(walletAddress);
+        const dismissed = readDismissedSwaps();
+        for (const sw of swaps) {
+          if (dismissed.has(sw.txHash.toLowerCase()) || isHiddenSwap(sw.txHash)) continue;
+          if (sw.usdtReceived < MIN_NET_USDT_REQUIRED) continue; // too small to pay out
+          const balance = await fetchUsdtBalance(walletAddress);
+          if (balance < sw.usdtReceived - 0.011) continue; // the money has already been used elsewhere
+          if (!alive) return;
+          savePendingPayout({ txHash: sw.txHash, usdtReceived: sw.usdtReceived, amountG: sw.amountG });
+          setPendingSwapResult({ txHash: sw.txHash, usdtReceived: sw.usdtReceived, amountG: sw.amountG });
+          return;
+        }
+      } catch {
+        // Nothing to offer if the check fails; the customer can still cash out normally
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [walletAddress, pendingSwapResult, trackerData, pendingQuote, isDemoMode]);
 
   const handleFinishPendingPayout = async (
     bankCode: string,
@@ -494,9 +1035,10 @@ export function App({
         amountOutUsdt: pendingSwapResult.usdtReceived,
         route: 'On-chain swap (confirmed)',
         orderId: order.orderId,
+        nairaAmount: order.expectedNaira && Number(order.expectedNaira) > 0 ? Number(order.expectedNaira) : undefined,
         steps: { swapped: 'completed', sentToPartner: 'pending', paidInNaira: 'pending' },
       };
-      setHistory((prev) => [newHistoryItem, ...prev]);
+      upsertHistory(newHistoryItem);
 
       setTrackerData({
         txHash: pendingSwapResult.txHash,
@@ -511,13 +1053,14 @@ export function App({
       });
 
       clearPendingPayout();
+      stepTotalRef.current = 1;
+      const recoveredUsdt = pendingSwapResult.usdtReceived;
       setPendingSwapResult(null);
       setPendingQuote(null);
-      // Stay on cashout tab to show the tracker
-      // setCurrentTab('home');
+      // Stay on the cash out tab to show the tracker, and pay the partner automatically
+      await autoPayDeposit(order, recoveredUsdt);
     } catch (retryErr: unknown) {
-      const msg = retryErr instanceof Error ? retryErr.message : 'Retry failed';
-      setSwapError(`Retry payout failed: ${msg}`);
+      setSwapError(`We still couldn't set up your payout. Your funds are safe. Please try again in a moment.`);
     }
   };
 
@@ -534,6 +1077,62 @@ export function App({
 
   return (
     <div className="gc min-h-screen flex flex-col">
+      {/* Notices live at the very top so phones and desktops both see them (the desktop layout is hidden on phones) */}
+      {walletAddress && ((pendingSwapResult && !pendingQuote && !trackerData && mobileView !== 'finish') ||
+        (trackerData && !trackerData.depositSent && mobileView !== 'processing' && mobileView !== 'success')) && currentTab !== 'cashout' && (mobileView === 'home' || mobileView === 'history') && (
+        <button
+          type="button"
+          className="gc-note gc-banner fixed left-1/2 z-[150] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
+          onClick={() => {
+            setCurrentTab('cashout');
+            setMobileView(trackerData ? 'processing' : 'finish');
+          }}
+          style={{ background: '#ffd23f', textAlign: 'left', cursor: 'pointer' }}
+        >
+          <b>You have an unfinished cash out.</b> Tap to finish getting your naira.
+        </button>
+      )}
+
+      {walletStep && walletStepTitle && (
+        <Modal label="Wallet confirmation" title={walletStepTitle} onClose={() => setWalletStep(null)} z={210}>
+          <p className="gc-sm" style={{ margin: 0, fontWeight: 800, fontSize: 16 }}>{walletStepBody}</p>
+          {walletStep.kind !== 'order' && (
+            <p className="gc-sm" style={{ margin: 0 }}>
+              {phoneWallet
+                ? `Tap the button, confirm in ${walletName}, then come back to this page. It carries on by itself.`
+                : `Confirm in your wallet. This page carries on by itself.`}
+            </p>
+          )}
+          {phoneWallet && walletStep.kind !== 'order' && (
+            <button type="button" className="gc-btn gc-hit" onClick={openWalletApp}>
+              Open {phoneWallet.name}
+            </button>
+          )}
+        </Modal>
+      )}
+
+      {okNotice && (
+        <div
+          role="status"
+          className="gc-note fixed left-1/2 z-[200] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
+          onClick={() => setOkNotice(null)}
+          style={{ background: '#8cf0c0', cursor: 'pointer', fontWeight: 800 }}
+        >
+          ✓ {okNotice}
+        </div>
+      )}
+
+      {walletMessage && (
+        <div
+          role="alert"
+          className="gc-note fixed left-1/2 z-[200] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
+          onClick={() => setWalletMessage(null)}
+          style={{ background: '#ff9b9b', cursor: 'pointer' }}
+        >
+          {walletMessage}
+        </div>
+      )}
+
       {/* ── Desktop Layout ── */}
       <div className="hidden md:flex flex-col flex-1">
       <Navbar
@@ -561,13 +1160,13 @@ export function App({
               balanceG={balanceG}
               dailyClaimG={123.48}
               onCashOutClick={() => setCurrentTab('cashout')}
-              onClaimClick={() => setCurrentTab('claim')}
               language={language}
               isStale={balanceIsStale}
+              ngnPerUsdt={liveNgnRate}
             />
           ) : currentTab === 'cashout' ? (
             <>
-              {trackerData ? (
+              {trackerData && !pendingQuote ? (
                 <CashOutTracker
                   txHash={trackerData.txHash}
                   usdtReceived={trackerData.usdtReceived}
@@ -579,6 +1178,10 @@ export function App({
                   initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
                   walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}
                   language={language}
+                  onSettled={handleTrackerSettled}
+                  onSendDeposit={sendDeposit}
+                  onOrderClosed={handleOrderClosed}
+                  depositSent={trackerData.depositSent}
                   onDone={() => {
                     setTrackerData(null);
                     setCurrentTab('home');
@@ -606,6 +1209,7 @@ export function App({
                   usdtReceived={pendingSwapResult.usdtReceived}
                   onRetry={handleFinishPendingPayout}
                   onCancel={() => {
+                    if (pendingSwapResult) dismissSwap(pendingSwapResult.txHash);
                     // Clear all tracker state
                     setTrackerData(null);
                     setPendingSwapResult(null);
@@ -624,6 +1228,7 @@ export function App({
                   language={language}
                 />
               ) : (
+                <>
                 <CashOutCard
                   balanceG={balanceG}
                   onInitiateCashOut={handleInitiateCashOut}
@@ -632,22 +1237,21 @@ export function App({
                   setActiveCashOutAmount={setActiveCashOutAmount}
                   savedBankDetails={savedBankDetails}
                   setSavedBankDetails={setSavedBankDetails}
+                  ngnPerUsdt={liveNgnRate}
+                  onPreviewUsdtChange={setPreviewUsdt}
+                  walletConnected={Boolean(walletAddress)}
+                  onConnectWallet={handleConnectWallet}
                 />
+                </>
               )}
             </>
-          ) : currentTab === 'claim' ? (
-            <ClaimCard
-              isVerified={true}
-              entitlementG={123.48}
-              onClaimSuccess={handleClaimSuccess}
-              language={language}
-            />
           ) : currentTab === 'history' ? (
             <HistoryCard
               history={history}
               onCashOutClick={() => setCurrentTab('cashout')}
               language={language}
-              ngnPerUsdt={pendingQuote?.ngnPerUsdt ?? null}
+              ngnPerUsdt={pendingQuote?.ngnPerUsdt ?? liveNgnRate}
+              walletAddress={walletAddress}
             />
           ) : null}
         </div>
@@ -711,10 +1315,12 @@ export function App({
                 <div className="gc-row pt-3 pb-3">
                   <span>You get at least</span>
                   <span>
-                    {pendingQuote?.quote
-                      ? `0.${Math.floor((Number(pendingQuote.quote.usdtOut) / 1e6) * 10000).toString().padStart(4, '0')}`
-                      : '—'}
-                    USDT
+                    {(() => {
+                      const usdt = pendingQuote?.quote
+                        ? Number(pendingQuote.quote.usdtOut) / 1e6
+                        : trackerData?.usdtReceived ?? pendingSwapResult?.usdtReceived ?? previewUsdt;
+                      return usdt !== null && Number.isFinite(usdt) ? `≈ $${usdt.toFixed(2)}` : '—';
+                    })()}
                   </span>
                 </div>
               </div>
@@ -753,7 +1359,7 @@ export function App({
                   <span>
                     {(() => {
                       const total = history.reduce((sum, item) => {
-                        const naira = item.nairaAmount ?? (pendingQuote?.ngnPerUsdt && pendingQuote.ngnPerUsdt > 0 ? getCashoutRate(item.amountInG, 123.48, pendingQuote.ngnPerUsdt).netNaira : 0);
+                        const naira = item.nairaAmount ?? (item.steps?.paidInNaira === 'completed' ? getHistoryNaira(item, pendingQuote?.ngnPerUsdt ?? liveNgnRate) ?? 0 : 0);
                         return sum + (Number.isFinite(naira) ? naira : 0);
                       }, 0);
                       return Number.isFinite(total) && total > 0 ? `₦${Math.round(total).toLocaleString()}` : '—';
@@ -821,7 +1427,15 @@ export function App({
       {pendingQuote && (
         <ConfirmModal
           isOpen={true}
-          onClose={() => { setPendingQuote(null); setPendingSwapResult(null); }}
+          stage={confirmStage}
+          result={confirmResult}
+          onFinish={() => {
+            // Settled: back to a fresh cash-out page. Otherwise hand over to the payout tracker.
+            if (confirmResult?.settled) setTrackerData(null);
+            setConfirmResult(null);
+            setPendingQuote(null);
+          }}
+          onClose={() => { setPendingQuote(null); setPendingSwapResult(null); setConfirmResult(null); setConfirmStage(null); }}
           onConfirm={handleConfirmSwap}
           onRefresh={handleRefreshQuote}
           onRetryPayout={pendingSwapResult ? handleRetryPayout : undefined}
@@ -883,8 +1497,8 @@ export function App({
       {/* ── Mobile Shell ── */}
       <div className="gc--mobile-shell md:!hidden w-full bg-[#d4c5fb] relative">
         {/* Debug Panel - Only visible in development */}
-        {isDemoMode && (
-          <div className="fixed top-2 right-2 z-[100] bg-black/80 text-white p-2 rounded-lg text-xs">
+        {isDemoMode && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug') && (
+          <div className="fixed bottom-24 right-2 z-[100] bg-black/80 text-white p-2 rounded-lg text-xs">
             <div className="font-bold mb-1">Debug Views:</div>
             <div className="flex flex-col gap-1">
               <button onClick={() => setMobileView('home')} className="bg-white/20 px-2 py-1 rounded hover:bg-white/30">Home</button>
@@ -899,11 +1513,22 @@ export function App({
         {mobileView === 'cashout' ? (
           <MobileCashOut
             balanceG={balanceG}
-            ngnPerUsdt={pendingQuote?.ngnPerUsdt ?? 1452.6}
+            ngnPerUsdt={liveNgnRate ?? pendingQuote?.ngnPerUsdt ?? 1452.6}
             onClose={() => setMobileView('home')}
-            onReview={(amountG: number, nairaEstimate: number | null, usdtEstimate: number) => {
-              // Create quote and transition to the review view
-              const quote = getNetQuote({ amountIn: BigInt(Math.floor(amountG * 1e18)) });
+            onReview={async (amountG: number, nairaEstimate: number | null, usdtEstimate: number) => {
+              // Create quote (live on-chain prices in production) and go to the review view
+              let quote: QuoteResult;
+              try {
+                const amountWei = gToWei(amountG);
+                quote = LIVE_QUOTES ? await getLiveNetQuote(amountWei) : getNetQuote({ amountIn: amountWei });
+                if (LIVE_QUOTES && Number(quote.usdtOut) / 1e6 < MIN_NET_USDT_REQUIRED) {
+                  setWalletMessage(`Minimum cash out is about ${getMinimumCashOutG().toLocaleString()} G$. Your amount is a little below it.`);
+                  return;
+                }
+              } catch {
+                setWalletMessage("We couldn't get a live price right now. Please try again.");
+                return;
+              }
               setPendingQuote({
                 quote,
                 amountG,
@@ -918,29 +1543,85 @@ export function App({
             amountG={pendingQuote?.amountG ?? null}
             nairaEstimate={
               pendingQuote?.quote && pendingQuote.ngnPerUsdt
-                ? (Number(pendingQuote.quote.usdtOut) / 1e6) * pendingQuote.ngnPerUsdt
+                ? nairaFromUsdt(Number(pendingQuote.quote.usdtOut) / 1e6, pendingQuote.ngnPerUsdt)
                 : null
             }
             usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
             onBack={() => setMobileView('cashout')}
-            onConfirm={() => {
-              handleConfirmSwap();
-              setMobileView('processing');
+            onConfirm={async () => {
+              try {
+                await handleConfirmSwap();
+                setMobileView('processing');
+              } catch {
+                // error text is already in swapError and shown on the review screen
+              }
             }}
+            errorMessage={swapError}
             activeCashOutAmount={activeCashOutAmount}
             setActiveCashOutAmount={setActiveCashOutAmount}
             savedBankDetails={savedBankDetails}
             setSavedBankDetails={setSavedBankDetails}
+
+            onBankSaved={(b) =>
+              setPendingQuote((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      bankName: b?.bankName,
+                      bankCode: b?.bankCode,
+                      accountNumber: b?.accountNumber,
+                      accountHolderName: b?.accountName,
+                    }
+                  : prev
+              )
+            }
           />
+        ) : mobileView === 'processing' && trackerData && (!trackerData.initialOrder || (trackerData.initialOrder.status !== 'settled' && trackerData.initialOrder.status !== 'validated')) ? (
+          <div className="gc fixed inset-0 z-40 overflow-y-auto">
+            <div className="gc-col" style={{ padding: '14px 14px 40px' }}>
+              <button
+                type="button"
+                className="gc-pill gc-pill--white gc-hit"
+                onClick={() => setMobileView('home')}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                ← Back to home
+              </button>
+              <CashOutTracker
+                txHash={trackerData.txHash}
+                usdtReceived={trackerData.usdtReceived}
+                amountGSwapped={trackerData.amountGSwapped}
+                bankName={trackerData.bankName ?? ''}
+                accountNumber={trackerData.accountNumber ?? ''}
+                accountHolderName={trackerData.accountHolderName ?? ''}
+                ngnPerUsdt={trackerData.ngnPerUsdt}
+                initialOrder={trackerData.initialOrder ?? (trackerData.orderId ? { orderId: trackerData.orderId } : undefined)}
+                walletAddress={walletAddress ?? '0x0000000000000000000000000000000000000000'}
+                language={language}
+                onSettled={handleTrackerSettled}
+                onSendDeposit={sendDeposit}
+                onOrderClosed={handleOrderClosed}
+                depositSent={trackerData.depositSent}
+                onDone={() => {
+                  setTrackerData(null);
+                  setPendingQuote(null);
+                  setConfirmResult(null);
+                  setMobileView('home');
+                }}
+              />
+            </div>
+          </div>
         ) : mobileView === 'processing' ? (
           <MobileProcessingView
-            amountG={pendingQuote?.amountG ?? null}
+            amountG={pendingQuote?.amountG ?? trackerData?.amountGSwapped ?? null}
             nairaEstimate={
               pendingQuote?.quote && pendingQuote.ngnPerUsdt
-                ? (Number(pendingQuote.quote.usdtOut) / 1e6) * pendingQuote.ngnPerUsdt
+                ? nairaFromUsdt(Number(pendingQuote.quote.usdtOut) / 1e6, pendingQuote.ngnPerUsdt)
+                : trackerData?.ngnPerUsdt
+                ? nairaFromUsdt(trackerData.usdtReceived, trackerData.ngnPerUsdt)
                 : null
             }
-            usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
+            usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : trackerData?.usdtReceived ?? null}
             txHash={trackerData?.txHash}
             onClose={() => setMobileView('home')}
             onBackToHome={() => setMobileView('home')}
@@ -949,16 +1630,54 @@ export function App({
           <MobileSuccessView
             nairaEstimate={
               pendingQuote?.quote && pendingQuote.ngnPerUsdt
-                ? (Number(pendingQuote.quote.usdtOut) / 1e6) * pendingQuote.ngnPerUsdt
+                ? nairaFromUsdt(Number(pendingQuote.quote.usdtOut) / 1e6, pendingQuote.ngnPerUsdt)
+                : trackerData?.ngnPerUsdt
+                ? nairaFromUsdt(trackerData.usdtReceived, trackerData.ngnPerUsdt)
                 : null
             }
-            onClose={() => setMobileView('home')}
-            onViewTransaction={() => setMobileView('processing')}
+            onClose={() => {
+              setTrackerData(null);
+              setPendingQuote(null);
+              setConfirmResult(null);
+              setMobileView('home');
+            }}
+            onViewTransaction={() => {
+              if (trackerData?.txHash) window.open(`https://celo.blockscout.com/tx/${trackerData.txHash}`, '_blank', 'noopener,noreferrer');
+            }}
           />
+        ) : mobileView === 'finish' && pendingSwapResult ? (
+          <div className="gc fixed inset-0 z-40 overflow-y-auto">
+            <div className="gc-col" style={{ padding: '14px 14px 40px' }}>
+              <button
+                type="button"
+                className="gc-pill gc-pill--white gc-hit"
+                onClick={() => setMobileView('home')}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                ← Back to home
+              </button>
+              <PendingPayoutCard
+                txHash={pendingSwapResult.txHash}
+                usdtReceived={pendingSwapResult.usdtReceived}
+                onRetry={handleFinishPendingPayout}
+                onCancel={() => {
+                  dismissSwap(pendingSwapResult.txHash);
+                  setPendingSwapResult(null);
+                  clearPendingPayout();
+                  setMobileView('home');
+                }}
+                errorMessage={swapError}
+                language={language}
+              />
+            </div>
+          </div>
         ) : mobileView === 'history' ? (
           <MobileHistoryView
             history={history}
+            ngnPerUsdt={liveNgnRate}
+            walletAddress={walletAddress}
             onClose={() => setMobileView('home')}
+            onNavigate={(tab) => setMobileView(tab)}
           />
         ) : (
           <>
@@ -968,8 +1687,13 @@ export function App({
                 <span className="gc-logo text-[#111]">GoodCash</span>
               </div>
               <div className="flex items-center gap-2">
-                <button className="gc-chip text-[#111]">
-                  {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect Wallet'}
+                <button
+                  type="button"
+                  className="gc-chip text-[#111]"
+                  onClick={walletAddress ? undefined : handleConnectWallet}
+                  disabled={Boolean(walletAddress)}
+                >
+                  {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect wallet'}
                 </button>
               </div>
             </div>
@@ -980,40 +1704,14 @@ export function App({
                 balanceG={balanceG}
                 dailyClaimG={123.48}
                 onCashOutClick={() => setMobileView('cashout')}
-                onClaimClick={() => setCurrentTab('claim')}
-                language={language}
+                  language={language}
                 isStale={balanceIsStale}
+                ngnPerUsdt={liveNgnRate}
               />
             </div>
 
             {/* Bottom Navigation */}
-            <nav className="gc-nav fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] z-50 md:!hidden">
-              <button
-                type="button"
-                onClick={() => setMobileView('home')}
-                className={
-                  mobileView === 'home'
-                    ? 'gc-nav__item gc-nav__item--on'
-                    : 'gc-nav__item'
-                }
-              >
-                Home
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileView('cashout')}
-                className="gc-nav__item"
-              >
-                Cash out
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileView('history')}
-                className="gc-nav__item"
-              >
-                History
-              </button>
-            </nav>
+            <MobileBottomNav active={mobileView === 'home' ? 'home' : 'history'} onNavigate={(tab) => setMobileView(tab)} />
           </>
         )}
       </div>

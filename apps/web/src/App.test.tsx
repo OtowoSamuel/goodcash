@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -118,7 +118,6 @@ describe('Step 1 home validation', () => {
           balanceG={amount}
           dailyClaimG={123.48}
           onCashOutClick={() => undefined}
-          onClaimClick={() => undefined}
           language="en"
           ngnPerUsdt={1500}
         />
@@ -221,7 +220,7 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
     const swapSpy = vi.spyOn(routerModule, 'executeRouterSwap').mockResolvedValue({
       txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       usdtReceived: 0.55,
-      amountG: 4500,
+      amountG: 5000,
     });
 
     const createOrderSpy = vi.spyOn(offRampModule, 'createPaycrestOrder').mockResolvedValue({
@@ -244,7 +243,7 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
 
     // 2. Enter the amount
     const amountInput = screen.getByPlaceholderText('0');
-    fireEvent.change(amountInput, { target: { value: '4500' } });
+    fireEvent.change(amountInput, { target: { value: '5000' } });
 
     // 3. Type the bank details (the bank field is a select; the other two are text inputs)
     await selectBank();
@@ -271,9 +270,9 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
     });
     expect(createOrderSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        amountUsdt: '0.540000',
+        amountUsdt: '0.530000',
         swapTxHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        refundAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+        refundAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
         recipient: expect.objectContaining({
           institution: BANK_CODE,
           accountIdentifier: TYPED_ACCOUNT,
@@ -283,8 +282,10 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
     );
 
     // 6. Tracker opened with the created order; only orderId + txHash are persisted
+    // The confirm modal shows the result first; continue to the payout tracker
+    fireEvent.click(await screen.findByRole('button', { name: /track payout|continue|^done$/i }));
     await waitFor(() => {
-      expect(screen.getByText(/Send to partner/i)).toBeInTheDocument();
+      expect(screen.getByText(/Confirm payment/i)).toBeInTheDocument();
     });
 
     const rawStored = storageMock.getItem(STORAGE_KEY);
@@ -316,7 +317,7 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
 
     render(<App />);
     fireEvent.click(screen.getAllByRole('button', { name: /Cash Out/i })[0]);
-    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '4500' } });
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '5000' } });
     await selectBank();
     fireEvent.change(screen.getByPlaceholderText('10-digit account number'), { target: { value: TYPED_ACCOUNT } });
 
@@ -377,7 +378,7 @@ describe('pending payout survives reload', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: /Finish your payout/i })).toBeInTheDocument();
-    expect(screen.getByText(/0\.570000 USDT/)).toBeInTheDocument();
+    expect(screen.getAllByText(/\$0\.57/).length).toBeGreaterThan(0);
 
     // Bank details must be re-entered; nothing is pre-filled from storage.
     await selectBank();
@@ -392,9 +393,9 @@ describe('pending payout survives reload', () => {
     });
     expect(createOrderSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        amountUsdt: '0.560000',
+        amountUsdt: '0.550000',
         swapTxHash: TX_HASH,
-        refundAddress: '0xafDeEbB89Cda1669361117eA2EAe3411F1228cb6',
+        refundAddress: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
         recipient: expect.objectContaining({
           institution: BANK_CODE,
           accountIdentifier: TYPED_ACCOUNT,
@@ -409,7 +410,7 @@ describe('pending payout survives reload', () => {
     expect(storageMock.getItem(PENDING_PAYOUT_KEY)).toBeNull();
 
     await waitFor(() => {
-      expect(screen.getByText(/Send to partner/i)).toBeInTheDocument();
+      expect(screen.getByText(/Confirm payment/i)).toBeInTheDocument();
     });
 
     const allStorage = storageMock
@@ -449,7 +450,7 @@ describe('pending payout survives reload', () => {
       expect.objectContaining({
         refundAddress: USER_WALLET,
         swapTxHash: TX_HASH,
-        amountUsdt: '0.560000',
+        amountUsdt: '0.550000',
       })
     );
   });
@@ -478,7 +479,7 @@ describe('Swap succeeded but order creation failed — retry payout flow', () =>
     const swapSpy = vi.spyOn(routerModule, 'executeRouterSwap').mockResolvedValue({
       txHash: '0xbeefcafe1234567890beefcafe1234567890beefcafe1234567890beefcafe',
       usdtReceived: 0.55,
-      amountG: 4500,
+      amountG: 5000,
     });
 
     // First attempt fails; second attempt (retry) succeeds
@@ -502,9 +503,9 @@ describe('Swap succeeded but order creation failed — retry payout flow', () =>
     const cashOutNavButtons = screen.getAllByRole('button', { name: /Cash Out/i });
     fireEvent.click(cashOutNavButtons[0]);
 
-    // 2. Input 4500 G$ to satisfy the minimum payout requirement
+    // 2. Input 5000 G$ to satisfy the minimum payout requirement
     const amountInput = screen.getByPlaceholderText('0');
-    fireEvent.change(amountInput, { target: { value: '4500' } });
+    fireEvent.change(amountInput, { target: { value: '5000' } });
 
     // 2b. Enter bank details
     await selectBank();
@@ -531,7 +532,7 @@ describe('Swap succeeded but order creation failed — retry payout flow', () =>
 
     // User sees the error message indicating swap was confirmed but payout failed
     expect(
-      await screen.findByText(/Swap confirmed \(0xbeefcafe…\) but payout order failed: Paycrest 502 Bad Gateway/i)
+      await screen.findByText(/Your swap went through, but the payout order couldn't be created yet/i)
     ).toBeInTheDocument();
 
     // User sees "Retry payout (swap already confirmed)" button
@@ -552,8 +553,10 @@ describe('Swap succeeded but order creation failed — retry payout flow', () =>
     expect(swapSpy).toHaveBeenCalledTimes(1); // STRICTLY 1! Never swapped twice.
 
     // 8. Tracker screen opens with the retried order
+    // The confirm modal shows the result first; continue to the payout tracker
+    fireEvent.click(await screen.findByRole('button', { name: /track payout|continue|^done$/i }));
     await waitFor(() => {
-      expect(screen.getByText(/Send to partner/i)).toBeInTheDocument();
+      expect(screen.getByText(/Confirm payment/i)).toBeInTheDocument();
     });
   });
 });
@@ -629,5 +632,32 @@ describe('dev mock gates', () => {
     expect(screen.getAllByText('0.0').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('1,297.5')).not.toBeInTheDocument();
     expect(screen.queryByText('50,000')).not.toBeInTheDocument();
+  });
+});
+
+describe('History keeps one row per swap', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    storageMock.clear();
+  });
+
+  it('merges older rows saved for the same swap and keeps the paid one', () => {
+    const HASH = '0x' + 'ab'.repeat(32);
+    storageMock.setItem('goodcash_history', JSON.stringify([
+      { id: 'a', txHash: HASH, timestamp: Date.now(), amountInG: 5000, amountOutUsdt: 0.57, route: 'r', orderId: 'order-3',
+        steps: { swapped: 'completed', sentToPartner: 'pending', paidInNaira: 'pending' } },
+      { id: 'b', txHash: HASH, timestamp: Date.now() - 1000, amountInG: 0, amountOutUsdt: 0.57, route: 'r', orderId: 'order-2',
+        steps: { swapped: 'completed', sentToPartner: 'completed', paidInNaira: 'completed' } },
+      { id: 'c', txHash: '0x' + 'cd'.repeat(32), timestamp: Date.now() - 2000, amountInG: 1000, amountOutUsdt: 0.114, route: 'r' },
+    ]));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+
+    render(<App />);
+    fireEvent.click(screen.getAllByRole('button', { name: /History/i })[0]);
+
+    const rows = screen.getAllByRole('button', { name: /Open details for/i });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveAccessibleName(/5,000 G\$/);
+    expect(within(rows[0]).getByText('Paid')).toBeInTheDocument();
   });
 });

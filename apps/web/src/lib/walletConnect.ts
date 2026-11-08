@@ -1,0 +1,102 @@
+import { CELO_RPC_URL, setActiveProvider } from './router';
+
+type WcProvider = {
+  accounts: string[];
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  on: (event: string, cb: (...args: unknown[]) => void) => void;
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  session?: unknown;
+};
+
+const PROJECT_ID: string | undefined =
+  typeof import.meta !== 'undefined'
+    ? (import.meta as { env?: { VITE_WALLETCONNECT_PROJECT_ID?: string } }).env?.VITE_WALLETCONNECT_PROJECT_ID
+    : undefined;
+
+export const WALLETCONNECT_ENABLED = Boolean(PROJECT_ID && PROJECT_ID.trim());
+
+let provider: WcProvider | null = null;
+
+async function init(): Promise<WcProvider> {
+  if (provider) return provider;
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+  const origin = window.location.origin;
+  provider = (await EthereumProvider.init({
+    projectId: PROJECT_ID as string,
+    chains: [42220],
+    showQrModal: true,
+    rpcMap: { 42220: CELO_RPC_URL },
+    metadata: {
+      name: 'GoodCash',
+      description: 'Cash out your GoodDollar (G$) to naira.',
+      url: origin,
+      icons: [`${origin}/pwa-192x192.png`],
+    },
+    qrModalOptions: { themeMode: 'light' },
+  })) as unknown as WcProvider;
+  return provider;
+}
+
+/** Open the WalletConnect wallet picker (QR on desktop, wallet apps on phones). */
+export async function connectWithWalletConnect(onDisconnect?: () => void): Promise<string> {
+  if (!WALLETCONNECT_ENABLED) throw new Error('WalletConnect is not set up yet.');
+  const p = await init();
+  p.on('disconnect', () => {
+    setActiveProvider(null);
+    onDisconnect?.();
+  });
+  if (!p.accounts?.length) await p.connect();
+  const account = p.accounts?.[0];
+  if (!account) throw new Error('No account returned by the wallet.');
+  setActiveProvider(p);
+  return account;
+}
+
+/** Reuse a previous WalletConnect session after a page reload. Returns the account or null. */
+export async function restoreWalletConnect(onDisconnect?: () => void): Promise<string | null> {
+  if (!WALLETCONNECT_ENABLED) return null;
+  try {
+    const p = await init();
+    if (!p.accounts?.length) return null;
+    p.on('disconnect', () => {
+      setActiveProvider(null);
+      onDisconnect?.();
+    });
+    setActiveProvider(p);
+    return p.accounts[0];
+  } catch {
+    return null;
+  }
+}
+
+export async function disconnectWalletConnect(): Promise<void> {
+  try {
+    await provider?.disconnect();
+  } catch {
+    // already disconnected
+  }
+  setActiveProvider(null);
+}
+
+/**
+ * The wallet app the customer picked on their phone (WalletConnect remembers it). Phone browsers only let a page
+ * open another app straight from a tap, so each wallet step shows an "Open wallet" button that uses this.
+ */
+export function getWalletLink(): { name: string; href: string } | null {
+  try {
+    const raw = localStorage.getItem('WALLETCONNECT_DEEPLINK_CHOICE');
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { name?: unknown; href?: unknown };
+    if (typeof v?.href !== 'string' || !v.href) return null;
+    return { name: typeof v.name === 'string' && v.name ? v.name : 'your wallet', href: v.href };
+  } catch {
+    return null;
+  }
+}
+
+/** Open the customer's wallet app. Call this only from a tap. */
+export function openWalletApp(): void {
+  const link = getWalletLink();
+  if (link) window.location.href = link.href;
+}

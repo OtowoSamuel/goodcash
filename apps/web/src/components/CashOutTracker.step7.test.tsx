@@ -20,8 +20,8 @@ describe('CashOutTracker - Step 7 requirements', () => {
     render(<CashOutTracker {...baseProps} initialStep={2} />);
 
     // All 4 steps should be present
-    expect(screen.getByText(/1 Swapped to USDT/i)).toBeInTheDocument();
-    expect(screen.getByText(/2 Send to partner/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 G\$ converted/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 Confirm payment/i)).toBeInTheDocument();
     expect(screen.getByText(/3 Paying to your bank/i)).toBeInTheDocument();
     expect(screen.getByText(/4 Done/i)).toBeInTheDocument();
   });
@@ -30,11 +30,11 @@ describe('CashOutTracker - Step 7 requirements', () => {
     render(<CashOutTracker {...baseProps} initialStep={2} />);
 
     // Step 1 should show completed state
-    expect(screen.getByText(/1 Swapped to USDT/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 G\$ converted/i)).toBeInTheDocument();
   });
 
   it('shows step 2 (Send to partner) content when on step 2', () => {
-    render(<CashOutTracker {...baseProps} initialStep={2} />);
+    render(<CashOutTracker {...baseProps} initialStep={2} initialOrder={{ orderId: 'ord-x', receiveAddress: '0x1111111111111111111111111111111111111111', amountToSend: '0.1140', status: 'initiated' }} />);
 
     expect(screen.getByText(/Deposit Instructions/i)).toBeInTheDocument();
     expect(screen.getByText(/Send exactly/i)).toBeInTheDocument();
@@ -44,7 +44,7 @@ describe('CashOutTracker - Step 7 requirements', () => {
   it('shows step 3 (Paying to your bank) content when on step 3', () => {
     render(<CashOutTracker {...baseProps} initialStep={3} />);
 
-    expect(screen.getByText(/Deposit received by Paycrest/i)).toBeInTheDocument();
+    expect(screen.getByText(/We haven't seen your deposit yet/i)).toBeInTheDocument();
     expect(screen.getByText(/Destination Bank:/i)).toBeInTheDocument();
   });
 
@@ -79,7 +79,7 @@ describe('CashOutTracker - Step 7 requirements', () => {
     render(<CashOutTracker {...baseProps} initialStep={2} />);
 
     expect(screen.getByText(/Details/i)).toBeInTheDocument();
-    expect(screen.getByText(/Swap Hash:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Transaction:/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /View on Celo Explorer/i })).toHaveAttribute(
       'href',
       'https://celo.blockscout.com/tx/0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'
@@ -87,10 +87,10 @@ describe('CashOutTracker - Step 7 requirements', () => {
   });
 
   it('shows estimated Naira at top based on usdtReceived and ngnPerUsdt rate', () => {
-    // 0.114 USDT * 1500 NGN/USDT = 171 NGN
+    // (0.114 - 0.02 payout fee) USDT * 1500 NGN/USDT = 141 NGN
     render(<CashOutTracker {...baseProps} />);
 
-    expect(screen.getByText(/≈ ₦171\.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/≈ ₦141\.00/i)).toBeInTheDocument();
   });
 
   it('shows bank reference when order is settled', () => {
@@ -128,8 +128,8 @@ describe('CashOutTracker - Step 7 requirements', () => {
 
     render(<CashOutTracker {...baseProps} initialFailureState="expired" initialOrder={mockOrder} />);
 
-    expect(screen.getByText(/order expired before USDT arrived/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Contact support/i })).toBeInTheDocument();
+    expect(screen.getByText(/payment window expired/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Contact support/i })).toBeInTheDocument();
   });
 
   it('shows refunded failure state', () => {

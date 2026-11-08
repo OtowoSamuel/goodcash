@@ -1,10 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import { nairaFromUsdt } from '../lib/units';
+import { friendlyPayError, hasInjectedWallet, PLACEHOLDER_DEPOSIT_ADDRESS } from '../lib/router';
+import { getWalletLink, openWalletApp } from '../lib/walletConnect';
+import { reportIssue } from '../lib/diag';
+import { ORDERS_API_BASE } from '../lib/rate';
+import { SupportModal } from './SupportModal';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
 
 import {
   useOffRamp,
   paycrestOrderAmount,
+  fetchOrderDetails,
   type OffRampOrder,
   type OffRampStatus,
 } from '../lib/useOffRamp';
@@ -31,6 +38,10 @@ export interface CashOutTrackerProps {
 
   // Testing & state overrides
   initialOrder?: Partial<OffRampOrder> | null;
+  /** When the wallet is connected: sends the exact USDT deposit in one tap. */
+  onSendDeposit?: (to: string, amount: string, orderId: string) => Promise<void>;
+  /** The app already paid the partner automatically */
+  depositSent?: boolean;
   initialStep?: 1 | 2 | 3 | 4;
   initialFailureState?: 'expired' | 'refunded' | 'delayed' | null;
   delayedTimeoutMinutes?: number;
@@ -38,8 +49,37 @@ export interface CashOutTrackerProps {
   // Callbacks
   onDone: () => void;
   onCancel?: () => void;
+  /** The payment window closed (or the order can't be paid): leave so a fresh payout can be offered. */
+  onOrderClosed?: () => void;
+  onSettled?: (info: { orderId: string; nairaAmount: number | null }) => void;
   language?: Language;
 }
+
+
+const iconProps = {
+  width: 18,
+  height: 18,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2.8,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+  style: { flex: 'none' },
+};
+const RefreshIcon = () => (
+  <svg {...iconProps}><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4" /><path d="M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4" /></svg>
+);
+const WarnIcon = () => (
+  <svg {...iconProps}><path d="M12 4 2.5 20h19L12 4Z" /><path d="M12 10v4M12 17.5v.01" /></svg>
+);
+const UndoIcon = () => (
+  <svg {...iconProps}><path d="M9 14 4 9l5-5" /><path d="M4 9h10a6 6 0 0 1 0 12h-3" /></svg>
+);
+const ClockIcon = () => (
+  <svg {...iconProps}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+);
 
 export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   txHash,
@@ -54,11 +94,15 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   estimatedNaira: customEstimatedNaira,
   walletAddress,
   initialOrder = null,
+  onSendDeposit,
+  depositSent = false,
   initialStep,
   initialFailureState = null,
   delayedTimeoutMinutes = 5,
   onDone,
   onCancel,
+  onOrderClosed,
+  onSettled,
   language,
 }) => {
   const {
@@ -73,8 +117,8 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
   // Internal state
   const [copied, setCopied] = useState(false);
-  const [userSent, setUserSent] = useState(false);
-  const [sentAt, setSentAt] = useState<number | null>(null);
+  const [userSent, setUserSent] = useState(depositSent);
+  const [sentAt, setSentAt] = useState<number | null>(depositSent ? Date.now() : null);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(900); // 15 mins default
   const [activeFailure, setActiveFailure] = useState<'expired' | 'refunded' | 'delayed' | null>(
     initialFailureState
@@ -86,7 +130,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     if (initialOrder) {
       return {
         orderId: initialOrder.orderId ?? defaultOrderId,
-        receiveAddress: initialOrder.receiveAddress ?? '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',
+        receiveAddress: initialOrder.receiveAddress ?? '',
         amountToSend: initialOrder.amountToSend ?? usdtReceived.toFixed(4),
         currency: initialOrder.currency ?? 'USDT',
         network: initialOrder.network ?? 'celo',
@@ -104,7 +148,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     }
     return {
       orderId: defaultOrderId,
-      receiveAddress: '0x3841D6A1F3E92B710c0e5a953eB684B24B35fC75',
+      receiveAddress: '',
       amountToSend: usdtReceived.toFixed(4),
       currency: 'USDT',
       network: 'celo',
@@ -126,7 +170,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   const swapNairaEstimate: number | null = (() => {
     if (customEstimatedNaira && customEstimatedNaira > 0) return customEstimatedNaira;
     if (ngnPerUsdt && ngnPerUsdt > 0 && usdtReceived > 0) {
-      return usdtReceived * ngnPerUsdt;
+      return nairaFromUsdt(usdtReceived, ngnPerUsdt);
     }
     return null;
   })();
@@ -166,6 +210,40 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       // If backend worker is unreachable, keep localOrder fallback
     });
   }, [initialOrder, createOrder, usdtReceived, txHash, walletAddress, bankName, accountNumber, accountHolderName]);
+
+  // After a reload we may only know the order id. Load the real payment details from the server
+  // (never invent them), so the app can pay for the customer.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadTry, setLoadTry] = useState(0);
+  useEffect(() => {
+    const id = localOrder.orderId;
+    if (localOrder.receiveAddress) return;
+    // Give up waiting after a while, so nobody is left looking at a spinner
+    const timer = setTimeout(() => setLoadFailed(true), 15000);
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+      return () => clearTimeout(timer);
+    }
+    let alive = true;
+    fetchOrderDetails(id)
+      .then((d) => {
+        if (!alive || !d.receiveAddress) return;
+        setLoadFailed(false);
+        setLocalOrder((prev) => ({
+          ...prev,
+          receiveAddress: d.receiveAddress ?? prev.receiveAddress,
+          amountToSend: d.amountToSend ?? prev.amountToSend,
+          validUntil: d.validUntil ?? prev.validUntil,
+          status: (d.status as OffRampStatus) ?? prev.status,
+        }));
+      })
+      .catch(() => {
+        if (alive) setLoadFailed(true);
+      });
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [localOrder.orderId, localOrder.receiveAddress, loadTry]);
 
   // Sync hookOrder updates
   useEffect(() => {
@@ -244,7 +322,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     // Recurring poll
     const interval = setInterval(() => {
       pollOnce().catch(() => {});
-    }, 8000);
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [localOrder.status, activeFailure, pollOnce]);
@@ -267,14 +345,30 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     }
   };
 
-  // Determine current Step (1, 2, 3, or 4)
-  const currentStep = (() => {
-    if (userSent && (!initialStep || initialStep <= 2)) return 3;
-    if (initialStep !== undefined) return initialStep;
-    if (localOrder.status === 'settled') return 4;
-    if (userSent || localOrder.status === 'deposited' || localOrder.status === 'pending' || localOrder.status === 'fulfilling') {
-      return 3;
+  // Tell the parent when the payout settles so History can show "Paid"
+  const settledReported = useRef(false);
+  useEffect(() => {
+    if ((localOrder.status === 'settled' || localOrder.status === 'validated') && !settledReported.current) {
+      settledReported.current = true;
+      onSettled?.({ orderId: localOrder.orderId, nairaAmount: nairaEstimate });
     }
+  }, [localOrder.status, localOrder.orderId, nairaEstimate, onSettled]);
+
+  // Determine current Step (1, 2, 3, or 4)
+  // "Paying to your bank" is only true once a payment exists: our own confirmed transfer, or the
+  // payout partner reporting that it has received one. Tapping "I've paid manually" proves nothing.
+  const [paidByApp, setPaidByApp] = useState(depositSent);
+  const paymentSeen =
+    localOrder.status === 'deposited' ||
+    localOrder.status === 'pending' ||
+    localOrder.status === 'fulfilling' ||
+    localOrder.status === 'settling';
+  const paymentConfirmed = paidByApp || paymentSeen;
+  const currentStep = (() => {
+    if (initialStep !== undefined && initialStep > 2) return initialStep;
+    if (localOrder.status === 'settled' || localOrder.status === 'validated') return 4;
+    if (paymentConfirmed) return 3;
+    if (initialStep !== undefined) return initialStep;
     return 2; // Step 1 is completed instantly upon swap; default to Step 2 action
   })();
 
@@ -290,6 +384,73 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     }
   };
 
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState(() => {
+    try {
+      return localStorage.getItem('goodcash_support_email') ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const [notifyState, setNotifyState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+
+  const handleNotify = async () => {
+    const email = notifyEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      setNotifyState('error');
+      return;
+    }
+    setNotifyState('sending');
+    try {
+      const res = await fetch(`${ORDERS_API_BASE}/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, email, ...(nairaEstimate ? { naira: `₦${Math.round(nairaEstimate).toLocaleString('en-US')}` } : {}) }),
+      });
+      if (!res.ok) throw new Error('notify failed');
+      try {
+        localStorage.setItem('goodcash_support_email', email);
+      } catch {
+        // optional convenience only
+      }
+      setNotifyState('done');
+    } catch {
+      setNotifyState('error');
+    }
+  };
+  const addressReady =
+    Boolean(localOrder.receiveAddress) &&
+    localOrder.receiveAddress.toLowerCase() !== PLACEHOLDER_DEPOSIT_ADDRESS.toLowerCase();
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [orderClosed, setOrderClosed] = useState(false);
+
+  const handleSendNow = async () => {
+    if (!onSendDeposit) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await onSendDeposit(localOrder.receiveAddress, localOrder.amountToSend, localOrder.orderId);
+      setPaidByApp(true);
+      handleUserSent();
+    } catch (e) {
+      const named = String((e as Error)?.name ?? '') + String((e as Error)?.message ?? '');
+      if (/DepositPendingError/.test(named)) {
+        // Sent, just not confirmed yet: move on and never invite a second payment
+        setPaidByApp(true);
+        handleUserSent();
+        return;
+      }
+      if (/ORDER_EXPIRED/.test(named)) setOrderClosed(true);
+      setSendError(friendlyPayError(e));
+      if (!/ORDER_|user rejected|user denied|rejected the request/i.test(String((e as Error)?.message ?? ''))) {
+        reportIssue('deposit_failed', e, { orderId, txHash });
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
   const handleUserSent = () => {
     setUserSent(true);
     setSentAt(Date.now());
@@ -300,411 +461,359 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   const orderId = localOrder.orderId;
   const bankReference = localOrder.paymentReference || `PAY-NGN-${txHash.slice(2, 8).toUpperCase()}`;
 
+  const stepState = (n: 1 | 2 | 3 | 4): 'done' | 'current' | 'wait' => {
+    if (n === 1) return 'done';
+    if (n === 4) return currentStep === 4 ? 'done' : 'wait';
+    return currentStep > n ? 'done' : currentStep === n ? 'current' : 'wait';
+  };
+  const timeline: { n: 1 | 2 | 3 | 4; label: string }[] = [
+    { n: 1, label: '1 G$ converted' },
+    { n: 2, label: '2 Confirm payment' },
+    { n: 3, label: '3 Paying to your bank' },
+    { n: 4, label: '4 Done' },
+  ];
+  const stateText = { done: 'Done', current: 'In progress', wait: 'Waiting' } as const;
+  const failureCard = 'gc-card';
+  const failureBtns = 'gc-btn gc-hit';
+  const failureBtnsAlt = 'gc-btn gc-btn--white gc-hit';
+
   return (
-    <div className="w-full max-w-xl mx-auto rounded-3xl border border-[#2D204A] bg-[#120D1D]/95 p-6 sm:p-8 shadow-2xl backdrop-blur-md text-white animate-fade-in relative" aria-live="polite">
-      {/* Top of the Screen: Headline & Subtitle */}
-      <div className="text-center mb-6">
-        <div className="text-3xl sm:text-4xl font-extrabold font-manrope text-white tracking-tight">
-          ≈ ₦{nairaEstimate !== null ? nairaEstimate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-        </div>
-        <p className="text-xs sm:text-sm text-[#A39BBE] font-sans mt-1">
-          {orderNairaEstimate !== null ? 'Set by your Paycrest payout order' : 'Final amount is set when the payout completes'}
+    <div className="gc-tracker flex flex-col gap-3 w-full max-w-xl mx-auto animate-fade-in" aria-live="polite">
+      {/* Headline */}
+      <div>
+        <div className="gc-title gc-title--status">{currentStep === 4 ? 'All done' : 'On its way'}</div>
+        <p className="gc-sm" style={{ margin: '2px 0 0', color: '#222' }}>
+          We’ll update this page as each step finishes.
         </p>
       </div>
 
-      {/* 4-Step Stepper Header */}
-      <div className="grid grid-cols-4 gap-2 mb-8 border-b border-[#2D204A] pb-5 text-center text-xs">
-        {/* Step 1 */}
-        <div className="flex flex-col items-center">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-400/40">
-            ✓
-          </div>
-          <span className="font-medium text-emerald-400">1 Swapped to USDT</span>
+      {/* Amount */}
+      {currentStep !== 4 && (
+      <div className="gc-card gc-card--mint">
+        <div className="gc-lab">You get about</div>
+        <div className="gc-big">
+          ≈ ₦{nairaEstimate !== null ? nairaEstimate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
         </div>
-
-        {/* Step 2 */}
-        <div className="flex flex-col items-center">
-          <div
-            className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition ${
-              currentStep > 2
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-400/40'
-                : currentStep === 2
-                ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-500/30'
-                : 'bg-[#1B122E] text-[#A39BBE] border border-[#2D204A]'
-            }`}
-          >
-            {currentStep > 2 ? '✓' : '2'}
-          </div>
-          <span className={currentStep >= 2 ? 'font-medium text-white' : 'text-[#A39BBE]'}>
-            2 Send to partner
-          </span>
-        </div>
-
-        {/* Step 3 */}
-        <div className="flex flex-col items-center">
-          <div
-            className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition ${
-              currentStep > 3
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-400/40'
-                : currentStep === 3
-                ? 'bg-[#7C3AED] text-white shadow-lg shadow-purple-500/30'
-                : 'bg-[#1B122E] text-[#A39BBE] border border-[#2D204A]'
-            }`}
-          >
-            {currentStep > 3 ? '✓' : '3'}
-          </div>
-          <span className={currentStep >= 3 ? 'font-medium text-white' : 'text-[#A39BBE]'}>
-            3 Paying to your bank
-          </span>
-        </div>
-
-        {/* Step 4 */}
-        <div className="flex flex-col items-center">
-          <div
-            className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition ${
-              currentStep === 4
-                ? 'bg-emerald-500 text-black font-extrabold shadow-lg shadow-emerald-500/30'
-                : 'bg-[#1B122E] text-[#A39BBE] border border-[#2D204A]'
-            }`}
-          >
-            {currentStep === 4 ? '✓' : '4'}
-          </div>
-          <span className={currentStep === 4 ? 'font-medium text-emerald-400' : 'text-[#A39BBE]'}>
-            4 Done
-          </span>
+        <div className="gc-sm">
+          {orderNairaEstimate !== null ? 'Set by your payout order' : 'Final amount is set when the payout completes'}
         </div>
       </div>
+      )}
 
-      {/* FAILURE STATES (If any failure condition is triggered) */}
-      {activeFailure ? (
-        <div className="space-y-4 mb-6">
-          {activeFailure === 'expired' && (
-            <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 text-amber-200">
-              <div className="flex items-center gap-2 mb-2 font-bold text-base text-amber-300">
-                <span className="text-xl">⚠️</span> order expired before USDT arrived
+      {/* Timeline */}
+      <div className="gc-card">
+        {timeline.map((step, idx) => {
+          const st = stepState(step.n);
+          const last = idx === timeline.length - 1;
+          const nextDone = !last && stepState(timeline[idx + 1].n) !== 'wait';
+          return (
+            <div className="gc-tl" key={step.n}>
+              <div className="gc-tl__col">
+                <i className={`gc-dot ${st === 'done' ? 'gc-dot--done' : st === 'current' ? 'gc-dot--current' : ''}`} />
+                {!last && <i className={`gc-ln ${nextDone ? '' : 'gc-ln--wait'}`} />}
               </div>
-              <p className="text-xs text-amber-200/80 mb-3">
-                The order deposit window closed before funds were received. Please do not send USDT to this address.
-              </p>
-              <div className="bg-[#120D1D] rounded-xl p-3 border border-amber-500/20 mb-4 text-xs font-mono text-white/90">
-                Order ID: <span className="text-amber-400 font-bold">{orderId}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <a
-                  href={`mailto:support@goodcash.io?subject=Expired%20Order%20${orderId}`}
-                  className="flex-1 text-center py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-cabin font-bold text-xs transition"
-                >
-                  Contact support
-                </a>
-                <button
-                  type="button"
-                  onClick={onDone}
-                  className="py-2.5 px-4 rounded-xl border border-amber-500/40 text-amber-200 hover:bg-amber-500/20 text-xs font-cabin"
-                >
-                  Back to Dashboard
-                </button>
+              <div className="gc-tl__step">
+                <b>{step.label}</b>
+                <p style={last ? { margin: 0 } : undefined}>{stateText[st]}</p>
               </div>
             </div>
-          )}
+          );
+        })}
+      </div>
 
-
-          {activeFailure === 'refunded' && (
-            <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-red-200">
-              <div className="flex items-center gap-2 mb-2 font-bold text-base text-red-300">
-                <span className="text-xl">↩️</span> order refunded
-              </div>
-              <p className="text-xs text-red-200/80 mb-3">
-                This order was refunded to your Celo wallet. Any deposited funds have been returned.
-              </p>
-              <div className="bg-[#120D1D] rounded-xl p-3 border border-red-500/20 mb-4 text-xs font-mono text-white/90">
-                Order ID: <span className="text-red-400 font-bold">{orderId}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <a
-                  href={`mailto:support@goodcash.io?subject=Refunded%20Order%20${orderId}`}
-                  className="flex-1 text-center py-2.5 px-4 rounded-xl bg-red-500 hover:bg-red-400 text-white font-cabin font-bold text-xs transition"
-                >
-                  Contact support
-                </a>
-                <button
-                  type="button"
-                  onClick={onDone}
-                  className="py-2.5 px-4 rounded-xl border border-red-500/40 text-red-200 hover:bg-red-500/20 text-xs font-cabin"
-                >
-                  Back to Dashboard
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeFailure === 'delayed' && (
-            <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-5 text-amber-200">
-              <div className="flex items-center gap-2 mb-2 font-bold text-base text-amber-300">
-                <span className="text-xl">⏳</span> USDT sent but naira not received after {delayedTimeoutMinutes} minutes
-              </div>
-              <p className="text-xs text-amber-200/80 mb-3">
-                Your deposit was confirmed, but the bank payout is taking longer than usual. Our support team can inspect the payment rail.
-              </p>
-              <div className="bg-[#120D1D] rounded-xl p-3 border border-amber-500/20 mb-4 text-xs font-mono text-white/90">
-                Order ID: <span className="text-amber-400 font-bold">{orderId}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <a
-                  href={`mailto:support@goodcash.io?subject=Delayed%20Payout%20Order%20${orderId}`}
-                  className="flex-1 text-center py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-cabin font-bold text-xs transition"
-                >
-                  Contact support
-                </a>
-                <button
-                  type="button"
-                  onClick={() => pollOnce().catch(() => {})}
-                  className="py-2.5 px-4 rounded-xl border border-amber-500/40 text-amber-200 hover:bg-amber-500/20 text-xs font-cabin"
-                >
-                  Check again
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {/* STEP CONTENT */}
-      {!activeFailure && (
-        <div className="space-y-6">
-          {/* STEP 1: Swapped to USDT summary */}
-          {currentStep === 1 && (
-            <div className="rounded-2xl border border-[#2D204A] bg-[#1B122E]/60 p-5 text-center">
-              <div className="text-emerald-400 font-bold text-lg mb-1">
-                ✓ Swapped {amountGSwapped.toLocaleString()} G$ to {usdtReceived.toFixed(4)} USDT
-              </div>
-              <p className="text-xs text-white/60">Preparing off-ramp transfer...</p>
-            </div>
-          )}
-
-          {/* STEP 2: Send to partner */}
-          {currentStep === 2 && (
-            <div className="space-y-5">
-              <div className="bg-[#1B122E]/80 border border-[#2D204A] rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                    Deposit Instructions
-                  </h3>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-xs font-mono font-medium">
-                    <span>⏱</span>
-                    <span>Expires in {formatCountdown(secondsRemaining)}</span>
-                  </div>
-                </div>
-
-                {/* Instruction Sentence */}
-                <p className="text-sm text-purple-200 mb-4 font-medium">
-                  Send exactly <span className="font-extrabold text-white">{localOrder.amountToSend} USDT</span> to this address before{' '}
-                  <span className="font-semibold text-white">{formatTargetTime(localOrder.validUntil)}</span>:
-                </p>
-
-                {/* Amount Box */}
-                <div className="bg-[#120D1D] rounded-xl p-3 border border-white/5 mb-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] text-white/50 block">Amount to send (from Paycrest)</span>
-                      <span className="text-lg font-bold font-mono text-emerald-400">
-                        {localOrder.amountToSend} USDT
-                      </span>
-                    </div>
-                    <span className="text-xs text-white/40 font-mono">Celo Network</span>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/5 pt-3 text-[11px]">
-                    <div>
-                      <span className="block text-white/40">Sender fee</span>
-                      <span className="font-mono text-white">{localOrder.senderFee} USDT</span>
-                    </div>
-                    <div>
-                      <span className="block text-white/40">Transaction fee</span>
-                      <span className="font-mono text-white">{localOrder.transactionFee} USDT</span>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="block text-white/40">Expected naira (Paycrest order)</span>
-                      <span className="font-mono text-emerald-400">
-                        {orderNairaEstimate !== null
-                          ? `₦${orderNairaEstimate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : '—'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Address Box + Copy Button */}
-                <div className="bg-[#120D1D] rounded-xl p-3 border border-white/5 mb-3">
-                  <span className="text-[11px] text-white/50 block mb-1">Paycrest Deposit Address</span>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs text-white break-all select-all">
-                      {localOrder.receiveAddress}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopy}
-                      className="shrink-0 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-cabin font-medium text-white transition border border-white/10"
-                    >
-                      {copied ? 'Copied!' : 'Copy'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Memo (if required) */}
-                {localOrder.memo && (
-                  <div className="bg-[#120D1D] rounded-xl p-3 border border-white/5 mb-3">
-                    <span className="text-[11px] text-white/50 block">Deposit Memo / Reference</span>
-                    <span className="font-mono text-xs text-purple-300">{localOrder.memo}</span>
-                  </div>
-                )}
-
-                {/* Warning note */}
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-                  <span className="font-semibold">Warning:</span> A smaller amount is refunded. Please send the exact amount specified.
-                </div>
-              </div>
-
-              {/* Primary User Action Button */}
-              <button
-                type="button"
-                onClick={handleUserSent}
-                className="w-full py-4 px-6 rounded-2xl bg-[#7C3AED] hover:bg-[#8B5CF6] active:scale-98 text-white font-cabin font-bold text-base shadow-[0_20px_34px_rgba(124,58,237,0.25)] transition flex items-center justify-center gap-2"
-              >
-                <span>I've sent it</span>
-                <span className="text-lg">→</span>
-              </button>
-            </div>
-          )}
-
-          {/* STEP 3: Paying to your bank */}
-          {currentStep === 3 && (
-            <div className="space-y-5">
-              <div className="bg-[#1B122E]/80 border border-[#2D204A] rounded-2xl p-6 text-center">
-                <div className="w-12 h-12 rounded-full border-2 border-[#7C3AED] border-t-transparent animate-spin mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-white mb-1">Paying to your bank</h3>
-                <p className="text-xs text-white/60 mb-5">
-                  Deposit received by Paycrest. The local fiat transfer is in progress to your account.
-                </p>
-
-                {/* Bank Target Details */}
-                <div className="bg-[#120D1D] rounded-xl p-4 border border-white/5 text-left text-xs space-y-2 mb-4">
-                  <div className="flex justify-between">
-                    <span className="text-white/50">Destination Bank:</span>
-                    <span className="font-medium text-white">{bankName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-white/50">Account Number:</span>
-                    <span className="font-mono text-white">{accountNumber}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-white/50">Beneficiary:</span>
-                    <span className="font-medium text-white">{accountHolderName}</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => pollOnce().catch(() => {})}
-                  className="py-2 px-4 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-white text-xs font-cabin transition inline-flex items-center gap-1.5"
-                >
-                  <span>🔄</span> Refresh status
-                </button>
-              </div>
-            </div>
-          )}
-          {currentStep === 4 && (
-            <div className="gc-card--mint p-6 sm:p-8 bg-[#120D1D] rounded-2xl border border-[#2D204A]">
-              <div className="text-center mb-6">
-                <div className="gc-big text-4xl sm:text-5xl font-extrabold font-manrope text-white mb-2">
-                  {t?.nairaDelivered || 'Naira Delivered!'}
-                </div>
-                <p className="text-white/60 mb-3">{t?.paidToYourBank || 'paid to your bank'}</p>
-              </div>
-              <div className="bg-[#1B122E]/80 rounded-xl p-4 border border-white/5 mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-white/50">Bank Reference:</span>
-                  <span className="font-mono text-white">{bankReference || 'PAY-NGN-' + txHash.slice(2, 8).toUpperCase()}</span>
-                </div>
-                <p className="text-xs text-white/60">Transaction receipt</p>
-              </div>
-              <div className="flex justify-center mb-6">
-                <a
-                  href={explorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-[#7C3AED] hover:bg-[#8B5CF6] text-white font-cabin font-bold text-sm py-2.5 px-6 rounded-xl transition focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
-                >
-                  View on Explorer
-                </a>
-              </div>
-              <button
-                type="button"
-                onClick={onDone}
-                className="gc-hit w-full py-3.5 px-6 rounded-xl bg-black hover:bg-black/90 text-white font-cabin font-bold text-sm shadow-lg transition focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
-              >
-                {t?.doneButton || 'Done'}
-              </button>
-            </div>
-          )}
-
-
+      {/* FAILURE STATES */}
+      {activeFailure === 'expired' && (
+        <div className={failureCard} style={{ background: '#ffd23f' }}>
+          <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><WarnIcon /> payment window expired</div>
+          <p className="gc-sm" style={{ margin: '6px 0' }}>
+            The payment window closed before the payment arrived. Nothing was taken. Please do not send anything to the old address.
+          </p>
+          {/^[0-9a-f-]{36}$/i.test(orderId) && <div className="gc-note" style={{ marginBottom: 10 }}>Order ID: <b>{orderId}</b></div>}
+          <div className="flex flex-col gap-2">
+            <button type="button" onClick={() => setSupportOpen(true)} className={failureBtns}>Contact support</button>
+            <button type="button" onClick={onDone} className={failureBtnsAlt}>Back to Dashboard</button>
+          </div>
         </div>
       )}
 
-      {/* DETAILS CARD (Always present at the bottom) */}
-      <div className="mt-6 pt-5 border-t border-[#2D204A]">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-3">
-          Details
-        </h4>
-        <div className="bg-[#1B122E]/50 rounded-2xl p-4 border border-white/5 text-xs font-sans space-y-2.5">
-          {/* Swap Hash */}
-          <div className="flex justify-between items-center">
-            <span className="text-white/50">Swap Hash:</span>
-            <span className="font-mono text-white text-[11px] truncate max-w-[200px]">
-              {txHash}
-            </span>
-          </div>
-
-          {/* Explorer Link */}
-          <div className="flex justify-between items-center">
-            <span className="text-white/50">Explorer Link:</span>
-            <a
-              href={explorerUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#8B5CF6] hover:text-white underline font-mono text-[11px] flex items-center gap-1"
-            >
-              <span>View on Celo Explorer</span>
-              <span>↗</span>
-            </a>
-          </div>
-
-          {/* Residual Balance */}
-          <div className="flex justify-between items-center">
-            <span className="text-white/50">Residual Balance:</span>
-            <span className="font-mono text-emerald-400 font-medium text-[11px]">
-              {residualBalanceG} G$ / {residualBalanceUsdt} USDT (Zero-dust design)
-            </span>
-          </div>
-
-          {/* Order ID */}
-          <div className="flex justify-between items-center pt-1 border-t border-white/5">
-            <span className="text-white/50">Order ID:</span>
-            <span className="font-mono text-purple-300 font-medium text-[11px] select-all">
-              {orderId}
-            </span>
+      {activeFailure === 'refunded' && (
+        <div className={failureCard} style={{ background: '#ff9b9b' }}>
+          <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><UndoIcon /> order refunded</div>
+          <p className="gc-sm" style={{ margin: '6px 0' }}>
+            This order was refunded to your Celo wallet. Any deposited funds have been returned.
+          </p>
+          {/^[0-9a-f-]{36}$/i.test(orderId) && <div className="gc-note" style={{ marginBottom: 10 }}>Order ID: <b>{orderId}</b></div>}
+          <div className="flex flex-col gap-2">
+            <button type="button" onClick={() => setSupportOpen(true)} className={failureBtns}>Contact support</button>
+            <button type="button" onClick={onDone} className={failureBtnsAlt}>Back to Dashboard</button>
           </div>
         </div>
+      )}
+
+      {activeFailure === 'delayed' && (
+        <div className={failureCard} style={{ background: '#ffd23f' }}>
+          <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ClockIcon /> Payment sent but naira not received after {delayedTimeoutMinutes} minutes</div>
+          <p className="gc-sm" style={{ margin: '6px 0' }}>
+            Your deposit was confirmed, but the bank payout is taking longer than usual. Our support team can inspect the payment rail.
+          </p>
+          {/^[0-9a-f-]{36}$/i.test(orderId) && <div className="gc-note" style={{ marginBottom: 10 }}>Order ID: <b>{orderId}</b></div>}
+          <div className="flex flex-col gap-2">
+            <button type="button" onClick={() => setSupportOpen(true)} className={failureBtns}>Contact support</button>
+            <button type="button" onClick={() => pollOnce().catch(() => {})} className={failureBtnsAlt}>Check again</button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP CONTENT */}
+      {!activeFailure && currentStep === 1 && (
+        <div className="gc-card gc-card--mint" style={{ textAlign: 'center' }}>
+          <div className="gc-big" style={{ fontSize: 20 }}>
+            ✓ Converted {amountGSwapped.toLocaleString()} G$ to dollars
+          </div>
+          <div className="gc-sm">Preparing off-ramp transfer...</div>
+        </div>
+      )}
+
+      {!activeFailure && currentStep === 2 && (
+        <>
+          {userSent && !paymentConfirmed && (
+            <div className="gc-note" role="status" style={{ background: '#ffd23f' }}>
+              <b>Checking for your payment…</b> If you already sent it, you don't need to do anything. It can take a minute or two to show up here.
+            </div>
+          )}
+          {onSendDeposit && (
+            <div className="gc-card gc-card--mint">
+              <div className="gc-lab">One last step</div>
+              <p className="gc-sm" style={{ margin: '6px 0 0' }}>
+                Confirm the payment in your wallet and your naira is on its way to your bank.
+              </p>
+            </div>
+          )}
+          {onSendDeposit && (
+            <>
+              <button type="button" onClick={handleSendNow} disabled={sending || !addressReady} className={`gc-btn gc-hit ${sending || !addressReady ? 'gc-btn--dis' : ''}`}>
+                {sending ? 'Confirm in your wallet…' : addressReady ? 'Pay now' : 'Getting your payment ready…'}
+              </button>
+              {sending && !hasInjectedWallet() && getWalletLink() && (
+                <button type="button" className="gc-btn gc-btn--white gc-hit" onClick={openWalletApp}>
+                  Open {getWalletLink()?.name} to confirm
+                </button>
+              )}
+              {sendError && (
+                <div className="gc-note" role="alert" style={{ background: '#ff9b9b', overflowWrap: 'anywhere' }}>{sendError}</div>
+              )}
+              {orderClosed && onOrderClosed && (
+                <button type="button" onClick={onOrderClosed} className="gc-btn gc-btn--white gc-hit">Start a fresh payout</button>
+              )}
+            </>
+          )}
+          {addressReady ? (
+          <details open={!onSendDeposit} className="gc-fold" style={onSendDeposit ? { marginTop: 4, paddingTop: 10, borderTop: '2px dashed #9b86d6' } : undefined}>
+            <summary className="gc-sm gc-hit" style={{ display: onSendDeposit ? 'block' : 'none', cursor: 'pointer', textDecoration: 'underline', textAlign: 'center', padding: '4px 0' }}>
+              Having trouble? Pay manually instead
+            </summary>
+          <div className="gc-card">
+            <div className="gc-row" style={{ marginBottom: 8 }}>
+              <div className="gc-lab">Deposit Instructions</div>
+              <span className="gc-pill gc-pill--yellow">Expires in {formatCountdown(secondsRemaining)}</span>
+            </div>
+            <p className="gc-sm" style={{ margin: '0 0 10px' }}>
+              Send exactly <b>{localOrder.amountToSend} USDT</b> to this address before{' '}
+              <b>{formatTargetTime(localOrder.validUntil)}</b>:
+            </p>
+
+            <div className="gc-cost" style={{ marginBottom: 10 }}>
+              <div className="gc-row">
+                <span>Amount to send</span>
+                <span><b>{localOrder.amountToSend} USDT</b></span>
+              </div>
+              <div className="gc-row"><span>Network</span><span>Celo Network</span></div>
+              <div className="gc-row"><span>Sender fee</span><span>{localOrder.senderFee} USDT</span></div>
+              <div className="gc-row"><span>Transaction fee</span><span>{localOrder.transactionFee} USDT</span></div>
+              <div className="gc-row">
+                <span>Expected naira</span>
+                <span>
+                  {orderNairaEstimate !== null
+                    ? `₦${orderNairaEstimate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : '—'}
+                </span>
+              </div>
+            </div>
+
+            <div className="gc-note" style={{ marginBottom: 10 }}>
+              <div className="gc-lab" style={{ marginBottom: 4 }}>Deposit address</div>
+              <div className="gc-row" style={{ alignItems: 'flex-start' }}>
+                <span className="font-mono break-all select-all" style={{ fontSize: 12 }}>{localOrder.receiveAddress}</span>
+                <button type="button" onClick={handleCopy} className="gc-pill gc-pill--white shrink-0">
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+
+            {localOrder.memo && (
+              <div className="gc-note" style={{ marginBottom: 10 }}>
+                <div className="gc-lab" style={{ marginBottom: 4 }}>Deposit Memo / Reference</div>
+                <span className="font-mono" style={{ fontSize: 12 }}>{localOrder.memo}</span>
+              </div>
+            )}
+
+            <div className="gc-note" style={{ background: '#ffd23f' }}>
+              <b>Warning:</b> A smaller amount is refunded. Please send the exact amount specified.
+            </div>
+          </div>
+
+            {onSendDeposit && (
+              <button type="button" onClick={handleUserSent} className="gc-btn gc-btn--white gc-hit" style={{ marginTop: 10 }}>
+                I've paid manually →
+              </button>
+            )}
+          </details>
+          ) : (
+            (loadFailed || !onSendDeposit) && (
+              loadFailed ? (
+                <div className="gc-note" role="alert" style={{ background: '#ff9b9b' }}>
+                  <b>We couldn't load your payment.</b> Nothing was sent. Check your connection and try again.
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button type="button" className="gc-pill gc-pill--white gc-hit" onClick={() => { setLoadFailed(false); setLoadTry((n) => n + 1); }}>Try again</button>
+                    {onOrderClosed && (
+                      <button type="button" className="gc-pill gc-pill--white gc-hit" onClick={onOrderClosed}>Start fresh</button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="gc-note" role="status">
+                  <b>Getting your payment ready…</b> This only takes a moment.
+                </div>
+              )
+            )
+          )}
+          {!onSendDeposit && addressReady && (
+            <button type="button" onClick={handleUserSent} className="gc-btn gc-hit">
+              I've sent it →
+            </button>
+          )}
+        </>
+      )}
+
+      {!activeFailure && currentStep === 3 && (
+        <div className="gc-card" style={{ textAlign: 'center' }}>
+          <div className="w-10 h-10 rounded-full border-4 border-[#7b39fc] border-t-transparent animate-spin mx-auto mb-3" />
+          <h3 className="gc-big" style={{ fontSize: 22 }}>Paying to your bank</h3>
+          <p className="gc-sm" style={{ margin: '6px 0 10px' }}>
+            {localOrder.status === 'initiated'
+              ? "We haven't seen your deposit yet. It can take a minute or two to show up after you send it."
+              : 'We have your payment. Your bank is being paid now.'}
+          </p>
+          <div className="gc-cost" style={{ textAlign: 'left', marginBottom: 12 }}>
+            <div className="gc-row"><span>Destination Bank:</span><span>{bankName}</span></div>
+            <div className="gc-row"><span>Account Number:</span><span className="font-mono">{accountNumber}</span></div>
+            <div className="gc-row"><span>Beneficiary:</span><span>{accountHolderName}</span></div>
+          </div>
+          <div className="gc-note" style={{ textAlign: 'left', marginBottom: 16 }}>
+            {notifyState === 'done' ? (
+              <><b>We'll email you</b> the moment your naira is sent. You can close the app.</>
+            ) : (
+              <>
+                <b>Don't want to wait here?</b> We'll email you when your naira is sent.
+                <div className="flex gap-2" style={{ marginTop: 8 }}>
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    aria-label="Email me when it's sent"
+                    value={notifyEmail}
+                    onChange={(e) => { setNotifyEmail(e.target.value); if (notifyState === 'error') setNotifyState('idle'); }}
+                    placeholder="you@example.com"
+                    className="min-w-0 flex-1 rounded-xl border-[2.5px] border-[#111] bg-white px-3 py-2 text-sm font-bold text-[#111] outline-none"
+                  />
+                  <button type="button" onClick={handleNotify} disabled={notifyState === 'sending'} className="gc-pill gc-pill--on gc-hit" style={{ flex: 'none' }}>
+                    {notifyState === 'sending' ? 'Saving…' : 'Email me'}
+                  </button>
+                </div>
+                {notifyState === 'error' && (
+                  <div role="alert" style={{ color: '#b00020', marginTop: 6 }}>Please enter a valid email address and try again.</div>
+                )}
+              </>
+            )}
+          </div>
+          <div className="gc-sm" style={{ textAlign: 'center', margin: '0 0 8px', opacity: 0.8 }}>This page updates by itself. You only need to refresh if it seems stuck.</div>
+          <button type="button" onClick={() => pollOnce().catch(() => {})} className="gc-btn gc-btn--white gc-hit" style={{ gap: 8 }}>
+            <RefreshIcon /> Refresh status
+          </button>
+        </div>
+      )}
+
+      {!activeFailure && currentStep === 4 && (
+        <>
+          <div className="gc-hero" style={{ height: 120, margin: 0, borderRadius: 18, border: '2.5px solid #111' }}>
+            <div className="absolute left-1/2 top-0 w-[138px] -translate-x-1/2">
+              <i className="gc-c1" style={{ width: 44, height: 44, left: 38, top: 24 }} />
+              <i className="gc-c1" style={{ width: 30, height: 30, left: 98, top: 62 }} />
+              <i className="gc-c1" style={{ width: 22, height: 22, left: 4, top: 66 }} />
+            </div>
+          </div>
+          <div className="gc-card" style={{ textAlign: 'center', marginTop: -6 }}>
+            <div className="gc-ok">✓</div>
+            <div className="gc-big gc-big--success">{t?.nairaDelivered || 'Naira Delivered!'}</div>
+            <div className="gc-sm">{t?.paidToYourBank || 'paid to your bank'}</div>
+          </div>
+          <div className="gc-card gc-cost">
+            <div className="gc-row">
+              <span>Bank Reference:</span>
+              <span className="font-mono">{bankReference || 'PAY-NGN-' + txHash.slice(2, 8).toUpperCase()}</span>
+            </div>
+            <div className="gc-row"><span>Transaction receipt</span>
+              <a href={explorerUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>View on Explorer ↗</a>
+            </div>
+          </div>
+          <button type="button" onClick={onDone} className="gc-btn gc-hit">
+            {t?.doneButton || 'Done'}
+          </button>
+        </>
+      )}
+
+      {/* DETAILS CARD */}
+      <div className="gc-card gc-cost">
+        <div className="gc-lab" style={{ marginBottom: 2 }}>Details</div>
+        <div className="gc-row">
+          <span>Transaction:</span>
+          <span className="font-mono truncate" style={{ maxWidth: 200, fontSize: 12 }}>{txHash}</span>
+        </div>
+        <div className="gc-row">
+          <span>Explorer Link:</span>
+          <a href={explorerUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>
+            View on Celo Explorer ↗
+          </a>
+        </div>
+        {/^[0-9a-f-]{36}$/i.test(orderId) && (
+          <div className="gc-row">
+            <span>Order ID:</span>
+            <span className="font-mono select-all" style={{ fontSize: 12 }}>{orderId}</span>
+          </div>
+        )}
       </div>
 
-      {/* Cancel Button */}
-      {onCancel && (
-        <button
-          onClick={onCancel}
-          className="text-sm font-bold text-gray-600 hover:text-[#111] underline block mx-auto mt-4 text-center"
-        >
+      {supportOpen && (
+        <SupportModal
+          onClose={() => setSupportOpen(false)}
+          defaultTopic={activeFailure === 'delayed' ? 'not_arrived' : 'payment_failed'}
+          context={{
+            orderId,
+            txHash,
+            wallet: walletAddress && !/^0x0{40}$/.test(walletAddress) ? walletAddress : undefined,
+            status: activeFailure ?? localOrder.status,
+            amountG: amountGSwapped ? amountGSwapped.toLocaleString() : undefined,
+            naira: nairaEstimate !== null ? `₦${Math.round(nairaEstimate).toLocaleString()}` : undefined,
+          }}
+        />
+      )}
+
+      {onCancel && currentStep < 3 && (
+        <button onClick={onCancel} className="gc-btn gc-btn--white gc-hit">
           Cancel and start new cash out
         </button>
       )}
     </div>
   );
 };
+
