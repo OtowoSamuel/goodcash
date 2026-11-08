@@ -272,6 +272,8 @@ async function assertNetworkFee(address: string, flow: CashOutFlow, publicClient
 export function friendlySwapError(err: unknown): string {
   const e = err as { name?: string; message?: string; shortMessage?: string; cause?: { name?: string } } | null;
   const raw = `${e?.name ?? ''} ${e?.cause?.name ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
+  // Our server's own plain message (for example "That's more G$ than your wallet holds."). It is only ever given before the wallet is asked.
+  if (e?.name === 'OrderRequestError' && e.message) return e.message;
   if (/SWAP_UNCERTAIN/.test(raw)) {
     return "We couldn't confirm your cash out. It may still have gone through, so please check History before trying again. That way you don't send it twice.";
   }
