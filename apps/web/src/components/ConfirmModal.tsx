@@ -1,3 +1,4 @@
+import { celoText, networkFeeMessage, type NetworkFeeInfo } from '../lib/router';
 import React, { useEffect, useState } from 'react';
 import type { QuoteResult } from '../lib/quote';
 import type { Language } from '../lib/i18n';
@@ -26,6 +27,8 @@ interface ConfirmModalProps {
   result?: { settled: boolean; paid?: boolean; nairaText: string; reference: string | null } | null;
   /** Called from the result screen ("Done" / "Track payout") */
   onFinish?: () => void;
+  /** The network fee and whether the wallet can pay it (null while unknown). */
+  networkFee?: NetworkFeeInfo | null;
 }
 
 type StepId = 'review' | 'swap' | 'order' | 'done';
@@ -55,7 +58,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   result = null,
   onFinish,
   language,
+  networkFee = null,
 }) => {
+  const feeShort = !!networkFee && !networkFee.enough;
+  const feeNaira = networkFee?.celoUsd && ngnPerUsdt ? Math.max(1, Math.ceil(networkFee.feeCelo * networkFee.celoUsd * ngnPerUsdt)) : null;
   const t = getTranslations(language);
   const [isSwapping, setIsSwapping] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(() => Math.max(0, Math.ceil((quote.expiresAt - Date.now()) / 1000)));
@@ -271,9 +277,24 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </div>
         </div>
 
+        {networkFee && (
+          <div className="mb-3 flex items-center justify-between font-medium text-[#111]">
+            <span>Network fee (paid in CELO, not G$)</span>
+            <span className="font-bold">
+              {feeNaira ? `about ₦${feeNaira.toLocaleString('en-US')} (${celoText(networkFee.feeCelo)} CELO)` : `about ${celoText(networkFee.feeCelo)} CELO`}
+            </span>
+          </div>
+        )}
+
+        {feeShort && !hasConfirmedSwap && (
+          <div className="mb-4 bg-[#fff3c4] text-[#111] border-2 border-[#111] p-3 rounded-xl font-bold shadow-[2px_2px_0px_#111]" role="alert">
+            You can't send this yet. {networkFeeMessage(networkFee, ngnPerUsdt)}
+          </div>
+        )}
+
         {errorMessage && (
           <div className="mb-4 bg-[#ff6b6b] text-white border-2 border-[#111] p-3 rounded-xl font-bold shadow-[2px_2px_0px_#111] break-words" style={{ overflowWrap: "anywhere" }}>
-            <span className="font-black">{hasConfirmedSwap ? 'Almost there' : t.swapFailed || 'Swap failed'}: </span>
+            <span className="font-black">{hasConfirmedSwap ? 'Almost there' : 'Not sent'}: </span>
             {errorMessage}
           </div>
         )}
@@ -309,7 +330,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
         <button
           type="button"
-          disabled={isExpired || isSwapping || hasConfirmedSwap}
+          disabled={isExpired || isSwapping || hasConfirmedSwap || feeShort}
           onClick={handleExecute}
           className="w-full py-3.5 text-lg font-bold bg-[#7b39fc] text-white border-2 border-[#111] rounded-xl shadow-[4px_4px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_#111] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -317,6 +338,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             ? t.confirming || 'Confirming...'
             : hasConfirmedSwap
             ? t.swapAlreadyConfirmed || 'Swap confirmed'
+            : feeShort
+            ? 'Top up CELO first'
             : t.confirmButton || 'Confirm'}
         </button>
           </>

@@ -167,14 +167,39 @@ describe('which cash-out flow is used', () => {
 });
 
 describe('network fee check', () => {
-  it('asks for a little extra CELO in plain words, before any wallet prompt', async () => {
-    const { hasNetworkFee, friendlySwapError, NETWORK_FEE_MESSAGE } = await import('./router');
-    expect(await hasNetworkFee('0x1111111111111111111111111111111111111111', { getBalance: async () => 0n })).toBe(false);
-    expect(await hasNetworkFee('0x1111111111111111111111111111111111111111', { getBalance: async () => 20_000_000_000_000_000n })).toBe(true);
-    // if the balance cannot be read, the wallet decides
-    expect(await hasNetworkFee('0x1111111111111111111111111111111111111111', { getBalance: async () => { throw new Error('rpc'); } })).toBe(true);
-    expect(friendlySwapError(new Error('NEEDS_NETWORK_FEE'))).toBe(NETWORK_FEE_MESSAGE);
-    expect(friendlySwapError(new Error('insufficient funds for gas'))).toBe(NETWORK_FEE_MESSAGE);
-    expect(NETWORK_FEE_MESSAGE).not.toMatch(/revert|0x|error/i);
+  const W = '0x1111111111111111111111111111111111111111';
+  const GWEI = 1_000_000_000n;
+  const client = (balanceWei: bigint) => ({
+    getBalance: async () => balanceWei,
+    getGasPrice: async () => 202n * GWEI,
+    readContract: (async () => [67_650_000_000_000_000_000_000n, 10n ** 24n]) as never,
+  });
+
+  it('uses real cash-out sizes: a wallet with no CELO cannot send, and is told exactly how much to add', async () => {
+    const { getNetworkFeeInfo, friendlySwapError, NetworkFeeError } = await import('./router');
+    const empty = (await getNetworkFeeInfo(W, 'one-tap', client(0n)))!;
+    expect(empty.enough).toBe(false);
+    // ~1M gas at 202 gwei is ~0.20 CELO spent; the wallet must hold ~0.35 before it will send
+    expect(empty.feeCelo).toBeCloseTo(0.202, 3);
+    expect(empty.needCelo).toBeGreaterThan(0.3);
+    const msg = friendlySwapError(new NetworkFeeError(empty));
+    expect(msg).toMatch(/Top up first/);
+    expect(msg).toMatch(/you have 0 CELO/);
+    expect(msg).toMatch(/not G\$/);
+    expect(msg).not.toMatch(/revert|0x|error|swap failed/i);
+  });
+
+  it('lets a wallet with enough CELO through, and never blocks when the check itself fails', async () => {
+    const { getNetworkFeeInfo } = await import('./router');
+    expect((await getNetworkFeeInfo(W, 'one-tap', client(10n ** 18n)))!.enough).toBe(true);
+    const broken = { getBalance: async () => { throw new Error('rpc'); }, getGasPrice: async () => 1n };
+    expect(await getNetworkFeeInfo(W, 'one-tap', broken)).toBeNull();
+  });
+
+  it('shows the top-up in naira when the price is known, and a wallet "insufficient funds" error says top up too', async () => {
+    const { getNetworkFeeInfo, networkFeeMessage, friendlySwapError } = await import('./router');
+    const info = (await getNetworkFeeInfo(W, 'three-step', client(0n)))!;
+    expect(networkFeeMessage(info, 1385)).toMatch(/about ₦\d+/);
+    expect(friendlySwapError(new Error('insufficient funds for gas * price + value'))).toMatch(/Top up a little CELO/);
   });
 });

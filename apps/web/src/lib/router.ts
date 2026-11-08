@@ -144,30 +144,109 @@ function rememberSentDeposit(orderId: string, hash: string | null): void {
 }
 
 /** Turn a wallet/RPC error into one short sentence a user can act on. */
-/** Smallest CELO balance that can pay the network fee for a cash out (the fee is paid in CELO, never in G$). */
-export const MIN_NETWORK_FEE_WEI = 10_000_000_000_000_000n; // 0.01 CELO
+// ---------------------------------------------------------------------------
+// Network fee (paid in CELO by the wallet, never in G$)
+//
+// Measured on real GoodCash cash outs (Nov 2026): one-tap uses ~996k gas (wallet limit ~1.16M); the three-step
+// swap uses ~864k (limit ~1.0M) plus an approval and a dollar transfer. A wallet will only send when it holds
+// gas limit x max fee, so the balance we ask for is higher than what is actually spent.
+// ---------------------------------------------------------------------------
 
-export const NETWORK_FEE_MESSAGE =
-  'You need a little extra in your wallet to cover the network fee. Add a small amount of CELO (a few cents is plenty), then try again. Your G$ has not been touched.';
+export type CashOutFlow = 'one-tap' | 'three-step';
+const FEE_GAS: Record<CashOutFlow, { used: bigint; limit: bigint }> = {
+  'one-tap': { used: 1_000_000n, limit: 1_160_000n },
+  'three-step': { used: 1_000_000n, limit: 1_150_000n },
+};
+/** Wallets set their max fee above today's price, so ask for 50% headroom. */
+const FEE_HEADROOM_NUM = 3n;
+const FEE_HEADROOM_DEN = 2n;
+/** Celo's own price feed: dollars (USDm) per CELO. */
+const SORTED_ORACLES = '0xefB84935239dAcdecF7c5bA76d8dE40b077B7b33' as Address;
+const USDM = '0x765DE816845861e75A25fCA122bb6898B8B1282a' as Address;
+const ORACLE_ABI = parseAbi(['function medianRate(address) view returns (uint256, uint256)']);
 
-/** True when the wallet has enough CELO for the network fee. If we cannot check, we let the wallet decide. */
-export async function hasNetworkFee(address: string, publicClient?: { getBalance: (a: { address: Address }) => Promise<bigint> }): Promise<boolean> {
+export interface NetworkFeeInfo {
+  /** What a cash out usually costs, in CELO */
+  feeCelo: number;
+  /** What the wallet must hold before it will send, in CELO */
+  needCelo: number;
+  haveCelo: number;
+  enough: boolean;
+  /** Dollars per CELO, when the price feed answered */
+  celoUsd: number | null;
+}
+
+type FeeClient = {
+  getBalance: (a: { address: Address }) => Promise<bigint>;
+  getGasPrice: () => Promise<bigint>;
+  readContract?: (a: never) => Promise<unknown>;
+};
+
+/** The network fee for a cash out and whether this wallet can pay it. Null when it cannot be checked. */
+export async function getNetworkFeeInfo(address: string, flow: CashOutFlow, client?: FeeClient): Promise<NetworkFeeInfo | null> {
   try {
-    const client = publicClient ?? createPublicClient({ chain: celo, transport: http(CELO_RPC_URL) });
-    return (await client.getBalance({ address: address as Address })) >= MIN_NETWORK_FEE_WEI;
+    const c = (client ?? createPublicClient({ chain: celo, transport: http(CELO_RPC_URL) })) as FeeClient;
+    const [balance, gasPrice] = await Promise.all([c.getBalance({ address: address as Address }), c.getGasPrice()]);
+    let celoUsd: number | null = null;
+    try {
+      const r = (await (c.readContract as (a: unknown) => Promise<[bigint, bigint]>)({
+        address: SORTED_ORACLES,
+        abi: ORACLE_ABI,
+        functionName: 'medianRate',
+        args: [USDM],
+      })) as [bigint, bigint];
+      const v = Number(r[0]) / Number(r[1]);
+      celoUsd = Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+      celoUsd = null;
+    }
+    const g = FEE_GAS[flow];
+    const fee = g.used * gasPrice;
+    const need = (g.limit * gasPrice * FEE_HEADROOM_NUM) / FEE_HEADROOM_DEN;
+    const toCelo = (w: bigint) => Number(w) / 1e18;
+    return { feeCelo: toCelo(fee), needCelo: toCelo(need), haveCelo: toCelo(balance), enough: balance >= need, celoUsd };
   } catch {
-    return true;
+    return null;
   }
 }
 
-async function assertNetworkFee(address: string, publicClient: { getBalance: (a: { address: Address }) => Promise<bigint> }): Promise<void> {
-  if (!(await hasNetworkFee(address, publicClient))) throw new Error('NEEDS_NETWORK_FEE');
+/** Rounds CELO up so we never ask for less than needed. */
+export function celoText(v: number): string {
+  if (v <= 0) return '0';
+  const up = Math.ceil(v * 100) / 100;
+  return up.toFixed(2);
+}
+
+/** Plain words for a wallet that cannot pay the network fee. */
+export function networkFeeMessage(info: NetworkFeeInfo | null, ngnPerUsd?: number | null): string {
+  if (!info) {
+    return "Your wallet doesn't have enough CELO to pay the network fee. Top up a little CELO, then try again. Your G$ has not been touched.";
+  }
+  const short = Math.max(0, info.needCelo - info.haveCelo);
+  const naira = info.celoUsd && ngnPerUsd ? Math.max(1, Math.ceil(short * info.celoUsd * ngnPerUsd)) : null;
+  return (
+    `Top up first: sending needs about ${celoText(info.needCelo)} CELO in your wallet for the network fee, and you have ${celoText(info.haveCelo)} CELO. ` +
+    `Add at least ${celoText(short)} CELO${naira ? ` (about ₦${naira.toLocaleString('en-US')})` : ''}, then try again. ` +
+    'The fee is paid in CELO, not G$. Your G$ has not been touched.'
+  );
+}
+
+export class NetworkFeeError extends Error {
+  constructor(public info: NetworkFeeInfo) {
+    super('NEEDS_NETWORK_FEE');
+    this.name = 'NetworkFeeError';
+  }
+}
+
+async function assertNetworkFee(address: string, flow: CashOutFlow, publicClient: unknown): Promise<void> {
+  const info = await getNetworkFeeInfo(address, flow, publicClient as FeeClient);
+  if (info && !info.enough) throw new NetworkFeeError(info);
 }
 
 export function friendlySwapError(err: unknown): string {
   const e = err as { name?: string; message?: string; shortMessage?: string; cause?: { name?: string } } | null;
   const raw = `${e?.name ?? ''} ${e?.cause?.name ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
-  if (/NEEDS_NETWORK_FEE/.test(raw)) return NETWORK_FEE_MESSAGE;
+  if (/NEEDS_NETWORK_FEE/.test(raw)) return networkFeeMessage((err as { info?: NetworkFeeInfo })?.info ?? null);
   if (/SwapPendingError/.test(raw)) {
     return "Your swap was sent and is still being confirmed. Please don't swap again. It will show in History, and we'll offer to finish your payout.";
   }
@@ -187,7 +266,7 @@ export function friendlySwapError(err: unknown): string {
     return 'Cash out is paused right now. Nothing was sent. Please try again later.';
   }
   if (/insufficient funds|gas required exceeds/i.test(raw)) {
-    return NETWORK_FEE_MESSAGE;
+    return networkFeeMessage(null);
   }
   if (/approval transaction failed/i.test(raw)) return "The G$ approval didn't go through. Nothing was swapped. Please try again.";
   if (/reverted on Celo|execution reverted|reverted/i.test(raw)) {
@@ -270,7 +349,7 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
     });
 
   if (!args.walletClient) await ensureCeloChain(injected as unknown as Eip1193);
-  await assertNetworkFee(walletAddress, publicClient);
+  await assertNetworkFee(walletAddress, 'three-step', publicClient);
 
   const walletClient =
     args.walletClient ??
@@ -500,7 +579,7 @@ export async function executeOneTapCashOut(args: {
     args.publicClient ?? createPublicClient({ chain: celo, transport: http(CELO_RPC_URL), pollingInterval: 1000 });
 
   if (!args.walletClient) await ensureCeloChain(injected as unknown as Eip1193);
-  await assertNetworkFee(walletAddress, publicClient);
+  await assertNetworkFee(walletAddress, 'one-tap', publicClient);
   const walletClient =
     args.walletClient ??
     createWalletClient({

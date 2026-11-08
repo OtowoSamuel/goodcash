@@ -11,6 +11,8 @@ interface ReadinessCardProps {
   onCashOutClick: () => void;
   /** Opens the naira-to-G$ screen. The button shows only when this is given. */
   onAddClick?: () => void;
+  /** Shown under the button when the wallet can't pay the network fee (paid in CELO). */
+  feeNote?: string | null;
   language: Language;
   isLoading?: boolean;
   isStale?: boolean;
@@ -39,6 +41,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   dailyClaimG = 0,
   onCashOutClick,
   onAddClick,
+  feeNote = null,
   isStale = false,
   ngnPerUsdt = null,
   history = [],
@@ -46,6 +49,8 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
 }) => {
   const t = getTranslations('en');
   const rate = getCashoutRate(balanceG, dailyClaimG, ngnPerUsdt);
+  // With an empty wallet the per-G$ price is unknown, so count down from the minimum itself
+  const gToGo = Math.max(rate.remainingG, getMinimumCashOutG() - balanceG, 0);
   const percent = getBalanceProgressPercent(balanceG);
   const minimumReached = rate.minimumReached;
 
@@ -77,7 +82,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
         <div className="gc-sm">
           {minimumReached
             ? t.readyToCashOutShort
-            : t.gToGo.replace('{n}', Math.ceil(rate.remainingG).toLocaleString())}
+            : t.gToGo.replace('{n}', Math.ceil(gToGo).toLocaleString())}
         </div>
         <div className="gc-sticker">{percent}%</div>
       </div>
@@ -116,8 +121,14 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
         </button>
       ) : (
         <button type="button" disabled className="gc-btn gc-btn--dis gc-hit w-full">
-          {t.cashOutOpensAt.replace('{n}', Math.ceil(rate.remainingG).toLocaleString())}
+          {t.cashOutOpensAt.replace('{n}', getMinimumCashOutG().toLocaleString())}
         </button>
+      )}
+
+      {feeNote && (
+        <div className="gc-note" role="alert" style={{ marginTop: 10, background: '#fff3c4' }}>
+          {feeNote}
+        </div>
       )}
 
       {onAddClick && (

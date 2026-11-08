@@ -241,7 +241,7 @@ export const translations: Record<Language, Partial<Translations>> = {
     gToGo: '{n} G$ to go',
     readyToCashOutShort: 'Ready to cash out',
     firstPayout: 'First payout',
-    minimumCashOutAbout: 'Minimum cash out is about {g} G$ ({naira}).',
+    minimumCashOutAbout: 'Minimum cash out is about {g} G$ ({naira}). You also need a little CELO in your wallet for the network fee.',
     lastCashOut: 'Last cash out',
     todayClaim: "Today's claim",
     availableToClaimNow: 'Available to claim now',

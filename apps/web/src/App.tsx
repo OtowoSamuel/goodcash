@@ -26,7 +26,7 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, hasNetworkFee } from './lib/router';
+import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, celoText, type NetworkFeeInfo } from './lib/router';
 import { createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
@@ -482,16 +482,25 @@ export function App({
     return () => { alive = false; clearInterval(iv); };
   }, [isDemoMode, walletAddress]);
 
-  const [networkFeeLow, setNetworkFeeLow] = useState(false);
+  // The network fee is paid in CELO. Check it while a cash out is being reviewed, so the customer is told
+  // before they press Confirm, not by a failed swap.
+  const [networkFee, setNetworkFee] = useState<NetworkFeeInfo | null>(null);
+  const reviewing = !!pendingQuote || mobileView === 'review';
   useEffect(() => {
     if (isDemoMode || !walletAddress) {
-      setNetworkFeeLow(false);
+      setNetworkFee(null);
       return;
     }
     let alive = true;
-    void hasNetworkFee(walletAddress).then((ok) => alive && setNetworkFeeLow(!ok));
-    return () => { alive = false; };
-  }, [isDemoMode, walletAddress, mobileView]);
+    const flow = chooseCashOutFlow(ONE_TAP_ENABLED, oneTapPaused);
+    const load = () => void getNetworkFeeInfo(walletAddress, flow).then((info) => alive && setNetworkFee(info));
+    load();
+    const iv = reviewing ? setInterval(load, 20000) : undefined;
+    return () => {
+      alive = false;
+      if (iv) clearInterval(iv);
+    };
+  }, [isDemoMode, walletAddress, oneTapPaused, reviewing]);
   const [addOpen, setAddOpen] = useState(false);
   const handleAddClick = () => {
     if (isDemoMode) {
@@ -1374,6 +1383,7 @@ export function App({
               dailyClaimG={123.48}
               onCashOutClick={() => setCurrentTab('cashout')}
               onAddClick={handleAddClick}
+              feeNote={networkFee && !networkFee.enough ? `You also need about ${celoText(networkFee.needCelo)} CELO in your wallet to pay the network fee. G$ can't pay it, so top up a little CELO before cashing out.` : null}
               language={language}
               isStale={balanceIsStale}
               ngnPerUsdt={liveNgnRate}
@@ -1663,6 +1673,7 @@ export function App({
           ngnPerUsdt={pendingQuote.ngnPerUsdt}
           errorMessage={swapError}
           hasConfirmedSwap={!!pendingSwapResult}
+          networkFee={networkFee}
         />
       )}
 
@@ -1768,7 +1779,8 @@ export function App({
             }
             usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
             oneTap={ONE_TAP_ENABLED && !oneTapPaused}
-            networkFeeLow={networkFeeLow}
+            networkFee={networkFee}
+            ngnPerUsd={pendingQuote?.ngnPerUsdt ?? liveNgnRate}
             onBack={() => setMobileView('cashout')}
             onConfirm={async () => {
               try {
@@ -1926,6 +1938,7 @@ export function App({
                 dailyClaimG={123.48}
                 onCashOutClick={() => setMobileView('cashout')}
                 onAddClick={handleAddClick}
+                feeNote={networkFee && !networkFee.enough ? `You also need about ${celoText(networkFee.needCelo)} CELO in your wallet to pay the network fee. G$ can't pay it, so top up a little CELO before cashing out.` : null}
                   language={language}
                 isStale={balanceIsStale}
                 ngnPerUsdt={liveNgnRate}

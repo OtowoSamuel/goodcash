@@ -1,4 +1,4 @@
-import { ONE_TAP_ENABLED } from '../lib/router';
+import { ONE_TAP_ENABLED, celoText, networkFeeMessage, type NetworkFeeInfo } from '../lib/router';
 import React, { useState } from 'react';
 import type { BankDetailsState } from '../lib/useBankDetails';
 import { BankDetailsModal, type SavedBank } from '../components/BankDetailsModal';
@@ -10,8 +10,10 @@ export interface MobileReviewViewProps {
   usdtEstimate: number | null;
   /** True when one tap does everything (the one-tap router is on and open). */
   oneTap?: boolean;
-  /** True when the wallet has too little CELO to pay the network fee. */
-  networkFeeLow?: boolean;
+  /** The network fee for this cash out and whether the wallet can pay it (null while unknown). */
+  networkFee?: NetworkFeeInfo | null;
+  /** Naira per dollar, to show the fee in naira. */
+  ngnPerUsd?: number | null;
   onBack: () => void;
   onConfirm: () => void | Promise<void>;
   errorMessage?: string | null;
@@ -27,13 +29,17 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
   nairaEstimate,
   usdtEstimate,
   oneTap,
-  networkFeeLow,
+  networkFee,
+  ngnPerUsd,
   onBack,
   onConfirm,
   onBankSaved,
   errorMessage,
 }) => {
   const [busy, setBusy] = useState(false);
+  const feeShort = !!networkFee && !networkFee.enough;
+  const feeNaira = networkFee?.celoUsd && ngnPerUsd ? Math.max(1, Math.ceil(networkFee.feeCelo * networkFee.celoUsd * ngnPerUsd)) : null;
+  const feeText = !networkFee ? 'checking…' : feeNaira ? `about ₦${feeNaira.toLocaleString('en-US')} (${celoText(networkFee.feeCelo)} CELO)` : `about ${celoText(networkFee.feeCelo)} CELO`;
   const exitContributionG = amountG != null ? getCashoutRate(amountG).exitContributionG : 0;
   const [bank, setBank] = useState<SavedBank | null>(null);
   const [isBankModalOpen, setIsBankModalOpen] = useState(false);
@@ -115,8 +121,8 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
             <span className="gc-mark">−{Math.floor(exitContributionG)} G$</span>
           </div>
           <div className="gc-row">
-            <span>Network fee</span>
-            <span>under $0.001</span>
+            <span>Network fee (paid in CELO, not G$)</span>
+            <span>{feeText}</span>
           </div>
           <div className="gc-row">
             <span>Price protection</span>
@@ -141,9 +147,9 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         className="fixed left-0 right-0 bottom-0 px-[14px] pb-[14px]"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}
       >
-        {networkFeeLow && (
+        {feeShort && (
           <div className="gc-note" style={{ marginBottom: 10, background: '#fff3c4' }} role="alert">
-            <b>Add a little extra first.</b> Your wallet needs a small amount of CELO (a few cents) to pay the network fee. G$ can't pay it.
+            <b>You can't send this yet.</b> {networkFeeMessage(networkFee ?? null, ngnPerUsd)}
           </div>
         )}
         <div className="gc-note" style={{ marginBottom: 10 }}>
@@ -163,10 +169,10 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
               setBusy(false);
             }
           }}
-          disabled={!bank || busy}
-          className={`gc-btn gc-hit ${bank && !busy ? '' : 'gc-btn--dis'}`}
+          disabled={!bank || busy || feeShort}
+          className={`gc-btn gc-hit ${bank && !busy && !feeShort ? '' : 'gc-btn--dis'}`}
         >
-          {!bank ? 'Add bank to continue' : busy ? 'Working on it…' : 'Confirm cash out'}
+          {!bank ? 'Add bank to continue' : feeShort ? 'Top up CELO first' : busy ? 'Working on it…' : 'Confirm cash out'}
         </button>
       </div>
 
