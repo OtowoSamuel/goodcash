@@ -9,6 +9,8 @@ import {
   friendlyAddError,
   formatNaira,
   isAdultDate,
+  reportOnrampArrived,
+  saveOnrampEmail,
   readDollarsOnBase,
   returnToCelo,
   startGasFreeSwap,
@@ -32,6 +34,8 @@ interface Saved {
   order: OnrampOrder;
   wallet: string;
   swapRequestId?: string;
+  /** The customer asked for emails (kept only so the box is not shown twice) */
+  emailed?: boolean;
   /** The customer said they sent the transfer */
   sent?: boolean;
 }
@@ -111,6 +115,8 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     saved.current ? (saved.current.swapRequestId ? 'working' : saved.current.sent ? 'waiting' : 'pay') : 'amount'
   );
   const [showBank, setShowBank] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailState, setEmailState] = useState<'idle' | 'saving' | 'saved' | 'error'>(saved.current?.emailed ? 'saved' : 'idle');
   const [shareOk, setShareOk] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [order, setOrder] = useState<OnrampOrder | null>(saved.current?.order ?? null);
@@ -183,6 +189,8 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       try {
         const s = await fetchSwapStatus(requestId);
         if (s === 'success') {
+          const o = saved.current?.order;
+          if (o) void reportOnrampArrived(o.orderId, requestId).catch(() => undefined);
           save(null);
           await returnToCelo();
           setStep('done');
@@ -264,6 +272,52 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       setBusy(false);
     }
   };
+
+  const saveEmail = async () => {
+    if (!order || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setEmailState('error');
+      return;
+    }
+    setEmailState('saving');
+    try {
+      await saveOnrampEmail(order.orderId, email.trim(), formatNaira(Number(order.amountToTransfer)));
+      setEmailState('saved');
+      const next = { ...(saved.current ?? { order, wallet }), emailed: true };
+      saved.current = next;
+      save(next);
+    } catch {
+      setEmailState('error');
+    }
+  };
+
+  const emailBox = order ? (
+    emailState === 'saved' ? (
+      <div className="gc-note" style={{ background: '#8cf0c0' }}>
+        <b>We'll email you</b> when your money arrives, and again when your G$ is in your wallet.
+      </div>
+    ) : (
+      <div className="gc-note">
+        <b>Want an email when it's done?</b> We'll tell you when your money arrives and when your G$ is in your wallet. We use your email for nothing else.
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <input
+            className={INPUT}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            aria-label="Email me when it's done"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); if (emailState === 'error') setEmailState('idle'); }}
+            style={{ padding: '8px 12px' }}
+          />
+          <button type="button" className="gc-pill gc-hit" onClick={() => void saveEmail()} disabled={emailState === 'saving'}>
+            {emailState === 'saving' ? 'Saving…' : 'Email me'}
+          </button>
+        </div>
+        {emailState === 'error' && <div className="gc-sm" style={{ color: '#b00020', marginTop: 6 }}>Please enter a valid email address and try again.</div>}
+      </div>
+    )
+  ) : null;
 
   const copy = (key: string, text: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
@@ -426,6 +480,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
           {left ? <>Pay within <b>{left}</b>. </> : null}
           A different amount, or a payment from someone else's account, is sent back.
         </div>
+        {emailBox}
       </>
     );
     footer = primary("I've sent the money", () => { save({ order, wallet, sent: true }); saved.current = { order, wallet, sent: true }; setStep('waiting'); }, true);
@@ -454,6 +509,8 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
             {showBank ? 'Hide bank details' : 'Show bank details again'}
           </button>
         )}
+        <div className="gc-sm">You can close this. Your order is saved, so open Add G$ again any time to carry on.</div>
+        {stage !== 'review' && emailBox}
         {stage === 'waiting' && showBank && (
           <div className="gc-card gc-cost" style={{ padding: '8px 14px' }}>
             <div className="gc-row"><span>Bank</span><b>{order.bank.institution}</b></div>
@@ -464,7 +521,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
         )}
       </>
     );
-    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Close, we'll keep watching</button>;
+    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Close, I'll come back</button>;
   } else if (step === 'swap') {
     title = 'Your money is here';
     body = (
@@ -480,13 +537,13 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
   } else if (step === 'working') {
     title = 'Getting your G$';
     body = <div className="gc-note">Almost there. This takes about a minute. You can keep this open.</div>;
-    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Close (we keep watching)</button>;
+    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Close, I'll come back</button>;
   } else {
     title = 'All done';
     body = (
       <div className="gc-note" style={{ background: '#8cf0c0' }}>
         <b style={{ fontSize: 20 }}>Your G$ has arrived.</b>
-        <div className="gc-sm">It is in your wallet now. You can cash out any time.</div>
+        <div className="gc-sm">It is in your wallet now. You can cash out any time.{emailState === 'saved' ? " We've also sent you an email." : ''}</div>
       </div>
     );
     footer = primary('Done', finish, true);

@@ -1339,6 +1339,12 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const { id, status, paymentReference } = event.data ?? {};
   if (!id) return new Response('OK', { status: 200 }); // ignore malformed
 
+  // Naira-in order delivered: tell the customer even if the app is closed
+  if (status === 'settled' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
+    await maybeSendOnrampReady(id, env);
+    return new Response('OK', { status: 200 });
+  }
+
   // Naira-in order held for a compliance review: the status stays "pending", so remember it separately
   if (event.event === 'payment_order.compliance_hold' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
     await env.ORDER_STORE.put(`onramphold:${id}`, '1', { expirationTtl: 14 * 24 * 3600 });
@@ -2022,6 +2028,131 @@ export function onrampStage(status: string, held = false): 'waiting' | 'received
   }
 }
 
+// ---------------------------------------------------------------------------
+// Add G$ emails: "your money is ready" (naira arrived, tap to get G$) and "your G$ is in your wallet".
+// Kept apart from the cash-out email on purpose (different keys, different words).
+// ---------------------------------------------------------------------------
+
+function onrampEmailHtml(kind: 'ready' | 'arrived', orderId: string, naira: string | null): string {
+  const ref = orderId.slice(0, 8);
+  const headline = kind === 'ready' ? 'YOUR MONEY IS READY' : 'G$ ADDED';
+  const big = kind === 'ready' ? 'One last tap' : 'Your G$ is in your wallet';
+  const small =
+    kind === 'ready'
+      ? `${naira ? `Your ${naira} has arrived. ` : 'Your naira has arrived. '}Open GoodCash and tap <b>Get my G$</b> to finish. It costs you no fee.`
+      : 'It is in your wallet now. You can cash out any time.';
+  const button = kind === 'ready' ? 'Get my G$' : 'Open GoodCash';
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#cdb8ff;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#cdb8ff;padding:28px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;">
+<tr><td style="padding:0 4px 14px;font-family:Arial,Helvetica,sans-serif;font-size:24px;font-weight:900;color:#111;letter-spacing:-0.5px;"><img src="https://goodcash.xyz/email-logo.png" width="44" height="44" alt="" style="vertical-align:middle;border:0;margin-right:10px;">GoodCash</td></tr>
+<tr><td style="background:#ffffff;border:3px solid #111;border-radius:22px;box-shadow:5px 5px 0 #111;padding:26px 22px;text-align:center;font-family:Arial,Helvetica,sans-serif;color:#111;">
+<div style="display:inline-block;width:54px;height:54px;line-height:54px;border-radius:50%;background:#8cf0c0;border:3px solid #111;font-size:28px;font-weight:900;">&#10003;</div>
+<div style="font-size:12px;font-weight:800;letter-spacing:1.5px;margin-top:14px;">${headline}</div>
+<div style="font-size:30px;font-weight:900;line-height:1.15;margin:8px 0 10px;">${big}</div>
+<div style="font-size:15px;line-height:1.5;margin:0 0 20px;color:#333;">${small}</div>
+<a href="https://goodcash.xyz" style="display:inline-block;background:#7b39fc;color:#ffffff;text-decoration:none;font-weight:900;font-size:16px;padding:14px 26px;border:3px solid #111;border-radius:16px;box-shadow:3px 3px 0 #111;">${button}</a>
+</td></tr>
+<tr><td style="padding:16px 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#2b1d55;text-align:center;">
+Reference: ${ref}<br>Questions? Open GoodCash and choose Contact support.
+</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
+interface OnrampNotify {
+  email: string;
+  naira: string | null;
+  readySent?: boolean;
+}
+
+async function sendOnrampEmail(kind: 'ready' | 'arrived', orderId: string, to: OnrampNotify, env: Env): Promise<void> {
+  if (!env.RESEND_API_KEY) return;
+  const subject = kind === 'ready' ? 'Your money is ready. Tap to get your G$' : 'Your G$ is in your wallet';
+  const text =
+    kind === 'ready'
+      ? `${to.naira ? `Your ${to.naira} has arrived. ` : 'Your naira has arrived. '}Open GoodCash (https://goodcash.xyz) and tap "Get my G$" to finish. It costs you no fee.\n\nReference: ${orderId.slice(0, 8)}`
+      : `Your G$ is in your wallet now. You can cash out any time.\n\nReference: ${orderId.slice(0, 8)}`;
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: env.RESEND_FROM || 'GoodCash <onboarding@resend.dev>', to: [to.email], subject, html: onrampEmailHtml(kind, orderId, to.naira), text }),
+    });
+  } catch (e) {
+    console.error('[onramp-notify] email failed:', e);
+  }
+}
+
+/** Sends "your money is ready" once, the first time the naira order is seen as delivered. */
+async function maybeSendOnrampReady(orderId: string, env: Env): Promise<void> {
+  const raw = await env.ORDER_STORE.get(`onrampnotify:${orderId}`);
+  if (!raw) return;
+  const n = JSON.parse(raw) as OnrampNotify;
+  if (n.readySent) return;
+  // Mark first, so two quick checks can never send two emails
+  await env.ORDER_STORE.put(`onrampnotify:${orderId}`, JSON.stringify({ ...n, readySent: true }), { expirationTtl: 3 * 24 * 3600 });
+  await sendOnrampEmail('ready', orderId, n, env);
+}
+
+async function handleOnrampNotify(orderId: string, request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'onramp-notify', 'strict');
+  if (limited) return limited;
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return err('Invalid order', 400);
+  if (!(await env.ORDER_STORE.get(`onramp:${orderId}`))) return err('Order not found', 404);
+  let body: { email?: unknown; naira?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const email = typeof body.email === 'string' ? body.email.trim() : '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 200) return err('Enter a valid email address.', 400);
+  const naira = typeof body.naira === 'string' && /^₦[\d,]{1,12}$/.test(body.naira) ? body.naira : null;
+  await env.ORDER_STORE.put(`onrampnotify:${orderId}`, JSON.stringify({ email, naira } satisfies OnrampNotify), { expirationTtl: 3 * 24 * 3600 });
+  // If the naira already arrived, say so now
+  try {
+    const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${orderId}`, { headers: { 'API-Key': env.PAYCREST_API_KEY } });
+    if (res.ok) {
+      const o = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
+      if (onrampStage(String(o?.status ?? '')) === 'done') await maybeSendOnrampReady(orderId, env);
+    }
+  } catch {
+    // the next status check will send it
+  }
+  return new Response(null, { status: 204 });
+}
+
+const OnrampArrivedSchema = z.object({ requestId: z.string().regex(/^0x[0-9a-fA-F]{64}$/) });
+
+/** The app says the G$ swap finished; we check with the swap service ourselves before sending anything. */
+async function handleOnrampArrived(orderId: string, request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'onramp-notify', 'strict');
+  if (limited) return limited;
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return err('Invalid order', 400);
+  const raw = await env.ORDER_STORE.get(`onrampnotify:${orderId}`);
+  if (!raw) return new Response(null, { status: 204 });
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const parsed = OnrampArrivedSchema.safeParse(body);
+  if (!parsed.success) return err('Invalid request');
+  try {
+    const res = await fetch(`https://api.relay.link/intents/status/v3?requestId=${parsed.data.requestId}`, { headers: relayHeaders(env) });
+    const d = (await res.json()) as { status?: string };
+    if (!res.ok || d.status !== 'success') return err('Not finished yet', 409);
+  } catch {
+    return err('Could not check this right now.', 503);
+  }
+  const n = JSON.parse(raw) as OnrampNotify;
+  await env.ORDER_STORE.delete(`onrampnotify:${orderId}`); // forget first: one email only
+  await sendOnrampEmail('arrived', orderId, n, env);
+  return new Response(null, { status: 204 });
+}
+
 async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response> {
   if (!/^[0-9a-f-]{36}$/.test(orderId)) return err('Invalid order ID format', 400);
   const known = await env.ORDER_STORE.get(`onramp:${orderId}`);
@@ -2032,7 +2163,9 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
     const o = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
     const status = String(o?.status ?? 'initiated');
     const held = (await env.ORDER_STORE.get(`onramphold:${orderId}`)) !== null;
-    return json({ orderId, status, stage: onrampStage(status, held) });
+    const stage = onrampStage(status, held);
+    if (stage === 'done') await maybeSendOnrampReady(orderId, env);
+    return json({ orderId, status, stage });
   } catch {
     return err('Could not check this order right now.', 502);
   }
@@ -2129,12 +2262,18 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
 
   // Requests that carry free text can't be huge
-  if (m === 'POST' && ['/support', '/diag', '/notify'].includes(pathname)) {
+  if (m === 'POST' && (['/support', '/diag', '/notify'].includes(pathname) || /^\/onramp\/orders\/[^/]+\/(notify|arrived)$/i.test(pathname))) {
     if (Number(request.headers.get('Content-Length') ?? '0') > 16_384) return err('Request too large', 413);
   }
 
   // POST /onramp/orders - start a naira order; GET /onramp/orders/:id - follow it
   if (m === 'POST' && pathname === '/onramp/orders') return handleCreateOnrampOrder(request, env);
+  const onrampNotifyMatch = pathname.match(/^\/onramp\/orders\/([^/]+)\/(notify|arrived)$/i);
+  if (m === 'POST' && onrampNotifyMatch) {
+    return onrampNotifyMatch[2].toLowerCase() === 'notify'
+      ? handleOnrampNotify(onrampNotifyMatch[1], request, env)
+      : handleOnrampArrived(onrampNotifyMatch[1], request, env);
+  }
   const onrampMatch = pathname.match(/^\/onramp\/orders\/([^/]+)$/i);
   if (m === 'GET' && onrampMatch) {
     const limitedRead = await checkRateLimit(request, env, 'read', 'read');

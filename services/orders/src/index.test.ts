@@ -1487,6 +1487,71 @@ describe('Add G$ orders', () => {
     expect(onrampStage('refunded')).toBe('refund');
   });
 
+  describe('Add G$ emails', () => {
+    const REQ = '0x' + 'ab'.repeat(32);
+    const envWith = () => makeEnv(kv, { RESEND_API_KEY: 'resend-test' } as never);
+    const emails: Array<{ to: string[]; subject: string }> = [];
+    let relayStatus = 'success';
+    let paycrestStatus = 'initiated';
+    beforeEach(() => {
+      emails.length = 0;
+      relayStatus = 'success';
+      paycrestStatus = 'initiated';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init?: RequestInit) => {
+          const u = String(url);
+          if (u.includes('api.resend.com')) {
+            emails.push(JSON.parse(String(init?.body)));
+            return new Response('{}', { status: 200 });
+          }
+          if (u.includes('intents/status')) return new Response(JSON.stringify({ status: relayStatus }));
+          if (u.includes('/v2/sender/orders') && init?.method === 'POST') {
+            return new Response(JSON.stringify({ data: { id: ID, status: 'initiated', providerAccount: { institution: 'B', accountIdentifier: '9990001111', accountName: 'P', amountToTransfer: '5000', validUntil: '2026-11-08T22:00:00Z' } } }), { status: 201 });
+          }
+          return new Response(JSON.stringify({ data: { id: ID, status: paycrestStatus } }));
+        })
+      );
+    });
+
+    it('E1. "Money ready" email goes out once, only when the naira order is delivered; never the cash-out email', async () => {
+      const env = envWith();
+      await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), env);
+      expect((await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/notify`, { email: 'me@example.com', naira: '₦5,000' }), env)).status).toBe(204);
+      paycrestStatus = 'pending'; // matched, still waiting for the transfer
+      await worker.fetch(makeRequest('GET', `/onramp/orders/${ID}`), env);
+      expect(emails).toHaveLength(0);
+      paycrestStatus = 'settled';
+      await worker.fetch(makeRequest('GET', `/onramp/orders/${ID}`), env);
+      await worker.fetch(makeRequest('GET', `/onramp/orders/${ID}`), env);
+      expect(emails).toHaveLength(1);
+      expect(emails[0].to).toEqual(['me@example.com']);
+      expect(emails[0].subject).toMatch(/ready/i);
+      expect(emails[0].subject).not.toMatch(/cash out|bank/i);
+    });
+
+    it('E2. "G$ added" email only after the swap service confirms, and only once', async () => {
+      const env = envWith();
+      await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), env);
+      await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/notify`, { email: 'me@example.com' }), env);
+      relayStatus = 'pending';
+      expect((await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/arrived`, { requestId: REQ }), env)).status).toBe(409);
+      expect(emails).toHaveLength(0);
+      relayStatus = 'success';
+      expect((await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/arrived`, { requestId: REQ }), env)).status).toBe(204);
+      await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/arrived`, { requestId: REQ }), env);
+      expect(emails).toHaveLength(1);
+      expect(emails[0].subject).toMatch(/in your wallet/i);
+    });
+
+    it('E3. Refuses bad emails and unknown orders', async () => {
+      const env = envWith();
+      expect((await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/notify`, { email: 'x@example.com' }), env)).status).toBe(404);
+      await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), env);
+      expect((await worker.fetch(makeRequest('POST', `/onramp/orders/${ID}/notify`, { email: 'nope' }), env)).status).toBe(400);
+    });
+  });
+
   it('A4. Never prints the customer details when the partner refuses', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"message":"bad BVN 22212345678","field":"Source"}', { status: 400 })));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});

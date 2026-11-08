@@ -63,6 +63,14 @@ export const fetchOnrampQuote = (naira: number, wallet?: string) =>
 export const createOnrampOrder = (input: OnrampInput) =>
   api<OnrampOrder>('/onramp/orders', { method: 'POST', body: JSON.stringify(input) });
 
+/** Ask to be emailed when the naira arrives and when the G$ lands. The email is only used for those two messages. */
+export const saveOnrampEmail = (orderId: string, email: string, naira: string) =>
+  api<unknown>(`/onramp/orders/${orderId}/notify`, { method: 'POST', body: JSON.stringify({ email, naira }) });
+
+/** Tell the server the swap finished; it checks for itself before it sends the "G$ added" email. */
+export const reportOnrampArrived = (orderId: string, requestId: string) =>
+  api<unknown>(`/onramp/orders/${orderId}/arrived`, { method: 'POST', body: JSON.stringify({ requestId }) });
+
 export const fetchOnrampStatus = (orderId: string) =>
   api<{ orderId: string; status: string; stage: OnrampStage }>(`/onramp/orders/${orderId}`);
 
