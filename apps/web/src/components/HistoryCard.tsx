@@ -118,7 +118,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
     <>
       {/* Header & Filter Pills Row — sits directly on page background */}
       <div className="flex justify-between items-center gap-2">
-        <span className="text-xl font-bold text-[color:var(--gc-ink)]">{t.navHistory}</span>
+        <span className="text-xl font-bold text-[#111]">{t.navHistory}</span>
         <div className="flex gap-1.5">
           <button
             type="button"
@@ -146,8 +146,8 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
 
       {/* History List */}
       {filteredHistory.length === 0 ? (
-        <div className="border border-dashed border-[color:var(--gc-line-strong)] rounded-2xl p-6 text-left">
-          <div className="text-xs font-semibold text-[color:var(--gc-ink)]">
+        <div className="border-[2.5px] border-dashed border-[#111] rounded-2xl p-6 text-left">
+          <div className="text-xs font-semibold text-[#111]">
             {t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.'}
           </div>
         </div>
@@ -176,7 +176,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                 {/* Top Row: Conversion text left, Status pill right */}
                 <div className="flex justify-between items-start gap-2">
                   <div>
-                    <div className="gc-big gc-big--history text-[color:var(--gc-ink)]">
+                    <div className="gc-big gc-big--history text-[#111]">
                       {item.amountInG.toLocaleString()} G$ →{' '}
                       {Number.isFinite(estimatedNaira) && estimatedNaira !== null
                         ? formatNaira(estimatedNaira)
@@ -199,7 +199,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="text-xs font-mono text-[color:var(--gc-ink)] mt-8 gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+                  className="text-xs font-mono text-[#111] mt-8 gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
                 >
                   {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
                 </a>

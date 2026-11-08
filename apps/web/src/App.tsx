@@ -1207,7 +1207,7 @@ export function App({
             setCurrentTab('cashout');
             setMobileView(trackerData ? 'processing' : 'finish');
           }}
-          style={{ background: 'var(--gc-warn-bg)', textAlign: 'left', cursor: 'pointer' }}
+          style={{ background: '#ffd23f', textAlign: 'left', cursor: 'pointer' }}
         >
           <b>You have an unfinished cash out.</b> Tap to finish getting your naira.
         </button>
@@ -1258,7 +1258,7 @@ export function App({
           role="status"
           className="gc-note fixed left-1/2 z-[200] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
           onClick={() => setOkNotice(null)}
-          style={{ background: 'var(--gc-ok-bg)', cursor: 'pointer', fontWeight: 800 }}
+          style={{ background: '#8cf0c0', cursor: 'pointer', fontWeight: 800 }}
         >
           ✓ {okNotice}
         </div>
@@ -1269,7 +1269,7 @@ export function App({
           role="alert"
           className="gc-note fixed left-1/2 z-[200] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
           onClick={() => setWalletMessage(null)}
-          style={{ background: 'var(--gc-danger-bg)', cursor: 'pointer' }}
+          style={{ background: '#ff9b9b', cursor: 'pointer' }}
         >
           {walletMessage}
         </div>
@@ -1296,7 +1296,7 @@ export function App({
           <SafetyBanner language={language} />
         </div>
 
-        <div className="gc-col pb-24 min-[900px]:pb-0">
+        <div className="gc-col pb-24">
           {currentTab === 'home' ? (
             <ReadinessCard
               balanceG={balanceG}
@@ -1431,7 +1431,7 @@ export function App({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="gc-inter"
-                    style={{ color: 'var(--gc-pu-text)', textDecoration: 'underline' }}
+                    style={{ color: '#111', textDecoration: 'underline' }}
                   >
                     Contract 0xA433…c407 ↗
                   </a>
@@ -1444,13 +1444,13 @@ export function App({
             <>
               <div className="gc-card">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold uppercase text-[color:var(--gc-ink)]">WHAT YOU'LL PAY</h3>
+                  <h3 className="font-bold uppercase text-[#111]">WHAT YOU'LL PAY</h3>
                 </div>
-                <div className="gc-row border-b-2 border-solid border-[color:var(--gc-line)] pt-3 pb-3">
+                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
                   <span>GoodDollar contribution (10%)</span>
-                  <span className="bg-[color:var(--gc-warn-bg)] px-2 py-0.5 rounded text-[color:var(--gc-ink)] font-medium">−100 G$</span>
+                  <span className="bg-[#ffd23f] px-2 py-0.5 rounded text-[#111] font-medium">−100 G$</span>
                 </div>
-                <div className="gc-row border-b-2 border-solid border-[color:var(--gc-line)] pt-3 pb-3">
+                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
                   <span>Network fee</span>
                   <span>under $0.001</span>
                 </div>
@@ -1556,7 +1556,7 @@ export function App({
                 font: '800 13px Inter',
                 cursor: 'pointer',
                 padding: '2px 6px',
-                color: 'var(--gc-mute)',
+                color: '#111',
                 flex: 'none',
               }}
             >
@@ -1594,46 +1594,46 @@ export function App({
         />
       )}
 
-      <footer className="mt-auto flex justify-between items-center w-full bg-transparent border-t border-[color:var(--gc-line)] px-8 py-4 text-xs">
-        <span className="font-bold text-[color:var(--gc-ink)]">{t.footerText}</span>
+      <footer className="mt-auto flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4 text-xs">
+        <span className="font-bold text-[#111]">{t.footerText}</span>
         <div className="flex items-center gap-4">
           <a
             href={BLOCKSCOUT_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold"
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
           >
             {t.contractLinkText}
           </a>
-          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
+          <span className="text-[#111] font-bold">·</span>
           <a
             href="https://gooddollar.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold"
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
           >
             {t.goodDollarLinkText}
           </a>
-          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
+          <span className="text-[#111] font-bold">·</span>
           <a
             href="https://paycrest.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold"
+            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
           >
             {t.paycrestLinkText}
           </a>
-          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
-          <a href="/about" target="_blank" rel="noopener noreferrer" className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold">About</a>
-          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold">Privacy</a>
-          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
-          <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold">Terms</a>
-          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
+          <span className="text-[#111] font-bold">·</span>
+          <a href="/about" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">About</a>
+                <span className="gc-logo text-[#111]">GoodCash</span>
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">Privacy</a>
+          <span className="text-[#111] font-bold">·</span>
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">Terms</a>
+          <span className="text-[#111] font-bold">·</span>
           <button
             type="button"
             onClick={() => setShowPrivacy((v) => !v)}
-            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] font-bold bg-transparent border-none p-0 cursor-pointer"
+            className="text-[#111] hover:text-[#111]/80 font-bold bg-transparent border-none p-0 cursor-pointer"
           >
             {t.privacyLinkText}
           </button>
@@ -1643,7 +1643,7 @@ export function App({
       </div>
 
       {/* ── Mobile Shell ── */}
-      <div className="gc--mobile-shell md:!hidden w-full bg-[color:var(--gc-bg)] relative">
+      <div className="gc--mobile-shell md:!hidden w-full bg-[#d4c5fb] relative">
         {/* Debug Panel - Only visible in development */}
         {isDemoMode && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug') && (
           <div className="fixed bottom-24 right-2 z-[100] bg-black/80 text-white p-2 rounded-lg text-xs">
@@ -1832,12 +1832,12 @@ export function App({
             {/* Mobile Header */}
             <div className="gc-top">
               <div className="flex items-center gap-2">
-                <span className="gc-logo text-[color:var(--gc-ink)]">GoodCash</span>
+                <span className="gc-logo text-[#111]">GoodCash</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="gc-chip text-[color:var(--gc-ink)]"
+                  className="gc-chip text-[#111]"
                   onClick={walletAddress ? () => setWalletSheetOpen(true) : handleConnectWallet}
                 >
                   {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) + ' ▾' : 'Connect wallet'}

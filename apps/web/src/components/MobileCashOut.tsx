@@ -66,7 +66,7 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
   const canReview = amountG > 0 && amountG <= maxG && !belowMinimum;
 
   return (
-    <div className="gc--mobile-shell fixed inset-0 bg-[color:var(--gc-bg)] z-40 overflow-y-auto">
+    <div className="gc--mobile-shell fixed inset-0 bg-[#d4c5fb] z-40 overflow-y-auto">
       {/* Header */}
       <header className="gc-top relative">
         <button
@@ -77,7 +77,7 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
         >
           ✕
         </button>
-        <span className="gc-title absolute left-1/2 -translate-x-1/2 text-[color:var(--gc-ink)]">
+        <span className="gc-title absolute left-1/2 -translate-x-1/2 text-[#111]">
           Cash out
         </span>
         <div className="w-10" />
@@ -110,7 +110,7 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
       <p
         className="gc-sm"
         role={belowMinimum ? 'alert' : undefined}
-        style={{ margin: '0 4px', textAlign: 'center', fontWeight: 800, color: belowMinimum ? 'var(--gc-danger)' : 'var(--gc-mute)' }}
+        style={{ margin: '0 4px', textAlign: 'center', fontWeight: 800, color: belowMinimum ? '#b00020' : '#333' }}
       >
         {belowMinimum
           ? `Minimum cash out is ${minG.toLocaleString()} G$. Enter a bit more to continue.`
@@ -155,7 +155,8 @@ export const MobileCashOut: React.FC<MobileCashOutProps> = ({
           type="button"
           disabled={!canReview}
           onClick={() => onReview(amountG, nairaEstimate, usdtEstimate)}
-          className={`gc-btn ${canReview ? '' : 'gc-btn--dis'}`}
+          className="gc-btn"
+          style={{ background: canReview ? '#7b39fc' : '#b9a6e6' }}
         >
           Review
         </button>

@@ -39,7 +39,7 @@ export const MobileProcessingView: React.FC<MobileProcessingViewProps> = ({
 
         <div>
           <div className="gc-title gc-title--status">On its way</div>
-          <p className="gc-sm" style={{ color: 'var(--gc-mute)', margin: '2px 0 0' }}>
+          <p className="gc-sm" style={{ color: '#333', margin: '2px 0 0' }}>
             We&rsquo;ll update this page as each step finishes.
           </p>
         </div>

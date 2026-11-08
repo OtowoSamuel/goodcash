@@ -11,9 +11,9 @@
 :root {
   font-family: 'Inter', sans-serif;
   color-scheme: dark;
-  background: #0b0b10;
+  background: #0F0A1C;
   color: #ffffff;
-  --canvas: #0b0b10;
+  --canvas: #0F0A1C;
   --surface: #1B122E;
   --surface-strong: #120D1D;
   --border: #2D204A;
@@ -90,78 +90,50 @@ button {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   GOODCASH DESIGN SYSTEM — dark, quiet, structured. Scoped under .gc
-
-   Principles
-   • One neutral base. Purple is the only accent: primary button, links, the current step.
-   • Hairline borders (1px, low contrast) instead of heavy outlines. No hard shadows.
-   • Related things share ONE panel and are separated by thin lines, not floating as separate boxes.
-   • Numbers are the hero: tabular figures, tight tracking. Labels are quiet sentence-case text.
-   • Colour carries meaning only: green = done, amber = waiting or caution, red = problem.
-   Class names are unchanged from the earlier system, so every screen picks this up.
+   STICKER POP DESIGN SYSTEM — scoped under .gc
+   All values are verbatim from the design HTML files.
    ═══════════════════════════════════════════════════════════════ */
 
 .gc {
-  /* Surfaces */
-  --gc-bg: #0b0b10;
-  --gc-surface: #111118;
-  --gc-surface-2: #17171f;
-  --gc-surface-3: #1f1f2a;
-  --gc-line: rgba(255, 255, 255, 0.08);
-  --gc-line-strong: rgba(255, 255, 255, 0.16);
+  /* Colour tokens */
+  --gc-bg:   #cdb8ff;
+  --gc-card: #fff;
+  --gc-ink:  #111;
+  --gc-pu:   #7b39fc;
+  --gc-ye:   #ffd23f;
+  --gc-mi:   #8cf0c0;
+  --gc-pill-default: #ede6ff;
+  --gc-dis-bg:   #e9e3f7;
+  --gc-dis-txt:  #6b5f8a;
+  --gc-dash-div: #cfc3ee;
 
-  /* Text */
-  --gc-ink: #ececf2;
-  --gc-mute: #9b9bad;
-  --gc-faint: #6c6c7e;
-
-  /* Accent (brand purple) */
-  --gc-pu: #7b39fc;
-  --gc-pu-hover: #8f58ff;
-  --gc-pu-soft: rgba(123, 57, 252, 0.16);
-  --gc-pu-text: #b79bff;
-
-  /* Meaning */
-  --gc-ok: #4ade80;
-  --gc-ok-bg: rgba(74, 222, 128, 0.1);
-  --gc-ok-line: rgba(74, 222, 128, 0.28);
-  --gc-warn: #fbbf24;
-  --gc-warn-bg: rgba(251, 191, 36, 0.1);
-  --gc-warn-line: rgba(251, 191, 36, 0.28);
-  --gc-danger: #f87171;
-  --gc-danger-bg: rgba(248, 113, 113, 0.1);
-  --gc-danger-line: rgba(248, 113, 113, 0.3);
-
-  /* Names kept for older inline styles */
-  --gc-card: var(--gc-surface);
-  --gc-ye: var(--gc-warn);
-  --gc-mi: var(--gc-ok);
-  --gc-pill-default: var(--gc-surface-3);
-  --gc-dis-bg: var(--gc-surface-2);
-  --gc-dis-txt: var(--gc-faint);
-  --gc-dash-div: var(--gc-line);
-
+  /* Layout & typography verbatim from design */
   background: var(--gc-bg);
-  color: var(--gc-ink);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #111;
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.5;
-  letter-spacing: -0.005em;
   min-height: 100dvh;
+  /* Respect safe-area insets */
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  -webkit-font-smoothing: antialiased;
 }
 
-.gc-inter { font-family: Inter, system-ui, sans-serif; }
+/* Inter font helper for receipts and address text per design */
+.gc-inter {
+  font-family: Inter, system-ui, sans-serif;
+}
 
+/* Focus ring — outline only, no border-radius modification */
 .gc *:focus-visible {
-  outline: 2px solid var(--gc-pu-text);
+  outline: 3px solid #111;
   outline-offset: 2px;
 }
 
-/* Tappable hit area helper for small controls (≥ 44×44) */
-.gc-hit { position: relative; }
+/* Tappable hit area helper for small controls: drawn size remains designed, tappable area ≥ 44×44 */
+.gc-hit {
+  position: relative;
+}
 .gc-hit::after {
   content: '';
   position: absolute;
@@ -173,469 +145,558 @@ button {
 }
 
 /* ── Top row ─────────────────────────────────────────────────── */
-.gc-top { display: flex; justify-content: space-between; align-items: center; }
+.gc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
 /* ── Logo ────────────────────────────────────────────────────── */
-.gc-logo { font: 700 19px/1 'Inter', sans-serif; letter-spacing: -0.03em; color: var(--gc-ink); }
-@media (min-width: 900px) { .gc-logo { font-size: 20px; } }
+.gc-logo {
+  font: 800 20px 'Bricolage Grotesque';
+}
+
+@media (min-width: 900px) {
+  .gc-logo { font: 800 22px 'Bricolage Grotesque'; }
+}
 
 /* ── Wallet chip ─────────────────────────────────────────────── */
 .gc-chip {
-  font: 500 12.5px 'Inter', sans-serif;
-  color: var(--gc-ink);
-  background: var(--gc-surface-2);
-  border: 1px solid var(--gc-line-strong);
-  border-radius: 10px;
-  padding: 6px 12px;
-  transition: background 0.15s, border-color 0.15s;
+  font: 600 11px Inter;
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 99px;
+  padding: 4px 10px;
+  box-shadow: 3px 3px 0 #111;
 }
-.gc-chip:hover { background: var(--gc-surface-3); }
+
+@media (min-width: 900px) {
+  .gc-chip {
+    font: 600 12px Inter;
+    padding: 5px 12px;
+  }
+}
 
 /* ── Back / close button ─────────────────────────────────────── */
 .gc-back {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
-  background: var(--gc-surface-2);
-  color: var(--gc-ink);
-  border: 1px solid var(--gc-line);
+  border-radius: 12px;
+  background: #fff;
+  border: 2.5px solid #111;
+  box-shadow: 3px 3px 0 #111;
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 500 16px Inter;
+  font: 800 16px Inter;
   padding: 0;
   cursor: pointer;
-  transition: background 0.15s;
 }
-.gc-back:hover { background: var(--gc-surface-3); }
 
-/* ── Titles ──────────────────────────────────────────────────── */
-.gc-title { font: 600 19px 'Inter', sans-serif; letter-spacing: -0.02em; }
-.gc-title--status { font: 600 26px 'Inter', sans-serif; letter-spacing: -0.03em; }
+/* ── Screen title ────────────────────────────────────────────── */
+.gc-title {
+  font: 800 20px 'Bricolage Grotesque';
+}
+
+/* Status headline */
+.gc-title--status {
+  font: 800 26px 'Bricolage Grotesque';
+}
 
 /* ── Card ────────────────────────────────────────────────────── */
 .gc-card {
-  background: var(--gc-surface);
-  border: 1px solid var(--gc-line);
-  border-radius: 14px;
-  padding: 16px 18px;
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 18px;
+  box-shadow: 5px 5px 0 #111;
+  padding: 12px 14px;
   position: relative;
 }
-.gc-card--mint, .gc-card--yellow, .gc-card--ye { background: var(--gc-surface); }
-.gc-card--mint { border-color: var(--gc-ok-line); background: var(--gc-ok-bg); }
-.gc-card--yellow, .gc-card--ye { border-color: var(--gc-warn-line); background: var(--gc-warn-bg); }
-.gc-card--dashed { border-style: dashed; border-color: var(--gc-line-strong); background: transparent; }
 
-/* ── Label: quiet, sentence case. No shouting eyebrow. ───────── */
+@media (min-width: 900px) {
+  .gc-card { padding: 14px 18px; }
+}
+
+/* Mint card */
+.gc-card--mint {
+  background: var(--gc-mi);
+}
+
+/* Yellow card */
+.gc-card--yellow {
+  background: var(--gc-ye);
+}
+
+.gc-card--ye {
+  background: var(--gc-ye);
+}
+
+/* Dashed / empty-state card */
+.gc-card--dashed {
+  border-style: dashed;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* ── Label ───────────────────────────────────────────────────── */
 .gc-lab {
-  font: 500 13px 'Inter', sans-serif;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--gc-mute);
+  font: 700 10.5px 'Bricolage Grotesque';
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }
 
-/* ── Big numbers: tabular, tight ─────────────────────────────── */
-.gc-big {
-  font: 600 40px/1.05 'Inter', sans-serif;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1, 'cv11' 1;
-  margin-top: 4px;
-  color: var(--gc-ink);
+@media (min-width: 900px) {
+  .gc-lab { font: 700 11px 'Bricolage Grotesque'; }
 }
-@media (min-width: 900px) { .gc-big--home-desktop { font-size: 48px; } }
-.gc-big--success { font-size: 40px; }
-.gc-big--history { font-size: 24px; }
+
+/* ── Big number ──────────────────────────────────────────────── */
+.gc-big {
+  font: 800 42px/1 'Bricolage Grotesque';
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+@media (min-width: 900px) {
+  .gc-big { font: 800 44px/1 'Bricolage Grotesque'; }
+}
+
+/* Home balance on desktop: 52px (no mobile override) */
+@media (min-width: 900px) {
+  .gc-big--home-desktop { font-size: 52px; }
+}
+
+/* Success / completed: 38px */
+.gc-big--success {
+  font-size: 38px;
+}
+
+/* History order card: 26px */
+.gc-big--history {
+  font-size: 26px;
+}
 
 /* ── Small text ──────────────────────────────────────────────── */
-.gc-sm { font-size: 13.5px; font-weight: 400; color: var(--gc-mute); line-height: 1.5; }
-.gc-sm b, .gc-sm strong { color: var(--gc-ink); font-weight: 500; }
+.gc-sm {
+  font-size: 12.5px;
+  font-weight: 600;
+}
 
-.gc-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+@media (min-width: 900px) {
+  .gc-sm { font-size: 13px; }
+}
 
-/* ── Tags / status (soft, borderless) ────────────────────────── */
+/* ── Row (flex space-between) ────────────────────────────────── */
+.gc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Pill ────────────────────────────────────────────────────── */
 .gc-pill {
-  font: 500 12.5px 'Inter', sans-serif;
-  color: var(--gc-mute);
-  background: var(--gc-surface-3);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 4px 10px;
+  font: 800 12px 'Bricolage Grotesque';
+  background: var(--gc-pill-default);
+  border: 2px solid #111;
+  border-radius: 99px;
+  padding: 3px 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  transition: background 0.15s, color 0.15s;
-}
-button.gc-pill, a.gc-pill { cursor: pointer; }
-button.gc-pill:hover { color: var(--gc-ink); }
-.gc-pill--yellow { color: var(--gc-warn); background: var(--gc-warn-bg); }
-.gc-pill--mint { color: var(--gc-ok); background: var(--gc-ok-bg); }
-.gc-pill--white { color: var(--gc-ink); background: var(--gc-surface-3); }
-.gc-pill--on { color: #fff; background: var(--gc-pu); }
-/* a small status dot in front of coloured tags */
-.gc-pill--yellow::before, .gc-pill--mint::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
 }
 
-/* amounts inside cost lists are not statuses, so no dot */
-.gc-cost .gc-pill::before { display: none; }
+@media (min-width: 900px) {
+  .gc-pill { padding: 3px 10px; }
+}
 
-/* ── Segment control (the 25% / 50% / 75% / Max picker) ──────── */
+/* Pill variants */
+.gc-pill--yellow { background: var(--gc-ye); }
+.gc-pill--white  { background: #fff; }
+.gc-pill--mint   { background: var(--gc-mi); }
+.gc-pill--on     { background: var(--gc-pu); color: #fff; }
+
+/* ── Chips row ───────────────────────────────────────────────── */
 .gc-chips {
-  display: inline-flex;
-  gap: 2px;
-  margin-top: 10px;
-  padding: 3px;
-  background: var(--gc-surface-2);
-  border: 1px solid var(--gc-line);
-  border-radius: 10px;
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
 }
-.gc-chips .gc-pill {
-  background: transparent;
-  border-radius: 7px;
-  padding: 5px 12px;
-  color: var(--gc-mute);
-}
-.gc-chips .gc-pill:hover { color: var(--gc-ink); }
-.gc-chips .gc-pill--on { background: var(--gc-surface-3); color: var(--gc-ink); box-shadow: 0 0 0 1px var(--gc-line-strong) inset; }
 
 /* ── Button ──────────────────────────────────────────────────── */
 .gc-btn {
-  height: 48px;
+  height: 52px;
   flex: none;
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--gc-pu);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font: 600 15px 'Inter', sans-serif;
-  letter-spacing: -0.01em;
+  border: 2.5px solid #111;
+  box-shadow: 5px 5px 0 #111;
+  font: 800 15px 'Bricolage Grotesque';
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   cursor: pointer;
-  transition: background 0.15s, transform 0.05s;
 }
-.gc-btn:hover:not(:disabled) { background: var(--gc-pu-hover); }
-.gc-btn:active:not(:disabled) { transform: translateY(1px); }
-@media (min-width: 900px) { .gc-btn { height: 50px; } }
 
-.gc-btn--dis, .gc-btn--dis:hover {
-  background: var(--gc-surface-2);
-  color: var(--gc-faint);
-  border-color: var(--gc-line);
+@media (min-width: 900px) {
+  .gc-btn {
+    height: 54px;
+    font: 800 16px 'Bricolage Grotesque';
+  }
+}
+
+/* Disabled / "opens at" state */
+.gc-btn--dis {
+  background: var(--gc-dis-bg);
+  color: var(--gc-dis-txt);
+  box-shadow: none;
   cursor: not-allowed;
 }
-.gc-btn--white, .gc-btn--white:hover:not(:disabled) {
-  background: var(--gc-surface-2);
-  color: var(--gc-ink);
-  border: 1px solid var(--gc-line-strong);
+
+/* White button */
+.gc-btn--white {
+  background: #fff;
+  color: #111;
 }
-.gc-btn--white:hover:not(:disabled) { background: var(--gc-surface-3); }
 
 /* ── Cost rows ───────────────────────────────────────────────── */
 .gc-cost .gc-row {
-  padding: 9px 0;
-  font-size: 13.5px;
-  font-weight: 400;
-  color: var(--gc-mute);
-  border-bottom: 1px solid var(--gc-line);
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 2px dashed #cfc3ee;
 }
-.gc-cost .gc-row > span:last-child { color: var(--gc-ink); font-variant-numeric: tabular-nums; }
-.gc-cost .gc-row:last-child { border-bottom: 0; }
 
-.gc-mark { background: var(--gc-warn-bg); color: var(--gc-warn); padding: 1px 6px; border-radius: 6px; }
+@media (min-width: 900px) {
+  .gc-cost .gc-row {
+    padding: 7px 0;
+    font-size: 13px;
+  }
+}
 
-/* ── Progress bar: slim ──────────────────────────────────────── */
+.gc-cost .gc-row:last-child {
+  border-bottom: 0;
+}
+
+/* Yellow mark (cost highlight) */
+.gc-mark {
+  background: var(--gc-ye);
+  padding: 0 4px;
+  border-radius: 5px;
+}
+
+/* ── Progress bar ────────────────────────────────────────────── */
 .gc-bar {
-  height: 6px;
-  border: 0;
+  height: 18px;
+  border: 2.5px solid #111;
   border-radius: 99px;
-  background: var(--gc-surface-3);
+  background: #fff;
   overflow: hidden;
-  margin: 12px 0 8px;
+  margin: 9px 0 5px;
 }
-.gc-bar__fill { display: block; height: 100%; background: var(--gc-pu); border-radius: 99px; transition: width 0.3s ease; }
 
-/* ── G$ badge (quiet) ────────────────────────────────────────── */
+@media (min-width: 900px) {
+  .gc-bar {
+    height: 20px;
+    margin: 10px 0 6px;
+  }
+}
+
+.gc-bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--gc-pu);
+  transition: width 0.3s ease;
+}
+
+/* ── Coin (G$ badge) ─────────────────────────────────────────── */
 .gc-coin {
   position: absolute;
-  right: 16px;
-  top: 16px;
-  width: 30px;
-  height: 30px;
+  right: 12px;
+  top: 12px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
-  background: var(--gc-surface-3);
-  color: var(--gc-warn);
-  border: 1px solid var(--gc-line-strong);
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 600 11px 'Inter', sans-serif;
+  font: 800 13px 'Bricolage Grotesque';
+  transform: rotate(12deg);
+  box-shadow: 2px 2px 0 #111;
   pointer-events: none;
 }
 
-/* ── Percent tag in a card corner (quiet text, no sticker) ───── */
+@media (min-width: 900px) {
+  .gc-coin {
+    right: 16px;
+    top: 14px;
+    width: 46px;
+    height: 46px;
+    font: 800 14px 'Bricolage Grotesque';
+  }
+}
+
+/* ── Sticker (percent badge) ─────────────────────────────────── */
 .gc-sticker {
   position: absolute;
-  right: 18px;
-  bottom: 14px;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  font: 500 12.5px 'Inter', sans-serif;
-  color: var(--gc-faint);
-  font-variant-numeric: tabular-nums;
+  right: -5px;
+  bottom: -11px;
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font: 800 12px 'Bricolage Grotesque';
+  transform: rotate(-5deg);
   pointer-events: none;
 }
 
-.gc-sp { flex: 1; }
+@media (min-width: 900px) {
+  .gc-sticker {
+    right: -6px;
+    bottom: -12px;
+    padding: 1px 9px;
+    font: 800 13px 'Bricolage Grotesque';
+  }
+}
 
-/* ── Bottom nav (mobile): a quiet bar, not a pill ───────────── */
+/* ── Spacer ──────────────────────────────────────────────────── */
+.gc-sp {
+  flex: 1;
+}
+
+/* ── Bottom pill nav (mobile only) ──────────────────────────── */
 .gc-nav {
   display: flex;
-  gap: 0;
-  background: rgba(11, 11, 16, 0.92);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid var(--gc-line);
-  padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px));
+  gap: 6px;
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 16px;
+  padding: 4px;
   flex: none;
 }
+
 .gc-nav__item {
   flex: 1;
   text-align: center;
-  font: 500 12.5px 'Inter', sans-serif;
-  padding: 10px 0;
+  font: 800 11px 'Bricolage Grotesque';
+  padding: 6px 0;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   border: none;
   background: transparent;
-  color: var(--gc-faint);
-  position: relative;
-  transition: color 0.15s;
-}
-.gc-nav__item--on { color: var(--gc-ink); }
-.gc-nav__item--on::before {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: 28%;
-  right: 28%;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--gc-pu);
+  color: #111;
 }
 
-/* ── Desktop top bar: transparent, hairline underneath ───────── */
+.gc-nav__item--on {
+  background: var(--gc-pu);
+  color: #fff;
+}
+
+/* ── Desktop top bar ─────────────────────────────────────────── */
 .gc-bar-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 58px;
-  padding: 0 32px;
-  border-bottom: 1px solid var(--gc-line);
-  background: rgba(11, 11, 16, 0.85);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  padding: 14px 28px;
+  border-bottom: 2.5px solid #111;
+  background: #fff;
 }
-.gc-nav-desktop { display: flex; gap: 4px; align-self: stretch; }
-.gc-nav-desktop__item {
-  font: 500 14px 'Inter', sans-serif;
-  padding: 0 14px;
-  height: 100%;
+
+/* Desktop centre nav */
+.gc-nav-desktop {
   display: flex;
-  align-items: center;
-  border: 0;
-  border-radius: 0;
+  gap: 6px;
+}
+
+.gc-nav-desktop__item {
+  font: 800 13px 'Bricolage Grotesque';
+  padding: 7px 16px;
+  border-radius: 99px;
+  border: 2px solid transparent;
   cursor: pointer;
   background: transparent;
-  color: var(--gc-mute);
-  transition: color 0.15s;
+  color: #111;
 }
-.gc-nav-desktop__item:hover { color: var(--gc-ink); }
-.gc-nav-desktop__item--on { color: var(--gc-ink); box-shadow: inset 0 -2px 0 var(--gc-pu); }
 
-/* ── Layout ──────────────────────────────────────────────────── */
+.gc-nav-desktop__item--on {
+  background: var(--gc-pu);
+  color: #fff;
+  border-color: #111;
+}
+
+/* ── Responsive layout ───────────────────────────────────────── */
 .gc-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 16px 12px;
+  gap: 10px;
+  padding: 14px 14px 12px;
 }
+
 .gc-col {
   width: 100%;
-  max-width: 440px;
+  max-width: 420px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
-.gc-side { display: none; width: 340px; flex-direction: column; gap: 12px; }
 
 @media (min-width: 900px) {
   .gc-main {
     flex-direction: row;
     justify-content: center;
-    align-items: flex-start;
-    gap: 24px;
-    padding: 48px 32px 64px;
-    max-width: 1000px;
-    margin: 0 auto;
-    width: 100%;
+    gap: 28px;
+    padding: 24px 28px 0;
   }
-  .gc-col { width: 480px; max-width: 480px; margin: 0; gap: 0; }
-  .gc-side { display: flex; gap: 0; }
-
-  /* Related blocks live in ONE panel, separated by hairlines, instead of floating as separate boxes */
-  .gc-col,
-  .gc-side {
-    background: var(--gc-surface);
-    border: 1px solid var(--gc-line);
-    border-radius: 16px;
-    overflow: hidden;
+  .gc-col {
+    width: 420px;
+    margin: 0;
+    gap: 12px;
   }
-  .gc-col > .gc-card:not(.gc-card--mint):not(.gc-card--yellow):not(.gc-card--ye):not(.gc-card--dashed),
-  .gc-side > .gc-card:not(.gc-card--mint):not(.gc-card--yellow):not(.gc-card--ye):not(.gc-card--dashed) {
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    border-bottom: 1px solid var(--gc-line);
-    padding: 20px 24px;
-  }
-  .gc-col > .gc-card:last-child,
-  .gc-side > .gc-card:last-child { border-bottom: 0; }
-  .gc-col > .gc-card--mint, .gc-col > .gc-card--yellow, .gc-col > .gc-card--ye, .gc-col > .gc-card--dashed,
-  .gc-side > .gc-card--mint, .gc-side > .gc-card--yellow, .gc-side > .gc-card--ye, .gc-side > .gc-card--dashed {
-    margin: 12px;
-    border-radius: 12px;
-  }
-  .gc-col > .gc-btn, .gc-col > button.gc-btn { width: calc(100% - 48px); margin: 4px 24px 24px; }
-  .gc-col > .gc-note, .gc-col > .gc-sm { margin: 12px 24px; }
 }
 
-/* ── History list ────────────────────────────────────────────── */
-.gc-hist-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 2px; }
-.gc-hist-list { display: flex; flex-direction: column; gap: 12px; }
+.gc-side {
+  display: none;
+  width: 340px;
+  flex-direction: column;
+  gap: 12px;
+}
+
 @media (min-width: 900px) {
-  .gc-col > .gc-hist-head { padding: 20px 24px; border-bottom: 1px solid var(--gc-line); }
-  .gc-col > .gc-hist-list { gap: 0; }
-  .gc-hist-list > .gc-hist-item {
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    border-bottom: 1px solid var(--gc-line);
-    padding: 18px 24px;
-    transition: background 0.15s;
+  .gc-side {
+    display: flex;
   }
-  .gc-hist-list > .gc-hist-item:last-child { border-bottom: 0; }
-  .gc-hist-list > .gc-hist-item:hover { background: var(--gc-surface-2); }
-  .gc-col > div:not([class]) { padding: 24px; }
 }
 
-/* ── Footer ──────────────────────────────────────────────────── */
+/* ── Desktop footer ──────────────────────────────────────────── */
 .gc-foot {
-  padding: 16px 32px;
-  font: 400 12.5px Inter;
-  color: var(--gc-faint);
+  padding: 12px 28px;
+  font: 600 12px Inter;
   display: flex;
   justify-content: space-between;
-  border-top: 1px solid var(--gc-line);
-  background: transparent;
+  border-top: 2.5px solid #111;
+  background: #fff;
 }
-.gc-foot a, .gc-foot button { color: var(--gc-mute); }
-.gc-foot a:hover, .gc-foot button:hover { color: var(--gc-ink); }
 
-/* ── Note ────────────────────────────────────────────────────── */
+/* ── Note card ───────────────────────────────────────────────── */
 .gc-note {
-  background: var(--gc-surface-2);
-  border: 1px solid var(--gc-line);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13.5px;
-  font-weight: 400;
-  color: var(--gc-mute);
-  line-height: 1.5;
+  background: #fff;
+  border: 2.5px solid #111;
+  border-radius: 14px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #111;
 }
-.gc-note b { color: var(--gc-ink); font-weight: 500; }
-.gc-note a { color: var(--gc-pu-text); }
-/* Notes whose colour carries meaning (set inline by the screens) become quiet tints */
-.gc-note[style*='var(--gc-warn-bg)'] { border-color: var(--gc-warn-line); color: var(--gc-ink); }
-.gc-note[style*='var(--gc-danger-bg)'] { border-color: var(--gc-danger-line); color: var(--gc-ink); }
-.gc-note[style*='var(--gc-ok-bg)'] { border-color: var(--gc-ok-line); color: var(--gc-ink); }
 
 /* ── Timeline ────────────────────────────────────────────────── */
-.gc-tl { display: flex; gap: 12px; }
-.gc-tl__col { display: flex; flex-direction: column; align-items: center; }
+.gc-tl {
+  display: flex;
+  gap: 10px;
+}
+
+.gc-tl__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Timeline dot */
 .gc-dot {
-  width: 11px;
-  height: 11px;
-  margin-top: 4px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 1.5px solid var(--gc-line-strong);
-  background: transparent;
+  border: 2.5px solid #111;
+  background: #fff;
   flex: none;
 }
-.gc-dot--done { background: var(--gc-ok); border-color: var(--gc-ok); }
-.gc-dot--current {
-  background: var(--gc-pu);
-  border-color: var(--gc-pu);
-  box-shadow: 0 0 0 4px var(--gc-pu-soft);
-}
-.gc-ln { width: 1px; flex: 1; background: var(--gc-ok-line); margin: 3px 0; }
-.gc-ln--wait { background: var(--gc-line); }
-.gc-tl__step b { font: 500 14.5px 'Inter', sans-serif; display: block; color: var(--gc-ink); }
-.gc-tl__step p { margin: 2px 0 14px; font-size: 13px; color: var(--gc-mute); font-weight: 400; }
 
-/* ── Success hero: calm, a soft glow ─────────────────────────── */
+.gc-dot--done     { background: var(--gc-pu); }
+.gc-dot--current  { background: var(--gc-ye); }
+
+/* Timeline line */
+.gc-ln {
+  width: 3px;
+  flex: 1;
+  background: #111;
+  margin: 2px 0;
+}
+
+.gc-ln--wait { background: #cfc3ee; }
+
+/* Timeline step */
+.gc-tl__step b {
+  font: 800 13px 'Bricolage Grotesque';
+  display: block;
+}
+
+.gc-tl__step p {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: #333;
+  font-weight: 600;
+}
+
+/* ── Success hero ────────────────────────────────────────────── */
 .gc-hero {
-  height: 130px;
-  margin: -16px -16px 0;
-  background: radial-gradient(120% 140% at 50% 0%, rgba(123, 57, 252, 0.35), transparent 70%), var(--gc-surface);
-  border-bottom: 1px solid var(--gc-line);
+  height: 200px;
+  margin: -14px -14px 0;
+  background: var(--gc-pu);
+  border-bottom: 2.5px solid #111;
   position: relative;
   overflow: hidden;
 }
-.gc-c1 { display: none; }
+
+/* Yellow circle decoration */
+.gc-c1 {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
+  box-shadow: 3px 3px 0 #111;
+}
+
+/* Success check circle */
 .gc-ok {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--gc-ok-bg);
-  color: var(--gc-ok);
-  border: 1px solid var(--gc-ok-line);
+  background: var(--gc-mi);
+  border: 2.5px solid #111;
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 600 22px Inter;
-  margin: -24px auto 10px;
-  backdrop-filter: blur(6px);
+  font: 800 24px Inter;
+  margin: -38px auto 8px;
+  box-shadow: 3px 3px 0 #111;
 }
 
-/* ── How it works step ───────────────────────────────────────── */
-.gc-st { display: flex; gap: 12px; margin-top: 12px; align-items: flex-start; }
+/* ── HOW IT WORKS numbered step ──────────────────────────────── */
+.gc-st {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  align-items: flex-start;
+}
+
 .gc-st__num {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: transparent;
-  color: var(--gc-mute);
-  border: 1px solid var(--gc-line-strong);
+  background: var(--gc-ye);
+  border: 2.5px solid #111;
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 500 11.5px Inter;
+  font: 800 12px Inter;
   flex: none;
-  margin-top: 1px;
 }
 
 /* ── Keypad ──────────────────────────────────────────────────── */
@@ -643,66 +704,98 @@ button.gc-pill:hover { color: var(--gc-ink); }
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   text-align: center;
-  font: 500 22px 'Inter', sans-serif;
-  font-variant-numeric: tabular-nums;
-  row-gap: 4px;
+  font: 800 18px 'Bricolage Grotesque';
+  row-gap: 6px;
   flex: none;
-  color: var(--gc-ink);
 }
+
 .gc-keys__key {
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   background: transparent;
-  color: inherit;
   cursor: pointer;
   font: inherit;
-  border-radius: 12px;
-  min-height: 52px;
+  border-radius: 8px;
 }
-.gc-keys__key:active { background: var(--gc-surface-2); }
 
 /* ── Mobile shell ────────────────────────────────────────────── */
 .gc--mobile-shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 16px 96px;
+  gap: 10px;
+  padding: 14px 14px 12px;
   min-height: 100dvh;
-  background: var(--gc-bg);
 }
 
-/* ── Show / hide per screen size ─────────────────────────────── */
+/* ── Responsive: show/hide ───────────────────────────────────── */
 .gc-desktop-only { display: none; }
+
 @media (min-width: 900px) {
-  .gc-mobile-only { display: none; }
+  .gc-mobile-only  { display: none; }
   .gc-desktop-only { display: flex; }
-  .gc { display: flex; flex-direction: column; }
-  .gc-foot { margin-top: auto; }
 }
 
+/* ── Reduced motion ──────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .gc * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .gc * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-/* ── Phone sizing: comfortable, readable ─────────────────────── */
+/* ── Desktop layout flow ─────────────────────────────────────── */
+@media (min-width: 900px) {
+  .gc {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .gc-foot {
+    margin-top: auto;
+    border-top: 2.5px solid #111;
+    background: #fff;
+  }
+}
+
+/* ── Real-phone scale-up ─────────────────────────────────────────
+   The sticker-pop frame was drawn at 272px; phones are ~390px.
+   These overrides only apply below 900px so the desktop layout
+   (min-width: 900px) is untouched. Borders stay 2.5px and
+   shadows stay 5px / 3px / 2px. */
 @media (max-width: 899px) {
-  .gc .gc-card { padding: 18px; }
-  .gc .gc-big { font-size: 44px; }
-  .gc .gc-big--success { font-size: 40px; }
-  .gc .gc-big--history { font-size: 26px; }
-  .gc .gc-title { font-size: 21px; }
-  .gc .gc-title--status { font-size: 28px; }
-  .gc .gc-btn { height: 54px; font-size: 16px; }
-  .gc .gc-sm { font-size: 14.5px; }
+  .gc .gc-card { padding: 16px 18px; }
+  .gc .gc-lab { font-size: 12.5px; }
+  .gc .gc-sm { font-size: 15px; }
+  .gc .gc-big { font-size: 52px; }
+  .gc .gc-big--success { font-size: 46px; }
+  .gc .gc-big--history { font-size: 30px; }
+  .gc .gc-title { font-size: 24px; }
+  .gc .gc-title--status { font-size: 30px; }
+  .gc .gc-logo { font-size: 24px; }
+  .gc .gc-chip { font-size: 13px; padding: 5px 12px; }
+  .gc .gc-pill { font-size: 14px; padding: 4px 11px; }
+  .gc .gc-btn { height: 58px; font-size: 17px; }
   .gc .gc-note { font-size: 14px; }
-  .gc .gc-cost .gc-row { font-size: 14.5px; padding: 11px 0; }
-  .gc .gc-pill { font-size: 13px; padding: 5px 11px; }
-  .gc .gc-chips .gc-pill { padding: 7px 14px; }
+  .gc .gc-cost .gc-row { font-size: 15px; padding: 8px 0; }
+  .gc .gc-tl__step b { font-size: 15px; }
+  .gc .gc-tl__step p { font-size: 13.5px; }
+  .gc .gc-nav__item { font-size: 13px; padding: 9px 0; }
+  .gc .gc-coin { width: 50px; height: 50px; }
+  .gc .gc-sticker { font-size: 14px; }
+  .gc .gc-bar { height: 22px; }
+  .gc .gc-keys { font-size: 22px; }
+  .gc .gc-keys__key { min-height: 52px; }
+  .gc .gc-main { gap: 14px; padding: 16px; }
+  .gc .gc-col { gap: 14px; }
+  .gc .gc--mobile-shell {
+    gap: 14px;
+    padding: 16px 16px 96px;
+  }
 }
 
-/* ── Checkbox ────────────────────────────────────────────────── */
+/* ── Checkbox (sticker style) ───────────────────────────────── */
 .gc input[type='checkbox'] {
   appearance: none;
   -webkit-appearance: none;
@@ -710,23 +803,22 @@ button.gc-pill:hover { color: var(--gc-ink); }
   height: 20px;
   flex: none;
   margin: 0;
-  border: 1px solid var(--gc-line-strong);
+  border: 2.5px solid #111;
   border-radius: 6px;
-  background: var(--gc-surface-2);
+  background: #fff;
   display: inline-grid;
   place-content: center;
   cursor: pointer;
 }
-.gc input[type='checkbox']:checked { background: var(--gc-pu); border-color: var(--gc-pu); }
-.gc input[type='checkbox']:checked::after { content: '✓'; color: #fff; font: 600 13px Inter, sans-serif; line-height: 1; }
-
-/* ── Form fields ─────────────────────────────────────────────── */
-.gc input:not([type='checkbox']):not([type='range']),
-.gc select,
-.gc textarea {
-  color: var(--gc-ink);
+.gc input[type='checkbox']:checked {
+  background: var(--gc-pu);
 }
-.gc input::placeholder, .gc textarea::placeholder { color: var(--gc-faint); }
+.gc input[type='checkbox']:checked::after {
+  content: '✓';
+  color: #fff;
+  font: 800 13px Inter, sans-serif;
+  line-height: 1;
+}
 
 /* The "unfinished cash out" banner must never sit on top of an open pop-up */
 body:has([role="dialog"]) .gc-banner { display: none; }

@@ -91,14 +91,14 @@ export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({ isOpen, onCl
         value={institutionCode}
         onChange={(e) => setInstitutionCode(e.target.value)}
         disabled={institutionsLoading}
-        className={`w-full rounded-xl border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] pl-4 pr-12 py-3 text-base font-bold text-[color:var(--gc-ink)] outline-none appearance-none ${SELECT_BG}`}
+        className={`w-full rounded-xl border-[2.5px] border-[#111] bg-white pl-4 pr-12 py-3 text-base font-bold text-[#111] outline-none appearance-none ${SELECT_BG}`}
       >
         <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
         {institutions.map((bank) => (
           <option key={bank.code} value={bank.code}>{bank.name}</option>
         ))}
       </select>
-      {institutionsError && <p className="gc-sm mt-1" style={{ color: 'var(--gc-danger)' }}>{institutionsError}</p>}
+      {institutionsError && <p className="gc-sm mt-1" style={{ color: '#b00020' }}>{institutionsError}</p>}
 
       <label className="gc-lab block mt-4 mb-1.5" htmlFor="sheet-account">Account number</label>
       <input
@@ -109,10 +109,10 @@ export const BankDetailsModal: React.FC<BankDetailsModalProps> = ({ isOpen, onCl
         value={accountIdentifier}
         onChange={(e) => setAccountIdentifier(e.target.value.replace(/\D/g, ''))}
         placeholder="10-digit account number"
-        className="w-full rounded-xl border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] px-4 py-3 text-base font-bold text-[color:var(--gc-ink)] outline-none"
+        className="w-full rounded-xl border-[2.5px] border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] outline-none"
       />
 
-      <div className="gc-note mt-3" style={{ background: verificationStatus === 'verified' ? 'var(--gc-ok-bg)' : 'var(--gc-surface-2)' }}>
+      <div className="gc-note mt-3" style={{ background: verificationStatus === 'verified' ? '#8cf0c0' : '#fff' }}>
         {verificationStatus === 'loading' && 'Checking your account…'}
         {verificationStatus === 'idle' && 'Enter a 10-digit account number'}
         {verificationStatus === 'error' && (verificationError || 'Could not verify this account')}

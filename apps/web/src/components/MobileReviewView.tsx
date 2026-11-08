@@ -81,7 +81,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           <div>
             <div className="gc-lab">Paid to</div>
             <div className="gc-sm">{displayBankName}</div>
-            {bank && <div className="gc-sm" style={{ color: 'var(--gc-mute)' }}>{bank.accountName}</div>}
+            {bank && <div className="gc-sm" style={{ color: '#333' }}>{bank.accountName}</div>}
           </div>
           {bank ? (
             <button
@@ -124,7 +124,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         </div>
 
         {errorMessage && (
-          <div className="gc-note" role="alert" style={{ background: 'var(--gc-danger-bg)', overflowWrap: 'anywhere' }}>
+          <div className="gc-note" role="alert" style={{ background: '#ff9b9b', overflowWrap: 'anywhere' }}>
             {errorMessage}
           </div>
         )}

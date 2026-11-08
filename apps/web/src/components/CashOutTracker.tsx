@@ -501,14 +501,14 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
             value={notifyEmail}
             onChange={(e) => { setNotifyEmail(e.target.value); if (notifyState === 'error') setNotifyState('idle'); }}
             placeholder="you@example.com"
-            className="min-w-0 flex-1 rounded-xl border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] px-3 py-2 text-sm font-bold text-[color:var(--gc-ink)] outline-none"
+                    className="min-w-0 flex-1 rounded-xl border-[2.5px] border-[#111] bg-white px-3 py-2 text-sm font-bold text-[#111] outline-none"
           />
           <button type="button" onClick={handleNotify} disabled={notifyState === 'sending'} className="gc-pill gc-pill--on gc-hit" style={{ flex: 'none' }}>
             {notifyState === 'sending' ? 'Saving…' : 'Email me'}
           </button>
         </div>
         {notifyState === 'error' && (
-          <div role="alert" style={{ color: 'var(--gc-danger)', marginTop: 6 }}>Please enter a valid email address and try again.</div>
+                  <div role="alert" style={{ color: '#b00020', marginTop: 6 }}>Please enter a valid email address and try again.</div>
         )}
       </>
     )}
@@ -581,7 +581,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
       {/* FAILURE STATES */}
       {activeFailure === 'expired' && (
-        <div className={failureCard} style={{ background: 'var(--gc-warn-bg)' }}>
+        <div className={failureCard} style={{ background: '#ffd23f' }}>
           <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><WarnIcon /> payment window expired</div>
           <p className="gc-sm" style={{ margin: '6px 0' }}>
             The payment window closed before the payment arrived. Nothing was taken. Please do not send anything to the old address.
@@ -595,7 +595,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       )}
 
       {activeFailure === 'refunded' && (
-        <div className={failureCard} style={{ background: 'var(--gc-danger-bg)' }}>
+        <div className={failureCard} style={{ background: '#ff9b9b' }}>
           <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><UndoIcon /> order refunded</div>
           <p className="gc-sm" style={{ margin: '6px 0' }}>
             This order was refunded to your Celo wallet. Any deposited funds have been returned.
@@ -609,7 +609,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       )}
 
       {activeFailure === 'delayed' && (
-        <div className={failureCard} style={{ background: 'var(--gc-warn-bg)' }}>
+        <div className={failureCard} style={{ background: '#ffd23f' }}>
           <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ClockIcon /> Payment sent but naira not received after {delayedTimeoutMinutes} minutes</div>
           <p className="gc-sm" style={{ margin: '6px 0' }}>
             Your payment is safe and was received. The bank payout is taking longer than usual. It normally takes a few minutes, but it can take up to about 20 minutes. If it is still not there soon, tap Contact support and we will look into it straight away.
@@ -635,7 +635,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       {!activeFailure && currentStep === 2 && (
         <>
           {userSent && !paymentConfirmed && (
-            <div className="gc-note" role="status" style={{ background: 'var(--gc-warn-bg)' }}>
+            <div className="gc-note" role="status" style={{ background: '#ffd23f' }}>
               <b>Checking for your payment…</b> If you already sent it, you don't need to do anything. It can take a minute or two to show up here.
             </div>
           )}
@@ -658,7 +658,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
                 </button>
               )}
               {sendError && (
-                <div className="gc-note" role="alert" style={{ background: 'var(--gc-danger-bg)', overflowWrap: 'anywhere' }}>{sendError}</div>
+                <div className="gc-note" role="alert" style={{ background: '#ff9b9b', overflowWrap: 'anywhere' }}>{sendError}</div>
               )}
               {orderClosed && onOrderClosed && (
                 <button type="button" onClick={onOrderClosed} className="gc-btn gc-btn--white gc-hit">Start a fresh payout</button>
@@ -666,7 +666,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
             </>
           )}
           {addressReady ? (
-          <details open={!onSendDeposit} className="gc-fold" style={onSendDeposit ? { marginTop: 4, paddingTop: 10, borderTop: '1px solid var(--gc-line)' } : undefined}>
+          <details open={!onSendDeposit} className="gc-fold" style={onSendDeposit ? { marginTop: 4, paddingTop: 10, borderTop: '2px dashed #9b86d6' } : undefined}>
             <summary className="gc-sm gc-hit" style={{ display: onSendDeposit ? 'block' : 'none', cursor: 'pointer', textDecoration: 'underline', textAlign: 'center', padding: '4px 0' }}>
               Having trouble? Pay manually instead
             </summary>
@@ -715,7 +715,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
               </div>
             )}
 
-            <div className="gc-note" style={{ background: 'var(--gc-warn-bg)' }}>
+            <div className="gc-note" style={{ background: '#ffd23f' }}>
               <b>Warning:</b> A smaller amount is refunded. Please send the exact amount specified.
             </div>
           </div>
@@ -729,7 +729,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
           ) : (
             (loadFailed || !onSendDeposit) && (
               loadFailed ? (
-                <div className="gc-note" role="alert" style={{ background: 'var(--gc-danger-bg)' }}>
+                <div className="gc-note" role="alert" style={{ background: '#ff9b9b' }}>
                   <b>We couldn't load your payment.</b> Nothing was sent. Check your connection and try again.
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button type="button" className="gc-pill gc-pill--white gc-hit" onClick={() => { setLoadFailed(false); setLoadTry((n) => n + 1); }}>Try again</button>
@@ -755,7 +755,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
       {!activeFailure && currentStep === 3 && (
         <div className="gc-card" style={{ textAlign: 'center' }}>
-          <div className="w-10 h-10 rounded-full border border-[#7b39fc] border-t-transparent animate-spin mx-auto mb-3" />
+          <div className="w-10 h-10 rounded-full border-4 border-[#7b39fc] border-t-transparent animate-spin mx-auto mb-3" />
           <h3 className="gc-big" style={{ fontSize: 22 }}>Paying to your bank</h3>
           <p className="gc-sm" style={{ margin: '6px 0 4px' }}>{payoutStageText(localOrder.status)}</p>
           <p className="gc-sm" style={{ margin: '0 0 10px', opacity: 0.85 }}>
@@ -777,7 +777,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
       {!activeFailure && currentStep === 4 && (
         <>
-          <div className="gc-hero" style={{ height: 120, margin: 0, borderRadius: 14, border: '1px solid var(--gc-line)' }}>
+          <div className="gc-hero" style={{ height: 120, margin: 0, borderRadius: 18, border: '2.5px solid #111' }}>
             <div className="absolute left-1/2 top-0 w-[138px] -translate-x-1/2">
               <i className="gc-c1" style={{ width: 44, height: 44, left: 38, top: 24 }} />
               <i className="gc-c1" style={{ width: 30, height: 30, left: 98, top: 62 }} />

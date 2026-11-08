@@ -136,46 +136,46 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/30 backdrop-blur-sm">
       <div className="flex min-h-full items-center justify-center px-4 py-6">
-        <div className="bg-[color:var(--gc-bg)] border border-[color:var(--gc-line-strong)] rounded-3xl p-6 shadow-none max-w-lg w-full text-[color:var(--gc-ink)]">
+        <div className="bg-[#d4c5fb] border-4 border-[#111] rounded-3xl p-6 shadow-[8px_8px_0px_#111] max-w-lg w-full text-[#111]">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-wider font-bold text-[color:var(--gc-ink)]">{result ? 'DONE' : t.reviewLabel || 'REVIEW'}</p>
-            <h3 className="mt-1 text-2xl font-black text-[color:var(--gc-ink)]">{t.cashOut}</h3>
+            <p className="text-xs uppercase tracking-wider font-bold text-[#111]">{result ? 'DONE' : t.reviewLabel || 'REVIEW'}</p>
+            <h3 className="mt-1 text-2xl font-black text-[#111]">{t.cashOut}</h3>
           </div>
           <button
             type="button"
             aria-label="Close review sheet"
             onClick={onClose}
-            className="bg-[color:var(--gc-surface-2)] border border-[color:var(--gc-line-strong)] rounded-xl w-9 h-9 flex items-center justify-center font-bold shadow-none hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all text-xl"
+            className="bg-white border-2 border-[#111] rounded-xl w-9 h-9 flex items-center justify-center font-bold shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all text-xl"
           >
             ×
           </button>
         </div>
 
         {/* Transaction Stepper */}
-        <div className="mb-4 bg-[color:var(--gc-surface-2)] border border-[color:var(--gc-line-strong)] rounded-2xl p-4 shadow-none">
+        <div className="mb-4 bg-white border-2 border-[#111] rounded-2xl p-4 shadow-[4px_4px_0px_#111]">
           <div className="flex items-center justify-between">
             {steps.map((step, idx) => (
               <React.Fragment key={step.id}>
                 {/* Step Badge */}
                 <div className="flex flex-col items-center gap-1.5">
                   <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold border border-[color:var(--gc-line-strong)] transition ${
+                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold border-2 border-[#111] transition ${
                       step.status === 'completed'
-                        ? 'bg-[color:var(--gc-ok-bg)] text-[color:var(--gc-ink)]'
+                        ? 'bg-[#63f2b4] text-[#111]'
                         : step.status === 'active'
-                        ? 'bg-[color:var(--gc-pu)] text-white'
+                        ? 'bg-[#7b39fc] text-white'
                         : step.status === 'error'
-                        ? 'bg-[color:var(--gc-danger-bg)] text-white'
-                        : 'bg-[color:var(--gc-surface-2)] text-[color:var(--gc-ink)]'
+                        ? 'bg-[#ff6b6b] text-white'
+                        : 'bg-white text-[#111]'
                     }`}
                   >
                     {step.status === 'completed' ? '✓' : step.status === 'error' ? '!' : idx + 1}
                   </div>
-                  <span className={`text-[10px] font-bold ${step.status === 'active' || step.status === 'completed' ? 'text-[color:var(--gc-ink)]' : 'text-[color:var(--gc-mute)]'}`}>
+                  <span className={`text-[10px] font-bold ${step.status === 'active' || step.status === 'completed' ? 'text-[#111]' : 'text-gray-500'}`}>
                     {step.label}
                   </span>
                 </div>
@@ -185,8 +185,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                   <div
                     className={`h-0.5 flex-1 transition ${
                       steps[idx + 1].status === 'completed' || steps[idx + 1].status === 'active'
-                        ? 'bg-[color:var(--gc-pu)]'
-                        : 'bg-[color:var(--gc-line-strong)]'
+                        ? 'bg-[#111]'
+                        : 'bg-gray-300'
                     }`}
                     style={{ margin: '0 8px', marginBottom: '24px' }}
                   />
@@ -198,8 +198,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
         {result ? (
           <>
-            <div className="bg-[color:var(--gc-ok-bg)] border border-[color:var(--gc-line-strong)] rounded-2xl p-5 shadow-none mb-4 text-center">
-              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] text-2xl font-black shadow-none">✓</div>
+            <div className="bg-[#8cf0c0] border-2 border-[#111] rounded-2xl p-5 shadow-[4px_4px_0px_#111] mb-4 text-center">
+              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#111] bg-white text-2xl font-black shadow-[3px_3px_0px_#111]">✓</div>
               <div className="text-xs font-bold uppercase tracking-wider">
                 {result.settled ? 'Cash out complete' : result.paid ? 'Payment sent' : 'One more step'}
               </div>
@@ -210,20 +210,20 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 {result.settled ? `${result.nairaText} ${t.paidToYourBank || 'paid to your bank'}` : result.paid ? `${result.nairaText} is on its way to your bank` : 'Confirm the payment in your wallet to finish'}
               </div>
             </div>
-            <div className="bg-[color:var(--gc-surface-2)] border border-[color:var(--gc-line-strong)] rounded-2xl p-4 shadow-none mb-4">
-              <div className="flex items-center justify-between py-2.5 border-b border-solid border-[color:var(--gc-line)]">
-                <span className="font-medium text-[color:var(--gc-ink)]">{t.gAmountLabel || 'G$ amount'}</span>
-                <span className="font-bold text-[color:var(--gc-ink)]">{amountG.toLocaleString(undefined, { maximumFractionDigits: 2 })} G$</span>
+            <div className="bg-white border-2 border-[#111] rounded-2xl p-4 shadow-[4px_4px_0px_#111] mb-4">
+              <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+                <span className="font-medium text-[#111]">{t.gAmountLabel || 'G$ amount'}</span>
+                <span className="font-bold text-[#111]">{amountG.toLocaleString(undefined, { maximumFractionDigits: 2 })} G$</span>
               </div>
               <div className="flex items-center justify-between pt-2.5">
-                <span className="font-medium text-[color:var(--gc-ink)]">{result.settled ? 'Bank reference' : 'Status'}</span>
-                <span className="font-bold text-[color:var(--gc-ink)] font-mono text-sm">{result.settled ? result.reference ?? '—' : result.paid ? 'Paying your bank' : 'Waiting for your payment'}</span>
+                <span className="font-medium text-[#111]">{result.settled ? 'Bank reference' : 'Status'}</span>
+                <span className="font-bold text-[#111] font-mono text-sm">{result.settled ? result.reference ?? '—' : result.paid ? 'Paying your bank' : 'Waiting for your payment'}</span>
               </div>
             </div>
             <button
               type="button"
               onClick={onFinish}
-              className="w-full py-3.5 text-lg font-bold bg-[color:var(--gc-pu)] text-white border border-[color:var(--gc-line-strong)] rounded-xl shadow-none hover:translate-x-0.5 hover:translate-y-0.5 shadow-none transition-all"
+              className="w-full py-3.5 text-lg font-bold bg-[#7b39fc] text-white border-2 border-[#111] rounded-xl shadow-[4px_4px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_#111] transition-all"
             >
               {result.settled ? (t.doneButton || 'Done') : result.paid ? 'Track payout' : 'Continue'}
             </button>
@@ -231,48 +231,48 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         ) : (
           <>
         {/* Details Panel */}
-        <div className="bg-[color:var(--gc-surface-2)] border border-[color:var(--gc-line-strong)] rounded-2xl p-4 shadow-none mb-4">
-          <div className="flex items-center justify-between py-2.5 border-b border-solid border-[color:var(--gc-line)]">
-            <span className="font-medium text-[color:var(--gc-ink)]">{t.gAmountLabel || 'G$ amount'}</span>
-            <span className="font-bold text-[color:var(--gc-ink)]">
+        <div className="bg-white border-2 border-[#111] rounded-2xl p-4 shadow-[4px_4px_0px_#111] mb-4">
+          <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+            <span className="font-medium text-[#111]">{t.gAmountLabel || 'G$ amount'}</span>
+            <span className="font-bold text-[#111]">
               {amountG.toLocaleString(undefined, { maximumFractionDigits: 2 })} G$
             </span>
           </div>
 
-          <div className="flex items-center justify-between py-2.5 border-b border-solid border-[color:var(--gc-line)]">
-            <span className="font-medium text-[color:var(--gc-ink)]">{t.exitContribution}</span>
-            <span className="font-bold text-[color:var(--gc-ink)]">−{exitContributionG.toFixed(0)} G$</span>
+          <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+            <span className="font-medium text-[#111]">{t.exitContribution}</span>
+            <span className="font-bold text-[#111]">−{exitContributionG.toFixed(0)} G$</span>
           </div>
 
-          <div className="flex items-center justify-between py-2.5 border-b border-solid border-[color:var(--gc-line)]">
-            <span className="font-medium text-[color:var(--gc-ink)]">{t.youReceiveAbout}</span>
-            <span className="font-bold text-[color:var(--gc-ink)]">
+          <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+            <span className="font-medium text-[#111]">{t.youReceiveAbout}</span>
+            <span className="font-bold text-[#111]">
               {Number.isFinite(cashoutRate.netNaira) ? formatNaira(cashoutRate.netNaira) : t.nairaUnavailable}
             </span>
           </div>
 
-          <div className="flex items-center justify-between py-2.5 border-b border-solid border-[color:var(--gc-line)]">
-            <span className="font-medium text-[color:var(--gc-ink)]">{t.bankLabel}</span>
-            <span className="font-bold text-[color:var(--gc-ink)]">
+          <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+            <span className="font-medium text-[#111]">{t.bankLabel}</span>
+            <span className="font-bold text-[#111]">
               {bankName ?? 'Bank'} •••• {bankLastFour}
             </span>
           </div>
 
-          <div className="flex items-center justify-between py-2.5 border-b border-solid border-[color:var(--gc-line)]">
-            <span className="font-medium text-[color:var(--gc-ink)]">{t.accountNameLabel}</span>
-            <span className="font-bold text-[color:var(--gc-ink)]">{accountHolderName ?? '—'}</span>
+          <div className="flex items-center justify-between py-2.5 border-b-2 border-dashed border-gray-300">
+            <span className="font-medium text-[#111]">{t.accountNameLabel}</span>
+            <span className="font-bold text-[#111]">{accountHolderName ?? '—'}</span>
           </div>
 
           <div className="flex items-center justify-between pt-2.5">
-            <span className="font-medium text-[color:var(--gc-ink)]">{t.quoteRefreshesIn.replace('{seconds}s', '').trim()}</span>
-            <span className={`font-mono font-bold ${isExpired ? 'text-[color:var(--gc-danger)]' : 'text-[color:var(--gc-pu-text)]'}`}>
+            <span className="font-medium text-[#111]">{t.quoteRefreshesIn.replace('{seconds}s', '').trim()}</span>
+            <span className={`font-mono font-bold ${isExpired ? 'text-[#ff6b6b]' : 'text-[#7b39fc]'}`}>
               {secondsLeft}s
             </span>
           </div>
         </div>
 
         {errorMessage && (
-          <div className="mb-4 bg-[color:var(--gc-danger-bg)] text-white border border-[color:var(--gc-line-strong)] p-3 rounded-xl font-bold shadow-none break-words" style={{ overflowWrap: "anywhere" }}>
+          <div className="mb-4 bg-[#ff6b6b] text-white border-2 border-[#111] p-3 rounded-xl font-bold shadow-[2px_2px_0px_#111] break-words" style={{ overflowWrap: "anywhere" }}>
             <span className="font-black">{hasConfirmedSwap ? 'Almost there' : t.swapFailed || 'Swap failed'}: </span>
             {errorMessage}
           </div>
@@ -291,7 +291,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               }
             }}
             disabled={isSwapping}
-            className="mb-3 w-full bg-[color:var(--gc-warn-bg)] border border-[color:var(--gc-line-strong)] rounded-xl py-3 font-bold text-[color:var(--gc-ink)] shadow-none hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
+            className="mb-3 w-full bg-[#ffd23f] border-2 border-[#111] rounded-xl py-3 font-bold text-[#111] shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
           >
             {isSwapping ? t.retryingPayout || 'Retrying payout…' : t.retryPayout || 'Retry payout'}
           </button>
@@ -301,7 +301,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <button
             type="button"
             onClick={onRefresh}
-            className="mb-3 w-full bg-[color:var(--gc-surface-2)] border border-[color:var(--gc-line-strong)] rounded-xl py-3 font-bold text-[color:var(--gc-ink)] shadow-none hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+            className="mb-3 w-full bg-white border-2 border-[#111] rounded-xl py-3 font-bold text-[#111] shadow-[2px_2px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
           >
             {t.refreshQuote || 'Refresh quote'}
           </button>
@@ -311,7 +311,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           type="button"
           disabled={isExpired || isSwapping || hasConfirmedSwap}
           onClick={handleExecute}
-          className="w-full py-3.5 text-lg font-bold bg-[color:var(--gc-pu)] text-white border border-[color:var(--gc-line-strong)] rounded-xl shadow-none hover:translate-x-0.5 hover:translate-y-0.5 shadow-none active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 text-lg font-bold bg-[#7b39fc] text-white border-2 border-[#111] rounded-xl shadow-[4px_4px_0px_#111] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_#111] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSwapping
             ? t.confirming || 'Confirming...'

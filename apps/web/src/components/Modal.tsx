@@ -41,15 +41,15 @@ export const Modal: React.FC<ModalProps> = ({
   return (
     <div
       className="gc fixed inset-0 flex items-center justify-center p-3"
-      style={{ background: 'rgba(5, 5, 9, 0.72)', minHeight: 0, zIndex: z }}
+      style={{ background: 'rgba(17, 17, 17, 0.55)', minHeight: 0, zIndex: z }}
       role="dialog"
       aria-modal="true"
       aria-label={label}
       onClick={onClose}
     >
       <div
-        className="flex w-full max-w-md flex-col overflow-hidden rounded-3xl border border-[color:var(--gc-line-strong)] shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
-        style={{ maxHeight: 'min(88vh, 720px)', background: tone === 'white' ? 'var(--gc-surface-2)' : 'var(--gc-surface)' }}
+        className="flex w-full max-w-md flex-col overflow-hidden rounded-3xl border-[2.5px] border-[#111] shadow-[5px_5px_0_#111]"
+        style={{ maxHeight: 'min(88vh, 720px)', background: tone === 'white' ? '#fff' : '#cdb8ff' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
@@ -61,8 +61,8 @@ export const Modal: React.FC<ModalProps> = ({
         </div>
         {footer && (
           <div
-            className="flex gap-2 border-t border-[color:var(--gc-line-strong)] px-4 py-3"
-            style={{ background: tone === 'white' ? 'var(--gc-surface-2)' : 'var(--gc-surface)' }}
+            className="flex gap-2 border-t-[2.5px] border-[#111] px-4 py-3"
+            style={{ background: tone === 'white' ? '#fff' : '#cdb8ff' }}
           >
             {footer}
           </div>
