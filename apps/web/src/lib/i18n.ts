@@ -224,7 +224,7 @@ export const translations: Record<Language, Partial<Translations>> = {
     totalGSwapped: 'G$ cashed out',
     totalNairaReceived: 'Naira received so far',
     whatStatusesMean: 'What the statuses mean',
-    statusOnItsWayExplanation: 'On its way: swapped, waiting for the payout partner.',
+    statusOnItsWayExplanation: 'On its way: your G$ was converted and your bank is being paid.',
     statusPaidExplanation: 'Paid: naira sent to your bank account.',
     receiptsTitle: 'Receipts',
     receiptsExplanation: 'Every cash out has an on-chain receipt you can check on the Celo explorer.',

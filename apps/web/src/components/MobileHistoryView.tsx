@@ -133,7 +133,7 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
           <div className="gc-lab">What the statuses mean</div>
           <div className="gc-st">
             <span className="gc-st__num">1</span>
-            <span className="gc-sm"><u>On its way</u>: swapped, waiting for the payout partner.</span>
+            <span className="gc-sm"><u>On its way</u>: your G$ was converted and your bank is being paid.</span>
           </div>
           <div className="gc-st">
             <span className="gc-st__num">2</span>
