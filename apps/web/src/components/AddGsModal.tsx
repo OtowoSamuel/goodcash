@@ -512,13 +512,16 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     );
     footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Hide this (keep the tab open)</button>;
   } else if (step === 'swap') {
-    title = 'Your money is here';
+    title = 'Get your G$ now';
     body = (
       <>
         <div className="gc-note" style={{ background: '#8cf0c0' }}>
-          <b>Your naira payment is done. One last step!</b>
-          <div className="gc-sm">Tap below to turn it into G$. Your wallet may ask you to change network and sign one message. It costs you no fee. Your G$ is only added after you tap.</div>
+          <b style={{ fontSize: 18 }}>{order ? `Your ${formatNaira(Number(order.amountToTransfer))} has arrived!` : 'Your money has arrived!'}</b>
+          <div className="gc-sm" style={{ marginTop: 4 }}>
+            It is waiting for you. <b>Tap "Get my G$" below to receive your G$ in your wallet.</b> Your G$ is only added after you tap.
+          </div>
         </div>
+        <div className="gc-note">Your wallet may ask you to change network and sign one message. It costs you no fee. Please keep this tab open until it is done.</div>
         {error && <div className="gc-note" style={{ background: '#ffd6d6' }}>{error}</div>}
       </>
     );

@@ -527,7 +527,6 @@ export function App({
     popupOpen: addOpen,
     onReady: () => {
       setOkNotice('Your money has arrived. Tap "Get my G$" to finish.');
-      setAddOpen(true); // take them straight to the last step, no hunting for the button
     },
     onArrived: () => {
       setOkNotice('Your G$ is in your wallet.');
@@ -535,6 +534,20 @@ export function App({
     },
   });
   const addInProgress = addPhase !== null && addPhase !== 'problem';
+
+  // The moment the money is here the pop-up opens by itself on "Get my G$": the customer must never have to
+  // find out they can collect their G$. Once per arrival, so closing it is respected (the banner stays).
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (addPhase !== 'ready') {
+      autoOpened.current = false;
+      return;
+    }
+    if (!addOpen && !autoOpened.current) {
+      autoOpened.current = true;
+      setAddOpen(true);
+    }
+  }, [addPhase, addOpen]);
 
   // Leaving this page now would leave the customer's money waiting: ask first
   useEffect(() => {
