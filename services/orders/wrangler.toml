@@ -31,6 +31,10 @@ type = "ratelimit"
 namespace_id = "1003"
 simple = { limit = 5, period = 60 }
 
+# Every 10 minutes: look for payouts that are taking too long and tell the team
+[triggers]
+crons = ["*/10 * * * *"]
+
 [observability]
 enabled = true
 
@@ -43,7 +47,10 @@ CELO_RPC_URL = "https://forno.celo.org"
 VERIFY_SWAP_ONCHAIN = "true"
 RATE_LIMIT_MAX = "30"
 RATE_LIMIT_WINDOW_SECONDS = "60"
-ALLOWED_ORIGINS = "https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"
+ALLOWED_ORIGINS = "https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://onetap-test.goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"
+# One-tap router (owned by the GoodCash Safe). The app only uses it on builds that also set VITE_ROUTER_V2_ADDRESS.
+ROUTER_V2_ADDRESS = "0x546698368a246539Df5e641EdC2b79c5782ea359"
+ROUTER_V2_DEPLOY_BLOCK = "82237765"
 
 [env.development.vars]
 ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"

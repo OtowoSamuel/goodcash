@@ -10,7 +10,7 @@ describe('Modal frame', () => {
     expect(overlay.className).toMatch(/items-center/);
     expect(overlay.className).toMatch(/justify-center/);
     expect(overlay.className).not.toMatch(/items-end/);
-    expect(overlay.style.background).toMatch(/rgba\(17, 17, 17/);
+    expect(overlay.style.background).toMatch(/rgba\(5, 5, 9/);
   });
 
   it('keeps the title and the footer buttons in view, and closes from ✕, backdrop and Escape', () => {

@@ -145,23 +145,23 @@ describe('Price Protection - slippage terminology', () => {
 
     // Default is 1%
     const pill1 = screen.getByRole('button', { name: '1%' });
-    expect(pill1).toHaveClass('bg-[#7b39fc] text-white');
+    expect(pill1).toHaveClass('gc-pill--on');
 
     // Click 2%
     const pill2 = screen.getByRole('button', { name: '2%' });
     fireEvent.click(pill2);
 
     // 2% should now be selected
-    expect(pill2).toHaveClass('bg-[#7b39fc] text-white');
-    expect(pill1).not.toHaveClass('bg-[#7b39fc] text-white');
+    expect(pill2).toHaveClass('gc-pill--on');
+    expect(pill1).not.toHaveClass('gc-pill--on');
 
     // Click 3%
     const pill3 = screen.getByRole('button', { name: '3%' });
     fireEvent.click(pill3);
 
     // 3% should now be selected
-    expect(pill3).toHaveClass('bg-[#7b39fc] text-white');
-    expect(pill2).not.toHaveClass('bg-[#7b39fc] text-white');
+    expect(pill3).toHaveClass('gc-pill--on');
+    expect(pill2).not.toHaveClass('gc-pill--on');
 
     vi.unstubAllGlobals();
   });
@@ -188,7 +188,7 @@ describe('Price Protection - slippage terminology', () => {
     );
 
     const pill1 = screen.getByRole('button', { name: '1%' });
-    expect(pill1).toHaveClass('bg-[#7b39fc] text-white');
+    expect(pill1).toHaveClass('gc-pill--on');
 
     vi.unstubAllGlobals();
   });

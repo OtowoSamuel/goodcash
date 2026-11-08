@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import worker from './index.js';
+import worker, { alertSlowPayouts } from './index.js';
 import type { Env } from './index.js';
 
 // ---------------------------------------------------------------------------
@@ -26,6 +26,11 @@ class MockKV {
 
   async delete(key: string): Promise<void> {
     this.store.delete(key);
+  }
+
+  async list(opts: { prefix?: string; limit?: number } = {}): Promise<{ keys: Array<{ name: string }> }> {
+    const keys = [...this.store.keys()].filter((k) => k.startsWith(opts.prefix ?? '')).slice(0, opts.limit ?? 1000);
+    return { keys: keys.map((name) => ({ name })) };
   }
 
   clear() {
@@ -1062,5 +1067,356 @@ describe('nobody else can get a customer paid out to their own bank', () => {
     const res = await worker.fetch(makeRequest('POST', '/orders', { ...VALID_BODY, swapTxHash: SWAP }), env5);
     expect(res.status).toBe(201);
     expect(((await res.json()) as { orderId: string }).orderId).toBe('750e8400-e29b-41d4-a716-446655440000');
+  });
+});
+
+
+describe('GET /onramp/quote (Add G$)', () => {
+  const WALLET2 = '0x1111111111111111111111111111111111111111';
+  const lifiOk = (toAmount: string, min: string) => ({
+    tool: 'squid',
+    estimate: {
+      toAmount,
+      toAmountMin: min,
+      executionDuration: 24,
+      feeCosts: [{ amountUSD: '0.0125' }, { amountUSD: '0.0350' }],
+      gasCosts: [{ amountUSD: '0.0139' }],
+    },
+  });
+  const mockFetch = (opts: { rate?: string | null; lifi?: unknown; lifiStatus?: number } = {}) =>
+    vi.fn().mockImplementation(async (url: string) => {
+      const u = String(url);
+      if (u.includes('/v2/rates/base/USDT')) {
+        if (opts.rate === null) return new Response(JSON.stringify({ status: 'error', data: null }), { status: 400 });
+        return new Response(JSON.stringify({ data: { buy: { rate: opts.rate ?? '1384.52' } } }), { status: 200 });
+      }
+      if (u.includes('li.quest')) {
+        return new Response(JSON.stringify(opts.lifi ?? lifiOk('43429796433269220000000', '42663850916546540000000')), { status: opts.lifiStatus ?? 200 });
+      }
+      return new Response('{}', { status: 404 });
+    });
+
+  it('Q1. Prices naira in G$ using the partner rate, the fee, and the swap quote', async () => {
+    const f = mockFetch();
+    vi.stubGlobal('fetch', f);
+    const res = await worker.fetch(makeRequest('GET', `/onramp/quote?naira=7000&wallet=${WALLET2}`), makeEnv(new MockKV()));
+    expect(res.status).toBe(200);
+    const q = (await res.json()) as Record<string, number>;
+    expect(q.ngnPerUsd).toBeCloseTo(1384.52, 2);
+    // 7000 / 1384.52 = 5.0560 dollars paid; minus the 0.02 partner fee reaches the wallet
+    expect(q.usdtDelivered).toBeCloseTo(7000 / 1384.52 - 0.02, 4);
+    expect(q.gOut).toBeCloseTo(43429.796, 2);
+    expect(q.gOutMin).toBeLessThan(q.gOut);
+    expect(q.swapFeeUsd).toBeCloseTo(0.0475, 4);
+    expect(q.seconds).toBe(24);
+    // the swap quote was asked for the exact delivered amount, Base -> Celo, into the customer's own wallet
+    const lifiCall = f.mock.calls.map((c) => String(c[0])).find((u) => u.includes('li.quest'))!;
+    expect(lifiCall).toContain('fromChain=8453');
+    expect(lifiCall).toContain('toChain=42220');
+    expect(lifiCall).toContain(`toAddress=${WALLET2}`);
+  });
+
+  it('Q2. Says the minimum plainly when the amount is too small', async () => {
+    vi.stubGlobal('fetch', mockFetch());
+    const res = await worker.fetch(makeRequest('GET', '/onramp/quote?naira=300'), makeEnv(new MockKV()));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; minNaira: number };
+    expect(body.error).toMatch(/least you can add is ₦/);
+    expect(body.minNaira).toBeGreaterThan(300);
+  });
+
+  it('Q3. Never shows partner or technical wording when a service is down', async () => {
+    for (const opts of [{ rate: null }, { lifiStatus: 500, lifi: { message: 'internal' } }, { lifi: {} }]) {
+      vi.stubGlobal('fetch', mockFetch(opts as never));
+      const res = await worker.fetch(makeRequest('GET', '/onramp/quote?naira=7000'), makeEnv(new MockKV()));
+      expect(res.status).toBe(503);
+      const text = await res.text();
+      expect(text).toMatch(/not available right now/i);
+      expect(text).not.toMatch(/paycrest|li\.quest|squid|usdt|lifi|base/i);
+    }
+  });
+
+  it('Q4. Rejects junk input', async () => {
+    vi.stubGlobal('fetch', mockFetch());
+    const env6 = makeEnv(new MockKV());
+    expect((await worker.fetch(makeRequest('GET', '/onramp/quote?naira=abc'), env6)).status).toBe(400);
+    expect((await worker.fetch(makeRequest('GET', '/onramp/quote?naira=7000&wallet=0x123'), env6)).status).toBe(400);
+    expect((await worker.fetch(makeRequest('GET', '/onramp/quote?naira=99999999'), env6)).status).toBe(400);
+  });
+
+  it('Q5. Uses the looser read limiter', async () => {
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    const res = await worker.fetch(makeRequest('GET', '/onramp/quote?naira=7000'), makeEnv(new MockKV(), { RATE_LIMITER_READ: { limit } } as never));
+    expect(res.status).toBe(429);
+  });
+});
+
+describe('One-tap cash out (router V2)', () => {
+  const ROUTER2 = '0x2222222222222222222222222222222222222222';
+  const USER = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
+  const RECEIVE = '0x7F259f22250e8a92Ed4b87c944A3e048B67e53ef';
+  const ORDER = '550e8400-e29b-41d4-a716-446655440000';
+  const TX2 = '0x' + 'cd'.repeat(32);
+  const pad = (a: string) => `0x${'0'.repeat(24)}${a.slice(2).toLowerCase()}`;
+  const word = (n: bigint) => n.toString(16).padStart(64, '0');
+  const ORDER_BODY = {
+    minUsdt: '0.570000',
+    amountG: '5000',
+    refundAddress: USER,
+    recipient: { institution: 'GTBINGLA', accountIdentifier: '0123456789', accountName: 'John Doe' },
+  };
+  let kv: MockKV;
+  let env: Env;
+  beforeEach(() => {
+    kv = new MockKV();
+    env = makeEnv(kv, { ROUTER_V2_ADDRESS: ROUTER2, ROUTER_V2_DEPLOY_BLOCK: String(FIRST_BLOCK) });
+  });
+  afterEach(() => {
+    kv.clear();
+    vi.unstubAllGlobals();
+  });
+
+  const partnerOrder = (amountToTransfer: string) => ({
+    id: ORDER,
+    status: 'initiated',
+    amount: '0.55',
+    rate: '1368.75',
+    providerAccount: {
+      network: 'celo',
+      receiveAddress: RECEIVE,
+      validUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      amountToTransfer,
+      currency: 'USDT',
+    },
+    senderFee: '0',
+    transactionFee: '0.02',
+  });
+
+  /** Pretends to be the Celo node (balance, receipt, logs) and the payout partner. */
+  function mock(opts: { balance?: bigint; totals?: string[]; receipt?: unknown; logsFor?: string; logRows?: Array<{ tx: string; payTo: string }> } = {}) {
+    const posted: Array<{ amount: string }> = [];
+    let n = 0;
+    const f = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes('forno') || u.includes('celo.org')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { method: string; params: Array<{ address?: string }> };
+        if (body.method === 'eth_call') return new Response(JSON.stringify({ result: '0x' + (opts.balance ?? 10_000n * 10n ** 18n).toString(16) }), { status: 200 });
+        if (body.method === 'eth_getTransactionReceipt') return new Response(JSON.stringify({ result: opts.receipt ?? null }), { status: 200 });
+        if (body.method === 'eth_blockNumber') return new Response(JSON.stringify({ result: '0x' + (FIRST_BLOCK + 100).toString(16) }), { status: 200 });
+        if (body.method === 'eth_getLogs') {
+          const wanted = String(body.params?.[0]?.address ?? '').toLowerCase();
+          const rows = wanted === ROUTER2.toLowerCase() ? opts.logRows ?? [] : [];
+          return new Response(
+            JSON.stringify({
+              result: rows.map((r) => ({
+                transactionHash: r.tx,
+                data: '0x' + word(5000n * 10n ** 18n) + word(574_000n) + word(550_000n) + word(24_000n) + word(0n) + word(0n),
+                blockNumber: '0x' + (FIRST_BLOCK + 50).toString(16),
+                topics: ['0x', pad(USER), pad(r.payTo)],
+              })),
+            }),
+            { status: 200 }
+          );
+        }
+        if (body.method === 'eth_getBlockByNumber') return new Response(JSON.stringify({ result: { timestamp: '0x' + Math.floor(Date.now() / 1000).toString(16) } }), { status: 200 });
+        return new Response(JSON.stringify({ result: null }), { status: 200 });
+      }
+      if (u.includes('/v2/sender/orders') && init?.method === 'POST') {
+        const sent = JSON.parse(String(init.body)) as { amount: string };
+        posted.push({ amount: sent.amount });
+        const totals = opts.totals ?? ['0.570000'];
+        const total = totals[Math.min(n, totals.length - 1)];
+        n++;
+        return new Response(JSON.stringify({ data: partnerOrder(total) }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ data: { status: 'initiated' } }), { status: 200 });
+    });
+    return { f, posted };
+  }
+
+  it('O1. Creates the order BEFORE the swap, sized under the guaranteed minimum', async () => {
+    const m = mock();
+    vi.stubGlobal('fetch', m.f);
+    const res = await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), env);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { orderId: string; receiveAddress: string; payAmountAtomic: string; routerAddress: string };
+    expect(body.orderId).toBe(ORDER);
+    expect(body.receiveAddress).toBe(RECEIVE);
+    expect(body.payAmountAtomic).toBe('570000');
+    expect(body.routerAddress).toBe(ROUTER2);
+    // the partner was asked for the minimum minus the 0.02 fee reserve
+    expect(m.posted[0].amount).toBe('0.550000');
+    // the deposit address can be traced back to the order later
+    expect(JSON.parse((await kv.get(`rcv:${RECEIVE.toLowerCase()}`))!).o).toBe(ORDER);
+  });
+
+  it('O2. Retries with a smaller order when the partner total would exceed the minimum', async () => {
+    const m = mock({ totals: ['0.580000', '0.570000'] });
+    vi.stubGlobal('fetch', m.f);
+    const res = await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), env);
+    expect(res.status).toBe(201);
+    expect(m.posted).toHaveLength(2);
+    expect(Number(m.posted[1].amount)).toBeLessThan(Number(m.posted[0].amount));
+    expect(((await res.json()) as { payAmountAtomic: string }).payAmountAtomic).toBe('570000');
+  });
+
+  it('O3. Refuses when the wallet does not hold that much G$, and when the amount is too small', async () => {
+    vi.stubGlobal('fetch', mock({ balance: 100n * 10n ** 18n }).f);
+    expect((await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), env)).status).toBe(400);
+    vi.stubGlobal('fetch', mock().f);
+    expect((await worker.fetch(makeRequest('POST', '/orders/v2', { ...ORDER_BODY, minUsdt: '0.300000' }), env)).status).toBe(400);
+  });
+
+  it('O4. Is off until the one-tap router is configured', async () => {
+    vi.stubGlobal('fetch', mock().f);
+    const res = await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), makeEnv(new MockKV()));
+    expect(res.status).toBe(503);
+  });
+
+  const receiptFor = (overrides: { user?: string; payTo?: string; paid?: bigint; status?: string } = {}) => ({
+    status: overrides.status ?? '0x1',
+    logs: [
+      {
+        address: ROUTER2,
+        topics: ['0xf76a7b57d20e27c73ccada71d551173e9a82e46372f8dedf840cb08ad5ea60d7', pad(overrides.user ?? USER), pad(overrides.payTo ?? RECEIVE)],
+        data: '0x' + word(5000n * 10n ** 18n) + word(574_000n) + word(overrides.paid ?? 570_000n) + word(4_000n) + word(0n) + word(0n),
+      },
+    ],
+  });
+
+  async function seedOrder() {
+    vi.stubGlobal('fetch', mock().f);
+    await worker.fetch(makeRequest('POST', '/orders/v2', ORDER_BODY), env);
+  }
+
+  it('O5. Links a finished swap to its order only when the chain proves it matches', async () => {
+    await seedOrder();
+    vi.stubGlobal('fetch', mock({ receipt: receiptFor() }).f);
+    const ok = await worker.fetch(makeRequest('POST', `/orders/${ORDER}/swap`, { txHash: TX2, wallet: USER }), env);
+    expect(ok.status).toBe(204);
+    expect(await kv.get(`swap:${TX2.toLowerCase()}`)).toBe(ORDER);
+
+    for (const [receipt, status] of [
+      [receiptFor({ user: '0x3333333333333333333333333333333333333333' }), 403],
+      [receiptFor({ payTo: '0x4444444444444444444444444444444444444444' }), 400],
+      [receiptFor({ paid: 569_999n }), 400],
+      [receiptFor({ status: '0x0' }), 400],
+    ] as const) {
+      const kv2 = new MockKV();
+      const env2 = makeEnv(kv2, { ROUTER_V2_ADDRESS: ROUTER2 });
+      await kv2.put(`order:${ORDER}`, JSON.stringify({ receiveAddress: RECEIVE, amountToTransfer: '0.570000' }));
+      vi.stubGlobal('fetch', mock({ receipt }).f);
+      const res = await worker.fetch(makeRequest('POST', `/orders/${ORDER}/swap`, { txHash: TX2, wallet: USER }), env2);
+      expect(res.status).toBe(status);
+      expect(await kv2.get(`swap:${TX2.toLowerCase()}`)).toBeNull();
+    }
+  });
+
+  it('O6. Says "still pending" when the transaction is not mined yet', async () => {
+    await seedOrder();
+    vi.stubGlobal('fetch', mock({ receipt: null }).f);
+    const res = await worker.fetch(makeRequest('POST', `/orders/${ORDER}/swap`, { txHash: TX2, wallet: USER }), env);
+    expect(res.status).toBe(202);
+  });
+
+  it('O7. History finds a one-tap cash out and its order from the deposit address, and it is never "unfinished"', async () => {
+    await seedOrder();
+    vi.stubGlobal('fetch', mock({ logRows: [{ tx: TX2, payTo: RECEIVE }] }).f);
+    const hist = await worker.fetch(makeRequest('GET', `/history?wallet=${USER}`), env);
+    expect(hist.status).toBe(200);
+    const body = (await hist.json()) as { swaps: Array<{ txHash: string; orderId?: string; amountG: string }> };
+    expect(body.swaps).toHaveLength(1);
+    expect(body.swaps[0].orderId).toBe(ORDER);
+    expect(body.swaps[0].amountG).toBe('5000');
+    expect(await kv.get(`swap:${TX2.toLowerCase()}`)).toBe(ORDER);
+
+    const unfinished = await worker.fetch(makeRequest('GET', `/swaps/unfinished?wallet=${USER}`), env);
+    expect(((await unfinished.json()) as { swaps: unknown[] }).swaps).toHaveLength(0);
+  });
+});
+
+
+describe('slow payout alert for the team', () => {
+  const MIN = 60_000;
+  const NOW = Date.now();
+  const ID1 = '550e8400-e29b-41d4-a716-446655440001';
+  const ID2 = '550e8400-e29b-41d4-a716-446655440002';
+  const ID3 = '550e8400-e29b-41d4-a716-446655440003';
+  let kv: MockKV;
+  let env: Env;
+
+  const seed = async (id: string, status: string, ageMin: number) =>
+    kv.put(`order:${id}`, JSON.stringify({ status, receiveAddress: '0xP', amountToTransfer: '0.57', validUntil: 'x', paymentReference: null, createdAt: NOW - ageMin * MIN }));
+
+  /** Pretends to be the payout partner (live status per order) and the email service. */
+  const partner = (live: Record<string, string>) => {
+    const emails: Array<{ subject: string; text: string; to: string[] }> = [];
+    const f = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes('api.resend.com')) {
+        emails.push(JSON.parse(String(init?.body)));
+        return new Response('{}', { status: 200 });
+      }
+      const id = u.split('/').pop() as string;
+      return new Response(JSON.stringify({ data: { status: live[id] ?? 'initiated' } }), { status: 200 });
+    });
+    return { f, emails };
+  };
+
+  beforeEach(() => {
+    kv = new MockKV();
+    env = makeEnv(kv, { RESEND_API_KEY: 'key', SUPPORT_INBOX: 'team@example.com', RESEND_FROM: 'GoodCash <hello@goodcash.xyz>' });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('A1. Alerts once for a paid order stuck for too long, with no bank details', async () => {
+    await seed(ID1, 'fulfilled', 30);
+    const p = partner({ [ID1]: 'fulfilled' });
+    vi.stubGlobal('fetch', p.f);
+    const first = await alertSlowPayouts(env, NOW);
+    expect(first).toEqual({ checked: 1, alerted: 1 });
+    expect(p.emails).toHaveLength(1);
+    expect(p.emails[0].to).toEqual(['team@example.com']);
+    expect(p.emails[0].subject).toMatch(/Slow payout.*fulfilled/);
+    expect(p.emails[0].text).toContain(ID1);
+    expect(p.emails[0].text).not.toMatch(/\b\d{10}\b|account number|GTBank/i);
+    // a second run does not repeat the alert
+    const second = await alertSlowPayouts(env, NOW + 10 * MIN);
+    expect(second.alerted).toBe(0);
+    expect(p.emails).toHaveLength(1);
+  });
+
+  it('A2. Stays quiet for young orders, finished orders and orders that were never paid', async () => {
+    await seed(ID1, 'fulfilled', 10); // too young
+    await seed(ID2, 'settled', 60); // finished
+    await seed(ID3, 'initiated', 60); // never paid
+    const p = partner({ [ID1]: 'fulfilled', [ID2]: 'settled', [ID3]: 'initiated' });
+    vi.stubGlobal('fetch', p.f);
+    const out = await alertSlowPayouts(env, NOW);
+    expect(out.alerted).toBe(0);
+    expect(p.emails).toHaveLength(0);
+  });
+
+  it('A3. Uses the partner’s live status, not a stale saved one', async () => {
+    await seed(ID1, 'fulfilled', 40); // saved copy says stuck...
+    const p = partner({ [ID1]: 'settled' }); // ...but it actually finished
+    vi.stubGlobal('fetch', p.f);
+    expect((await alertSlowPayouts(env, NOW)).alerted).toBe(0);
+  });
+
+  it('A4. Still records the alert when the email service is not set up', async () => {
+    await seed(ID1, 'pending', 40);
+    vi.stubGlobal('fetch', partner({ [ID1]: 'pending' }).f);
+    const out = await alertSlowPayouts(makeEnv(kv), NOW);
+    expect(out.alerted).toBe(1);
+    expect(await kv.get(`alerted:${ID1}`)).not.toBeNull();
+  });
+
+  it('A5. New orders record when they were created', async () => {
+    const f = vi.fn().mockResolvedValue({ ok: true, json: async () => MOCK_PAYCREST_RESPONSE });
+    vi.stubGlobal('fetch', f);
+    await worker.fetch(makeRequest('POST', '/orders', VALID_BODY), makeEnv(kv));
+    const saved = JSON.parse((await kv.get(`order:${MOCK_PAYCREST_RESPONSE.id}`))!) as { createdAt?: number };
+    expect(saved.createdAt).toBeGreaterThan(NOW - 5_000);
   });
 });

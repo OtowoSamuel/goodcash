@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { CashOutTracker } from './CashOutTracker';
 
@@ -56,5 +56,34 @@ describe('Email me when it lands', () => {
     fireEvent.click(screen.getByRole('button', { name: /email me/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/valid email/i);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/notify'))).toBe(false);
+  });
+});
+
+describe('honest timing while the payout is slow', () => {
+  const order = (status: string) => ({ orderId: '11111111-1111-4111-8111-111111111111', receiveAddress: '0x1111111111111111111111111111111111111111', amountToSend: '0.57', status });
+
+  it('waits 15 minutes by default before showing the "taking longer" card', () => {
+    vi.useFakeTimers();
+    try {
+      render(<CashOutTracker {...props} depositSent initialOrder={order('fulfilled') as never} />);
+      act(() => { vi.advanceTimersByTime(10 * 60_000); });
+      expect(screen.queryByText(/taking longer than usual|not received after/i)).not.toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(6 * 60_000); });
+      expect(screen.getByText(/not received after 15 minutes/i)).toBeInTheDocument();
+      expect(screen.getByText(/your payment is safe/i)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says plainly where the payout is, with the usual time, and offers the email option first', () => {
+    render(<CashOutTracker {...props} depositSent initialOrder={order('fulfilled') as never} />);
+    expect(screen.getByText(/Your bank is being paid now/i)).toBeInTheDocument();
+    expect(screen.getByText(/Usually a few minutes\. Sometimes up to 20\./i)).toBeInTheDocument();
+    const email = screen.getByLabelText(/email me when it's sent/i);
+    const bank = screen.getByText(/Destination Bank/i);
+    // the email option sits above the bank details, so it is seen straight away
+    expect(email.compareDocumentPosition(bank) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/paycrest|usdt|fulfilled/i);
   });
 });

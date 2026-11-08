@@ -224,7 +224,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
           ))}
         </div>
         {!IS_DEMO_MODE && (
-          <div className="gc-sm" role={isBelowMinimum && amountNumber > 0 ? 'alert' : undefined} style={{ marginTop: 8, fontWeight: 700, color: isBelowMinimum && amountNumber > 0 ? '#b00020' : '#444' }}>
+          <div className="gc-sm" role={isBelowMinimum && amountNumber > 0 ? 'alert' : undefined} style={{ marginTop: 8, fontWeight: 700, color: isBelowMinimum && amountNumber > 0 ? 'var(--gc-danger)' : '#444' }}>
             Minimum cash out is about {minG.toLocaleString()} G$
           </div>
         )}
@@ -241,7 +241,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
         </div>
         <div className="gc-sm" style={{ marginTop: '2px' }}>{t.estimateFinalAmountNote}</div>
         {rateError && (
-          <div className="gc-sm" style={{ color: '#b91c1c', marginTop: '2px' }}>
+          <div className="gc-sm" style={{ color: 'var(--gc-danger)', marginTop: '2px' }}>
             {rateError}
           </div>
         )}
@@ -256,7 +256,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
               <button
                 key={val}
                 type="button"
-                className={`border-2 border-[#111] rounded-full px-4 py-1 font-medium transition-colors ${slippagePercent === val ? 'bg-[#7b39fc] text-white' : 'bg-white text-[#111] hover:bg-gray-100'}`}
+                className={`gc-pill gc-hit ${slippagePercent === val ? 'gc-pill--on' : 'gc-pill--white'}`}
                 onClick={() => setSlippagePercent(val)}
               >
                 {val}%
@@ -264,7 +264,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             ))}
           </div>
         </div>
-        <div className="gc-sm" style={{ marginTop: '6px', color: '#333' }}>
+        <div className="gc-sm" style={{ marginTop: '6px', color: 'var(--gc-mute)' }}>
           Quote refreshes in {secondsRemaining}s
         </div>
       </div>
@@ -293,7 +293,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             value={institutionCode}
             onChange={(e) => setInstitutionCode(e.target.value)}
             disabled={institutionsLoading}
-            className="min-w-0 flex-1 max-w-full rounded-xl border-2 border-[#111] bg-white pl-3 pr-12 py-2 text-sm text-[#111] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
+            className="min-w-0 flex-1 max-w-full rounded-xl border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] pl-3 pr-12 py-2 text-sm text-[color:var(--gc-ink)] outline-none appearance-none bg-no-repeat bg-[length:12px_8px] bg-[position:calc(100%_-_1.25rem)_center] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMiIgaGVpZ2h0PSI4IiB2aWV3Qm94PSIwIDAgMTIgOCI+PHBhdGggZD0iTTEgMWw1IDUgNS01IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMTExMTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PC9zdmc+')]"
           >
             <option value="">{institutionsLoading ? 'Loading banks…' : 'Select bank'}</option>
             {institutions.map((bank) => (
@@ -310,19 +310,19 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
             value={accountIdentifier}
             onChange={(e) => setAccountIdentifier(e.target.value)}
             placeholder="10-digit account number"
-            className="w-full rounded-xl border-2 border-[#111] bg-white px-3 py-3 text-base text-[#111] outline-none placeholder:text-[#666] relative z-10"
+            className="w-full rounded-xl border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] px-3 py-3 text-base text-[color:var(--gc-ink)] outline-none placeholder:text-[#666] relative z-10"
             style={{ marginTop: '4px' }}
           />
         </div>
         <div style={{ marginTop: '12px' }}>
           <label className="gc-lab">Account name</label>
           <div
-            className="min-h-[48px] rounded-xl border-2 border-[#111] bg-white px-3 py-3 text-base text-[#111]"
+            className="min-h-[48px] rounded-xl border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] px-3 py-3 text-base text-[color:var(--gc-ink)]"
             style={{ marginTop: '4px' }}
           >
             {verificationStatus === 'loading' && <span className="text-[#666]">Checking your account…</span>}
             {verificationStatus === 'idle' && <span className="text-[#666]">Enter a 10-digit account number</span>}
-            {verificationStatus === 'error' && <span className="text-[#b91c1c]">{verificationError}</span>}
+            {verificationStatus === 'error' && <span className="text-[color:var(--gc-danger)]">{verificationError}</span>}
             {verificationStatus === 'verified' && accountName && <span className="font-semibold">{accountName}</span>}
           </div>
           {verificationStatus === 'verified' && accountName && (
@@ -338,9 +338,9 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
               I confirm this is my account name
             </label>
           )}
-          {institutionsError && <p className="gc-sm" style={{ color: '#b91c1c' }}>{institutionsError}</p>}
+          {institutionsError && <p className="gc-sm" style={{ color: 'var(--gc-danger)' }}>{institutionsError}</p>}
         </div>
-        <div className="gc-row" style={{ marginTop: '12px', borderTop: '2px dashed #cfc3ee', paddingTop: '10px' }}>
+        <div className="gc-row" style={{ marginTop: '12px', borderTop: '1px solid var(--gc-line)', paddingTop: '10px' }}>
           <span className="gc-sm">Exit contribution</span>
           <span className="gc-pill gc-pill--yellow">−{rate.exitContributionG.toFixed(0)} G$</span>
         </div>
@@ -370,7 +370,7 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       </button>
 
       {showBankDetails && !canReview && (
-        <div className="gc-sm" style={{ textAlign: 'center', color: '#b91c1c' }}>
+        <div className="gc-sm" style={{ textAlign: 'center', color: 'var(--gc-danger)' }}>
           {!isBankDetailsValid
             ? 'Complete and confirm your bank details'
             : isRateUnavailable

@@ -44,7 +44,8 @@ describe('CashOutTracker - Step 7 requirements', () => {
   it('shows step 3 (Paying to your bank) content when on step 3', () => {
     render(<CashOutTracker {...baseProps} initialStep={3} />);
 
-    expect(screen.getByText(/We haven't seen your deposit yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/We haven't seen your payment yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Usually a few minutes\. Sometimes up to 20\./i)).toBeInTheDocument();
     expect(screen.getByText(/Destination Bank:/i)).toBeInTheDocument();
   });
 

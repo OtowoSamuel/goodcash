@@ -5,10 +5,12 @@ import {
   createWalletClient,
   custom,
   decodeEventLog,
+  encodeAbiParameters,
   http,
   pad,
   parseAbi,
   parseAbiItem,
+  parseAbiParameters,
   stringToHex,
 } from 'viem';
 import { celo } from 'viem/chains';
@@ -149,6 +151,11 @@ export function friendlySwapError(err: unknown): string {
     return "Your swap was sent and is still being confirmed. Please don't swap again. It will show in History, and we'll offer to finish your payout.";
   }
   if (/^\s*Minimum cash out/i.test(e?.message ?? '')) return (e?.message as string).trim();
+  if (/PRICE_MOVED|InsufficientOutput|MinOutBelowPayAmount/.test(raw)) {
+    return 'The price moved just before your cash out. Nothing was taken. Please try again.';
+  }
+  if (/ORDER_EXPIRED/.test(raw)) return 'That payout window closed before you confirmed. Nothing was taken. Please try again.';
+  if (/ORDER_MISMATCH/.test(raw)) return "We couldn't confirm your payout details just now. Nothing was taken. Please try again.";
   if (/chain of the wallet|does not match the target chain|wrong network|chain mismatch|switch.*chain/i.test(raw)) {
     return 'Your wallet is on the wrong network. Please switch it to Celo and try again.';
   }
@@ -349,6 +356,189 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
   };
 }
 
+// ---------------------------------------------------------------------------
+// One-tap cash out (GoodCashRouterV2): ONE wallet confirmation does everything.
+// The customer calls G$.transferAndCall(router, amount, data). In that single transaction the router swaps the
+// G$ and pays the payout partner exactly what the (already created) order asks for; leftovers return to the customer.
+// It is OFF unless VITE_ROUTER_V2_ADDRESS is set, and then the app uses the older three-step flow.
+// ---------------------------------------------------------------------------
+const envRouterV2 =
+  typeof import.meta !== 'undefined'
+    ? (import.meta as { env?: { VITE_ROUTER_V2_ADDRESS?: string } }).env?.VITE_ROUTER_V2_ADDRESS
+    : undefined;
+
+/** The one-tap router address from settings, or null when unset or not a real address (a zero address counts as unset). */
+export function parseRouterV2Address(value: string | undefined): Address | null {
+  return value && /^0x[0-9a-fA-F]{40}$/.test(value) && !/^0x0{40}$/.test(value) ? (value as Address) : null;
+}
+
+export const ROUTER_V2_ADDRESS: Address | null = parseRouterV2Address(envRouterV2);
+
+export const ONE_TAP_ENABLED = ROUTER_V2_ADDRESS !== null;
+
+/** Tighter than the three-step flow: the order is sized to this minimum, so a small cushion keeps the naira close to the estimate. */
+export const ONE_TAP_SLIPPAGE_BPS = 50;
+
+const ONE_TAP_ABI = parseAbi([
+  'function transferAndCall(address to, uint256 amount, bytes data) external returns (bool)',
+]);
+const ROUTER_V2_STATE_ABI = parseAbi(['function paused() external view returns (bool)']);
+const CASH_OUT_PAID_EVENT_ABI = parseAbiItem(
+  'event CashOutPaid(address indexed user, address indexed payTo, uint256 gIn, uint256 usdtOut, uint256 usdtPaid, uint256 usdtReturned, uint8 route, bytes32 ref)'
+);
+
+/** The guaranteed minimum USDT of a swap. The payout order is sized from this, before the swap. */
+export function computeOneTapMinOut(quote: QuoteResult): bigint {
+  return computeMinAmountOut(quote.usdtOut, ONE_TAP_SLIPPAGE_BPS);
+}
+
+/** Exactly what the router decodes: abi.encode(route, minOut, deadline, payTo, payAmount, ref). */
+export function encodeOneTapData(args: {
+  route: 0 | 1;
+  minOut: bigint;
+  deadline: bigint;
+  payTo: Address;
+  payAmount: bigint;
+  ref: `0x${string}`;
+}): `0x${string}` {
+  return encodeAbiParameters(parseAbiParameters('uint8, uint256, uint256, address, uint256, bytes32'), [
+    args.route,
+    args.minOut,
+    args.deadline,
+    args.payTo,
+    args.payAmount,
+    args.ref,
+  ]);
+}
+
+/** True when the one-tap router is paused. Checked BEFORE a payout order is created, so a pause never leaves orders behind. */
+export async function isOneTapRouterPaused(publicClient?: ReturnType<typeof createPublicClient>): Promise<boolean> {
+  if (!ROUTER_V2_ADDRESS) return true;
+  const client = publicClient ?? createPublicClient({ chain: celo, transport: http(CELO_RPC_URL) });
+  const paused = await client
+    .readContract({ address: ROUTER_V2_ADDRESS, abi: ROUTER_V2_STATE_ABI, functionName: 'paused' })
+    .catch(() => false);
+  return paused === true;
+}
+
+export interface OneTapOrderForSwap {
+  receiveAddress: string;
+  /** Exactly what the payout partner asked for, 6 decimals, as a whole number */
+  payAmountAtomic: string;
+  /** The router the server says to use. It must be the one this app is configured for. */
+  routerAddress: string;
+  validUntil: string;
+  orderId: string;
+}
+
+export interface OneTapResult {
+  txHash: string;
+  usdtOut: number;
+  usdtPaid: number;
+  usdtReturned: number;
+  amountG: number;
+}
+
+export async function executeOneTapCashOut(args: {
+  amountG: number;
+  quote: QuoteResult;
+  minOut: bigint;
+  walletAddress: string;
+  order: OneTapOrderForSwap;
+  onStep?: ExecuteSwapArgs['onStep'];
+  walletClient?: ReturnType<typeof createWalletClient>;
+  publicClient?: ReturnType<typeof createPublicClient>;
+  /** Test/fork override; production always uses the configured router. */
+  routerAddress?: Address;
+}): Promise<OneTapResult> {
+  const { amountG, quote, minOut, walletAddress, order, onStep } = args;
+  const routerAddress = args.routerAddress ?? ROUTER_V2_ADDRESS;
+  if (!routerAddress) throw new Error('One-tap cash out is not switched on.');
+
+  // Never pay anywhere the server merely says: checks on everything that decides where money goes
+  if (order.routerAddress.toLowerCase() !== routerAddress.toLowerCase()) throw new Error('ORDER_MISMATCH');
+  if (!/^0x[0-9a-fA-F]{40}$/.test(order.receiveAddress) || /^0x0{40}$/.test(order.receiveAddress)) throw new Error('ORDER_MISMATCH');
+  if (order.receiveAddress.toLowerCase() === PLACEHOLDER_DEPOSIT_ADDRESS.toLowerCase()) throw new Error('ORDER_MISMATCH');
+  const payAmount = BigInt(order.payAmountAtomic);
+  if (payAmount <= 0n || payAmount > minOut) throw new Error('PRICE_MOVED');
+  const validUntilMs = new Date(order.validUntil).getTime();
+  if (!Number.isFinite(validUntilMs) || validUntilMs - Date.now() < 90_000) throw new Error('ORDER_EXPIRED');
+
+  const injected = getEthereum();
+  if (!injected) throw new Error('No Celo wallet detected. Please connect a wallet first.');
+  const publicClient =
+    args.publicClient ?? createPublicClient({ chain: celo, transport: http(CELO_RPC_URL), pollingInterval: 1000 });
+
+  if (!args.walletClient) await ensureCeloChain(injected as unknown as Eip1193);
+  const walletClient =
+    args.walletClient ??
+    createWalletClient({
+      chain: celo,
+      transport: custom(injected as unknown as Parameters<typeof custom>[0]),
+      account: walletAddress as Address,
+    });
+
+  const isPaused = await publicClient
+    .readContract({ address: routerAddress, abi: ROUTER_V2_STATE_ABI, functionName: 'paused' })
+    .catch(() => false);
+  if (isPaused === true) throw new Error('Cash out is paused right now. Nothing was sent. Please try again later.');
+
+  const amountInWei = gToWei(amountG);
+  const route = ROUTE_NUMBER_BY_QUOTE_ROUTE[quote.route];
+  if (route !== 2 && route !== 3) throw new Error('PRICE_MOVED');
+  // The one-tap router has two routes, numbered 0 and 1
+  const route2: 0 | 1 = route === 2 ? 0 : 1;
+  // The swap must happen while the payout order is still open
+  const deadline = BigInt(Math.floor(Math.min(Date.now() + 20 * 60 * 1000, validUntilMs - 60_000) / 1000));
+  const data = encodeOneTapData({
+    route: route2,
+    minOut,
+    deadline,
+    payTo: order.receiveAddress as Address,
+    payAmount,
+    ref: pad(stringToHex(order.orderId.replace(/-/g, '').slice(0, 31)), { size: 32, dir: 'right' }),
+  });
+
+  onStep?.({ kind: 'swap', n: 1, total: 1 });
+  const txHash = await walletClient.writeContract({
+    chain: celo,
+    address: G_DOLLAR_ADDRESS,
+    abi: ONE_TAP_ABI,
+    functionName: 'transferAndCall',
+    args: [routerAddress, amountInWei, data],
+    account: walletClient.account ?? (walletAddress as Address),
+  });
+
+  let receipt;
+  try {
+    receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
+  } catch {
+    // Sent, just not confirmed yet: it may still go through
+    throw new SwapPendingError(txHash);
+  }
+  if (receipt.status !== 'success') throw new Error('Swap transaction reverted on Celo');
+
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== routerAddress.toLowerCase()) continue;
+    try {
+      const decoded = decodeEventLog({ abi: [CASH_OUT_PAID_EVENT_ABI], data: log.data, topics: log.topics });
+      if (decoded.eventName === 'CashOutPaid') {
+        const a = decoded.args as { usdtOut: bigint; usdtPaid: bigint; usdtReturned: bigint };
+        return {
+          txHash,
+          usdtOut: Number(a.usdtOut) / 1e6,
+          usdtPaid: Number(a.usdtPaid) / 1e6,
+          usdtReturned: Number(a.usdtReturned) / 1e6,
+          amountG,
+        };
+      }
+    } catch {
+      // not our event
+    }
+  }
+  throw new Error('CashOut event log not found in transaction receipt');
+}
+
 type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
 
 let activeProvider: Eip1193 | null = null;
@@ -413,29 +603,57 @@ export async function ensureCeloChain(provider: Eip1193): Promise<void> {
   }
 }
 
-/** Ask the user's wallet for an account and make sure it is on Celo mainnet. */
+/**
+ * Ask the user's wallet for an account. Getting the account is what "connected" means.
+ * Moving the wallet to the Celo network is tried afterwards but never blocks connecting: the app asks again,
+ * with a clear prompt, right before any swap or payment.
+ */
 export async function connectInjectedWallet(): Promise<string> {
   const ethereum = getEthereum();
   if (!ethereum) throw new Error('No Celo wallet detected. Open GoodCash in a wallet browser or install one.');
   const accounts = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[];
   if (!accounts?.[0]) throw new Error('No account returned by the wallet.');
   try {
-    await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xa4ec' }] });
+    await ensureCeloChain(ethereum);
   } catch {
-    await ethereum.request({
-      method: 'wallet_addEthereumChain',
-      params: [
-        {
-          chainId: '0xa4ec',
-          chainName: 'Celo',
-          nativeCurrency: { name: 'CELO', symbol: 'CELO', decimals: 18 },
-          rpcUrls: [CELO_RPC_URL],
-          blockExplorerUrls: ['https://celo.blockscout.com'],
-        },
-      ],
-    });
+    // Not fatal: connected is connected. The network is fixed when it matters.
   }
   return accounts[0];
+}
+
+/**
+ * Make a browser wallet forget this site, so the next Connect asks for an account again.
+ * Wallets cannot be disconnected by a website any other way. Best effort: not every wallet supports it.
+ */
+export async function disconnectInjectedWallet(): Promise<void> {
+  const ethereum = getEthereum();
+  if (!ethereum) return;
+  try {
+    await ethereum.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] });
+  } catch {
+    // unsupported or already revoked: the app still forgets the wallet
+  }
+}
+
+/** Plain-language reason a wallet could not be connected. Never mentions swaps or technical codes. */
+export function friendlyConnectError(err: unknown): string {
+  const e = err as { name?: string; code?: number | string; message?: string; shortMessage?: string } | null;
+  const raw = `${e?.name ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
+  const code = Number(e?.code);
+  if (code === 4001 || /user rejected|user denied|rejected the request|UserRejectedRequest|connection request reset|closed|cancel/i.test(raw)) {
+    return 'The wallet connection was cancelled. Tap Connect wallet to try again.';
+  }
+  if (code === -32002 || /already pending|already processing|request of type/i.test(raw)) {
+    return 'Your wallet already has a request waiting. Open your wallet, approve or reject it, then tap Connect wallet again.';
+  }
+  if (/locked|unlock/i.test(raw)) return 'Your wallet is locked. Unlock it, then tap Connect wallet again.';
+  if (/No Celo wallet|no wallet/i.test(raw)) {
+    return 'No wallet found. Open GoodCash inside your wallet app, or install a wallet extension, then try again.';
+  }
+  if (/unauthorized|origin not allowed|not allowed/i.test(raw)) {
+    return "We couldn't open the wallet connection from this address. Please try again in a moment.";
+  }
+  return "We couldn't connect your wallet. Please try again, or try a different wallet.";
 }
 
 /** Read the wallet's real G$ balance from Celo (18 decimals). */

@@ -22,6 +22,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string;       // Comma-separated browser origins
   CELO_RPC_URL?: string;          // On-chain swap verification RPC
   ROUTER_ADDRESS?: string;        // GoodCashRouter address override
+  ROUTER_V2_ADDRESS?: string;     // One-tap router (GoodCashRouterV2). Unset means the one-tap flow is off
+  ROUTER_V2_DEPLOY_BLOCK?: string; // Block the one-tap router was deployed in (where history scanning starts)
   SENDER_FEE?: string;            // Optional GoodCash fee in USDT (needs SENDER_FEE_ADDRESS)
   SENDER_FEE_ADDRESS?: string;    // Wallet that receives SENDER_FEE
   RESEND_API_KEY?: string;        // Optional: emails support tickets to SUPPORT_INBOX (secret)
@@ -49,6 +51,9 @@ const DEFAULT_ALLOWED_ORIGINS = [
 const CELO_USDT = '0x48065fbbE25f71c9282ddf5e1cD6D6a887483d5e'.toLowerCase();
 const DEFAULT_ROUTER_ADDRESS = '0xa4338586d4b2f0e1641c54b8cf0d53cd06b5c407'.toLowerCase();
 const CASH_OUT_TOPIC = '0xfd08ba0cf09cbb75e5d99933b03678a9b307c9a4839063749004850da25931dc';
+/** keccak256("CashOutPaid(address,address,uint256,uint256,uint256,uint256,uint8,bytes32)"): the one-tap router's event */
+const CASH_OUT_PAID_TOPIC = '0xf76a7b57d20e27c73ccada71d551173e9a82e46372f8dedf840cb08ad5ea60d7';
+const G_DOLLAR_TOKEN = '0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a';
 const CELO_RPC_FALLBACK = 'https://forno.celo.org';
 
 // ---------------------------------------------------------------------------
@@ -602,7 +607,7 @@ async function lookupOrderStatus(orderId: string, env: Env): Promise<string | nu
 }
 
 
-type SwapRow = { transactionHash: string; data: string; timeStamp: string };
+type SwapRow = { transactionHash: string; data: string; timeStamp: string; v2?: boolean; payTo?: string };
 
 /**
  * A wallet's GoodCash swaps. The free block explorer allows only about 10 requests and shared servers
@@ -619,11 +624,41 @@ interface ScanState {
   rows: SwapRow[];
 }
 
-async function scanWalletSwapsViaRpc(wallet: string, env: Env): Promise<SwapRow[]> {
-  const router = (env.ROUTER_ADDRESS || DEFAULT_ROUTER_ADDRESS).toLowerCase();
+interface ScanTarget {
+  router: string;
+  topic0: string;
+  deployBlock: number;
+  stateKey: (wallet: string) => string;
+  v2: boolean;
+}
+
+function scanTargets(env: Env): ScanTarget[] {
+  const targets: ScanTarget[] = [
+    {
+      router: (env.ROUTER_ADDRESS || DEFAULT_ROUTER_ADDRESS).toLowerCase(),
+      topic0: CASH_OUT_TOPIC,
+      deployBlock: ROUTER_DEPLOY_BLOCK,
+      stateKey: (w) => `wscan:${w}`,
+      v2: false,
+    },
+  ];
+  if (env.ROUTER_V2_ADDRESS && /^0x[0-9a-fA-F]{40}$/.test(env.ROUTER_V2_ADDRESS)) {
+    targets.push({
+      router: env.ROUTER_V2_ADDRESS.toLowerCase(),
+      topic0: CASH_OUT_PAID_TOPIC,
+      deployBlock: Number(env.ROUTER_V2_DEPLOY_BLOCK) > 0 ? Number(env.ROUTER_V2_DEPLOY_BLOCK) : ROUTER_DEPLOY_BLOCK,
+      stateKey: (w) => `wscan2:${w}`,
+      v2: true,
+    });
+  }
+  return targets;
+}
+
+async function scanWalletSwapsViaRpc(wallet: string, env: Env, target: ScanTarget = scanTargets(env)[0]): Promise<SwapRow[]> {
+  const router = target.router;
   const w = wallet.toLowerCase();
   const topic1 = `0x${'0'.repeat(24)}${w.slice(2)}`;
-  const stateKey = `wscan:${w}`;
+  const stateKey = target.stateKey(w);
 
   const latest = parseInt((await rpcCall(env, 'eth_blockNumber', [])) as string, 16);
   const saved = await env.ORDER_STORE.get(stateKey);
@@ -633,8 +668,8 @@ async function scanWalletSwapsViaRpc(wallet: string, env: Env): Promise<SwapRow[
   const found = new Map(state.rows.map((r) => [r.transactionHash.toLowerCase(), r] as const));
   const logsIn = async (from: number, to: number) => {
     const logs = (await rpcCall(env, 'eth_getLogs', [
-      { fromBlock: `0x${from.toString(16)}`, toBlock: `0x${to.toString(16)}`, address: router, topics: [CASH_OUT_TOPIC, topic1] },
-    ])) as Array<{ transactionHash: string; data: string; blockNumber: string }>;
+      { fromBlock: `0x${from.toString(16)}`, toBlock: `0x${to.toString(16)}`, address: router, topics: [target.topic0, topic1] },
+    ])) as Array<{ transactionHash: string; data: string; blockNumber: string; topics: string[] }>;
     for (const l of logs) {
       if (found.has(l.transactionHash.toLowerCase())) continue;
       const block = (await rpcCall(env, 'eth_getBlockByNumber', [l.blockNumber, false])) as { timestamp?: string } | null;
@@ -642,6 +677,7 @@ async function scanWalletSwapsViaRpc(wallet: string, env: Env): Promise<SwapRow[
         transactionHash: l.transactionHash,
         data: l.data,
         timeStamp: block?.timestamp ?? '0x0',
+        ...(target.v2 ? { v2: true, payTo: topicToAddress(l.topics?.[2]) ?? undefined } : {}),
       });
     }
   };
@@ -660,8 +696,8 @@ async function scanWalletSwapsViaRpc(wallet: string, env: Env): Promise<SwapRow[
   // Backward: older history, a few windows per call until the router's first block
   let back = state.back;
   let backWindows = 0;
-  while (back >= ROUTER_DEPLOY_BLOCK && backWindows < (saved ? 6 : 12)) {
-    const from = Math.max(ROUTER_DEPLOY_BLOCK, back - LOG_WINDOW + 1);
+  while (back >= target.deployBlock && backWindows < (saved ? 6 : 12)) {
+    const from = Math.max(target.deployBlock, back - LOG_WINDOW + 1);
     await logsIn(from, back);
     back = from - 1;
     backWindows++;
@@ -695,7 +731,15 @@ async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
 
   let rows: SwapRow[] | null = null;
   try {
-    rows = await scanWalletSwapsViaRpc(w, env);
+    // The current router must answer. The one-tap router (when switched on) adds to it, and a hiccup there
+    // never hides the rest of a customer's history.
+    const targets = scanTargets(env);
+    const settled = await Promise.allSettled(targets.map((t) => scanWalletSwapsViaRpc(w, env, t)));
+    if (settled[0].status === 'rejected') throw settled[0].reason;
+    rows = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+    settled.forEach((r, i) => {
+      if (i > 0 && r.status === 'rejected') console.error('[orders] one-tap chain scan failed:', r.reason);
+    });
   } catch (e) {
     console.error('[orders] chain scan failed:', e);
   }
@@ -725,14 +769,19 @@ async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
     return rows;
   }
 
-  const state = await env.ORDER_STORE.get(`wscan:${w}`);
-  if (state) {
+  const saved: SwapRow[] = [];
+  let sawAny = false;
+  for (const t of scanTargets(env)) {
+    const state = await env.ORDER_STORE.get(t.stateKey(w));
+    if (!state) continue;
     try {
-      return (JSON.parse(state) as ScanState).rows;
+      saved.push(...(JSON.parse(state) as ScanState).rows);
+      sawAny = true;
     } catch {
       // unreadable
     }
   }
+  if (sawAny) return saved;
   throw new Error('swap lookup unavailable');
 }
 
@@ -765,9 +814,12 @@ async function handleUnfinishedSwaps(request: Request, env: Env): Promise<Respon
     .filter((r) => r.data.length >= 128 && now - r.at <= THIRTY_DAYS_S)
     .sort((a, b) => b.at - a.at)
     .slice(0, 8);
+  const oneTapHashes = new Set(rows.filter((r) => r.v2).map((r) => r.transactionHash.toLowerCase()));
 
   const swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number }> = [];
   for (const r of recent) {
+    // A one-tap cash out pays the partner in the same transaction, so there is never a payout left to finish
+    if (oneTapHashes.has(r.txHash.toLowerCase())) continue;
     const orderId = await env.ORDER_STORE.get(`swap:${r.txHash.toLowerCase()}`);
     if (orderId) {
       const status = await lookupOrderStatus(orderId, env);
@@ -931,6 +983,7 @@ async function handleWalletHistory(request: Request, env: Env): Promise<Response
       txHash: r.transactionHash,
       at: parseInt(r.timeStamp, 16),
       data: r.data.startsWith('0x') ? r.data.slice(2) : r.data,
+      payTo: r.v2 ? r.payTo : undefined,
     }))
     .filter((r) => r.data.length >= 128)
     .sort((a, b) => b.at - a.at)
@@ -948,7 +1001,23 @@ async function handleWalletHistory(request: Request, env: Env): Promise<Response
   }> = [];
   for (const r of swaps) {
     const key = r.txHash.toLowerCase();
-    const orderId = await env.ORDER_STORE.get(`swap:${key}`);
+    let orderId = await env.ORDER_STORE.get(`swap:${key}`);
+    // A one-tap cash out paid the partner's deposit address directly: find its order from that address
+    if (!orderId && r.payTo) {
+      const link = await env.ORDER_STORE.get(`rcv:${r.payTo.toLowerCase()}`);
+      if (link) {
+        try {
+          const parsedLink = JSON.parse(link) as { o?: string; n?: string };
+          if (parsedLink.o) {
+            orderId = parsedLink.o;
+            await env.ORDER_STORE.put(`swap:${key}`, orderId, { expirationTtl: 60 * 60 * 24 * 400 });
+            if (parsedLink.n) await env.ORDER_STORE.put(`naira:${key}`, parsedLink.n, { expirationTtl: 60 * 60 * 24 * 400 });
+          }
+        } catch {
+          // unreadable link: show the swap without an order
+        }
+      }
+    }
     let status: string | undefined;
     if (orderId) {
       const done = await env.ORDER_STORE.get(`done:${key}`);
@@ -984,6 +1053,68 @@ async function handleWalletHistory(request: Request, env: Env): Promise<Response
  * POST /orders
  * Create a Paycrest off-ramp order. The Paycrest API key stays server-side.
  */
+/**
+ * Ask the payout partner for an off-ramp order. Returns the order, or a ready-made friendly error response.
+ * The partner's API key stays on the server.
+ */
+async function createPaycrestOrderRaw(
+  env: Env,
+  input: {
+    amount: string;
+    refundAddress: string;
+    recipient: { institution: string; accountIdentifier: string; accountName: string; memo?: string };
+    reference: string;
+  }
+): Promise<{ order: PaycrestOrderResponse } | { response: Response }> {
+  const paycrestBody = {
+    amount: input.amount,
+    // Paycrest rejects an explicit zero fee ("Sender fee must be greater than zero") and
+    // requires a fee address whenever a fee is set. So send no fee at all unless the
+    // team configures both SENDER_FEE and SENDER_FEE_ADDRESS.
+    ...(env.SENDER_FEE && Number(env.SENDER_FEE) > 0 && env.SENDER_FEE_ADDRESS
+      ? { senderFee: env.SENDER_FEE, senderFeeAddress: env.SENDER_FEE_ADDRESS }
+      : {}),
+    source: {
+      type: 'crypto',
+      currency: 'USDT',
+      network: 'celo',
+      refundAddress: input.refundAddress,
+    },
+    destination: {
+      type: 'fiat',
+      currency: 'NGN',
+      recipient: {
+        institution: input.recipient.institution,
+        accountIdentifier: input.recipient.accountIdentifier,
+        accountName: input.recipient.accountName,
+        memo: input.recipient.memo ?? 'GoodCash',
+      },
+    },
+    reference: input.reference,
+  };
+
+  try {
+    const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'API-Key': env.PAYCREST_API_KEY,
+      },
+      body: JSON.stringify(paycrestBody),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      // Sanitise: do not forward raw Paycrest error which may contain internal details
+      console.error(`[orders] Paycrest error ${res.status}: ${errText.slice(0, 200)}`);
+      return { response: err('The payout partner could not create the order right now. Please try again shortly.', 502) };
+    }
+    return { order: unwrapPaycrestData<PaycrestOrderResponse>(await res.json()) };
+  } catch (e) {
+    console.error('[orders] Paycrest fetch failed:', e);
+    return { response: err('Off-ramp provider is unreachable. Please try again later.', 503) };
+  }
+}
+
 /** A one-way fingerprint of where an order pays out, so we can tell whether two orders are for the same bank account. */
 async function recipientFingerprint(input: { recipient: { institution: string; accountIdentifier: string } ; refundAddress: string }): Promise<string> {
   const data = new TextEncoder().encode(`${input.recipient.institution}|${input.recipient.accountIdentifier}|${input.refundAddress.toLowerCase()}`);
@@ -1069,59 +1200,14 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
   }
 
   const input: CreateOrderInput = parsed.data;
-  const reference = input.reference ?? generateRef();
-
-  const paycrestBody = {
+  const created = await createPaycrestOrderRaw(env, {
     amount: input.amount,
-    // Paycrest rejects an explicit zero fee ("Sender fee must be greater than zero") and
-    // requires a fee address whenever a fee is set. So send no fee at all unless the
-    // team configures both SENDER_FEE and SENDER_FEE_ADDRESS.
-    ...(env.SENDER_FEE && Number(env.SENDER_FEE) > 0 && env.SENDER_FEE_ADDRESS
-      ? { senderFee: env.SENDER_FEE, senderFeeAddress: env.SENDER_FEE_ADDRESS }
-      : {}),
-    source: {
-      type: 'crypto',
-      currency: 'USDT',
-      network: 'celo',
-      refundAddress: input.refundAddress,
-    },
-    destination: {
-      type: 'fiat',
-      currency: 'NGN',
-      recipient: {
-        institution: input.recipient.institution,
-        accountIdentifier: input.recipient.accountIdentifier,
-        accountName: input.recipient.accountName,
-        memo: input.recipient.memo ?? 'GoodCash',
-      },
-    },
-    reference,
-  };
-
-  let paycrestResponse: PaycrestOrderResponse;
-  try {
-    const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'API-Key': env.PAYCREST_API_KEY,
-      },
-      body: JSON.stringify(paycrestBody),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      // Sanitise: do not forward raw Paycrest error which may contain internal details
-      console.error(`[orders] Paycrest error ${res.status}: ${errText.slice(0, 200)}`);
-      return err('The payout partner could not create the order right now. Please try again shortly.', 502);
-    }
-
-
-    paycrestResponse = unwrapPaycrestData<PaycrestOrderResponse>(await res.json());
-  } catch (e) {
-    console.error('[orders] Paycrest fetch failed:', e);
-    return err('Off-ramp provider is unreachable. Please try again later.', 503);
-  }
+    refundAddress: input.refundAddress,
+    recipient: input.recipient,
+    reference: input.reference ?? generateRef(),
+  });
+  if ('response' in created) return created.response;
+  const paycrestResponse = created.order;
 
   // Store lightweight state in KV so webhooks can update it
   const orderState = {
@@ -1130,6 +1216,7 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
     amountToTransfer: paycrestResponse.providerAccount.amountToTransfer,
     validUntil: paycrestResponse.providerAccount.validUntil,
     paymentReference: null as string | null,
+    createdAt: Date.now(),
   };
   await env.ORDER_STORE.put(
     `order:${paycrestResponse.id}`,
@@ -1402,6 +1489,351 @@ async function fetchRates(env: Env): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// One-tap cash out (GoodCashRouterV2)
+//
+// The customer's single wallet confirmation swaps their G$ and pays the payout partner in the same
+// transaction. For that, the payout order has to exist BEFORE the swap, sized to the swap's guaranteed
+// minimum, and the router pays the partner exactly the order's amount (anything left goes back to the customer).
+// ---------------------------------------------------------------------------
+
+const OneTapOrderSchema = z.object({
+  /** The least USDT the swap will produce (the customer's price protection), 6 decimals */
+  minUsdt: z.string().regex(/^\d+(\.\d{1,6})?$/, 'Must be a decimal number string'),
+  /** G$ the customer is about to cash out (checked against their balance) */
+  amountG: z.string().regex(/^\d+(\.\d{1,6})?$/, 'Must be a decimal number string'),
+  refundAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'Must be a valid Ethereum/Celo address'),
+  recipient: RecipientSchema,
+  reference: z.string().min(8).max(64).regex(/^[a-zA-Z0-9_-]+$/).optional(),
+});
+
+/** The payout partner keeps about this much of the dollars; the order is sized below the minimum by it. */
+const ONE_TAP_FEE_RESERVE_ATOMIC = 20_000n; // 0.02 USDT
+
+function toAtomic18(value: string): bigint {
+  const [whole, fraction = ''] = value.split('.');
+  return BigInt(whole) * 10n ** 18n + BigInt((fraction + '0'.repeat(18)).slice(0, 18));
+}
+
+function fromAtomic6Str(v: bigint): string {
+  const whole = v / 1_000_000n;
+  const frac = (v % 1_000_000n).toString().padStart(6, '0');
+  return `${whole}.${frac}`;
+}
+
+/** POST /orders/v2 - create the payout order BEFORE a one-tap swap. */
+async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'orders');
+  if (limited) return limited;
+
+  const routerV2 = env.ROUTER_V2_ADDRESS && /^0x[0-9a-fA-F]{40}$/.test(env.ROUTER_V2_ADDRESS) ? env.ROUTER_V2_ADDRESS : null;
+  if (!routerV2) return err('This is not available right now. Please try again later.', 503);
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const parsed = OneTapOrderSchema.safeParse(body);
+  if (!parsed.success) return err(parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; '));
+  const input = parsed.data;
+
+  // Only people who really hold the G$ can ask for an order (keeps junk orders out)
+  try {
+    const word = `0x70a08231${'0'.repeat(24)}${input.refundAddress.slice(2).toLowerCase()}`;
+    const raw = (await rpcCall(env, 'eth_call', [{ to: G_DOLLAR_TOKEN, data: word }, 'latest'])) as string;
+    if (BigInt(raw) < toAtomic18(input.amountG)) return err("That's more G$ than your wallet holds.", 400);
+  } catch (e) {
+    console.error('[orders] one-tap balance check failed:', e);
+    return err('Could not check your balance right now. Please try again.', 503);
+  }
+
+  const minAtomic = toAtomic6(input.minUsdt);
+  const floor = toAtomic6(PAYCREST_MIN_USDT.toFixed(2));
+  let amountAtomic = minAtomic - ONE_TAP_FEE_RESERVE_ATOMIC;
+  const tooSmall = () => err('That amount is too small to pay out after fees. Try a larger amount.', 400);
+  if (amountAtomic < floor) return tooSmall();
+
+  // The partner's fee is added on top of the order amount. The total to send must never exceed the guaranteed minimum.
+  let order: PaycrestOrderResponse | null = null;
+  const reference = input.reference ?? generateRef();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const created = await createPaycrestOrderRaw(env, {
+      amount: fromAtomic6Str(amountAtomic),
+      refundAddress: input.refundAddress,
+      recipient: input.recipient,
+      reference: attempt === 0 ? reference : `${reference}-${attempt}`.slice(0, 64),
+    });
+    if ('response' in created) return created.response;
+    const toSend = toAtomic6(created.order.providerAccount.amountToTransfer);
+    if (toSend <= minAtomic) {
+      order = created.order;
+      break;
+    }
+    amountAtomic -= toSend - minAtomic;
+    if (amountAtomic < floor) return tooSmall();
+  }
+  if (!order) return err('The payout partner could not create the order right now. Please try again shortly.', 502);
+
+  const receive = order.providerAccount.receiveAddress ?? '';
+  if (!/^0x[0-9a-fA-F]{40}$/.test(receive) || /^0x0{40}$/.test(receive)) {
+    console.error('[orders] one-tap order had an unusable deposit address');
+    return err('The payout partner could not create the order right now. Please try again shortly.', 502);
+  }
+  const validUntil = new Date(order.providerAccount.validUntil).getTime();
+  if (!Number.isFinite(validUntil) || validUntil - Date.now() < 5 * 60 * 1000) {
+    return err('The payout partner could not create the order right now. Please try again shortly.', 502);
+  }
+
+  await env.ORDER_STORE.put(
+    `order:${order.id}`,
+    JSON.stringify({
+      status: order.status ?? 'initiated',
+      receiveAddress: receive,
+      amountToTransfer: order.providerAccount.amountToTransfer,
+      validUntil: order.providerAccount.validUntil,
+      paymentReference: null as string | null,
+      createdAt: Date.now(),
+    }),
+    { expirationTtl: 86400 }
+  );
+  // Lets us find the order from the deposit address later (the swap pays that address directly)
+  const naira = expectedNairaFromOrder(order);
+  await env.ORDER_STORE.put(`rcv:${receive.toLowerCase()}`, JSON.stringify({ o: order.id, ...(naira ? { n: naira } : {}) }), {
+    expirationTtl: 60 * 60 * 24 * 14,
+  });
+
+  const client = toClientOrder(order);
+  return json({ ...client, payAmountAtomic: toAtomic6(order.providerAccount.amountToTransfer).toString(), routerAddress: routerV2 }, 201);
+}
+
+/** POST /orders/:id/swap - link a finished one-tap swap to its order, after checking the chain. */
+async function handleLinkOneTapSwap(orderId: string, request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'orders');
+  if (limited) return limited;
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) return err('Invalid order ID format', 400);
+  const routerV2 = env.ROUTER_V2_ADDRESS?.toLowerCase();
+  if (!routerV2) return err('This is not available right now. Please try again later.', 503);
+
+  let body: { txHash?: unknown; wallet?: unknown };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const txHash = typeof body.txHash === 'string' ? body.txHash : '';
+  const wallet = typeof body.wallet === 'string' ? body.wallet.toLowerCase() : '';
+  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash) || !/^0x[0-9a-f]{40}$/.test(wallet)) return err('Invalid request', 400);
+
+  const stateRaw = await env.ORDER_STORE.get(`order:${orderId}`);
+  if (!stateRaw) return err('We could not find that order.', 404);
+  const state = JSON.parse(stateRaw) as { receiveAddress: string; amountToTransfer: string };
+
+  let receipt: RpcReceipt | null;
+  try {
+    receipt = (await rpcCall(env, 'eth_getTransactionReceipt', [txHash])) as RpcReceipt | null;
+  } catch (e) {
+    console.error('[orders] one-tap link RPC failed:', e);
+    return err('Could not check the transaction right now. Please try again.', 503);
+  }
+  if (!receipt) return json({ pending: true }, 202);
+  if (receipt.status !== '0x1') return err('That transaction did not succeed.', 400);
+
+  const log = receipt.logs?.find((l) => l.address?.toLowerCase() === routerV2 && l.topics?.[0]?.toLowerCase() === CASH_OUT_PAID_TOPIC);
+  if (!log) return err('That transaction is not a cash out.', 400);
+  if (topicToAddress(log.topics[1]) !== wallet) return err('That cash out belongs to a different wallet.', 403);
+  if (topicToAddress(log.topics[2]) !== state.receiveAddress.toLowerCase()) return err('That cash out was not paid to this order.', 400);
+  const data = log.data.startsWith('0x') ? log.data.slice(2) : log.data;
+  if (data.length < 192) return err('That cash out looks malformed.', 400);
+  const paid = BigInt(`0x${data.slice(128, 192)}`);
+  if (paid !== toAtomic6(state.amountToTransfer)) return err('That cash out does not match this order.', 400);
+
+  const key = txHash.toLowerCase();
+  await env.ORDER_STORE.put(`swap:${key}`, orderId, { expirationTtl: 60 * 60 * 24 * 400 });
+  const link = await env.ORDER_STORE.get(`rcv:${state.receiveAddress.toLowerCase()}`);
+  try {
+    const n = link ? (JSON.parse(link) as { n?: string }).n : undefined;
+    if (n) await env.ORDER_STORE.put(`naira:${key}`, n, { expirationTtl: 60 * 60 * 24 * 400 });
+  } catch {
+    // optional
+  }
+  return new Response(null, { status: 204 });
+}
+
+// ---------------------------------------------------------------------------
+// Add G$ (naira -> G$): live quote
+//
+// Path: the customer pays naira by bank transfer; the payout partner delivers dollars (USDT) on Base to
+// the customer's own wallet; one cross-chain swap then turns those dollars into G$ on Celo, in the same wallet.
+// This endpoint only READS prices. It creates no order and moves no money.
+// ---------------------------------------------------------------------------
+
+const BASE_USDT = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
+const CELO_G_DOLLAR = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A';
+/** Assumed partner fee for a naira order, in dollars. UNVERIFIED: the real fee comes back when an order is created. */
+const ONRAMP_FEE_RESERVE_USDT = 0.02;
+const ONRAMP_MIN_USDT = 0.5;
+const ONRAMP_MAX_NAIRA = 2_000_000;
+const QUOTE_WALLET_PLACEHOLDER = '0x000000000000000000000000000000000000dEaD'; // only used when no wallet is connected yet
+
+interface LifiQuote {
+  tool?: string;
+  estimate?: {
+    toAmount?: string;
+    toAmountMin?: string;
+    executionDuration?: number;
+    feeCosts?: Array<{ amountUSD?: string }>;
+    gasCosts?: Array<{ amountUSD?: string }>;
+  };
+}
+
+async function handleOnrampQuote(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const naira = Number(url.searchParams.get('naira'));
+  const wallet = url.searchParams.get('wallet') ?? '';
+  if (!Number.isFinite(naira) || naira <= 0) return err('Enter an amount in naira.', 400);
+  if (naira > ONRAMP_MAX_NAIRA) return err(`The most you can add at once is ₦${ONRAMP_MAX_NAIRA.toLocaleString('en-US')}.`, 400);
+  if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return err('Invalid wallet address', 400);
+
+  const unavailable = () => err('Adding G$ is not available right now. Please try again later.', 503);
+  const base = env.PAYCREST_BASE_URL || 'https://api.paycrest.io';
+
+  // 1. What the partner charges for dollars on Base (naira per dollar)
+  let rate: number;
+  try {
+    const guess = Math.max(ONRAMP_MIN_USDT, Math.round((naira / 1385) * 100) / 100);
+    const res = await fetch(`${base}/v2/rates/base/USDT/${guess}/NGN?side=buy`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return unavailable();
+    const body = (await res.json()) as { data?: { buy?: { rate?: string } } };
+    rate = Number(body?.data?.buy?.rate);
+    if (!Number.isFinite(rate) || rate <= 0) return unavailable();
+  } catch (e) {
+    console.error('[onramp] partner rate failed:', e);
+    return unavailable();
+  }
+
+  // 2. Dollars that actually reach the customer's wallet after the partner fee
+  const usdtDelivered = naira / rate - ONRAMP_FEE_RESERVE_USDT;
+  const minNaira = Math.ceil(((ONRAMP_MIN_USDT + ONRAMP_FEE_RESERVE_USDT) * rate) / 100) * 100;
+  if (usdtDelivered < ONRAMP_MIN_USDT) {
+    return json({ error: `The least you can add is ₦${minNaira.toLocaleString('en-US')}.`, minNaira }, 400);
+  }
+  const atomic = BigInt(Math.floor(usdtDelivered * 1e6));
+
+  // 3. What one cross-chain swap turns those dollars into (G$ on Celo, same wallet)
+  const from = wallet || QUOTE_WALLET_PLACEHOLDER;
+  let lifi: LifiQuote;
+  try {
+    const q = new URLSearchParams({
+      fromChain: '8453',
+      toChain: '42220',
+      fromToken: BASE_USDT,
+      toToken: CELO_G_DOLLAR,
+      fromAmount: atomic.toString(),
+      fromAddress: from,
+      toAddress: from,
+      slippage: '0.01',
+      integrator: 'goodcash',
+    });
+    const res = await fetch(`https://li.quest/v1/quote?${q.toString()}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return unavailable();
+    lifi = (await res.json()) as LifiQuote;
+  } catch (e) {
+    console.error('[onramp] swap quote failed:', e);
+    return unavailable();
+  }
+  const est = lifi.estimate;
+  if (!est?.toAmount || !est.toAmountMin) return unavailable();
+
+  const sum = (rows?: Array<{ amountUSD?: string }>) => (rows ?? []).reduce((t, r) => t + (Number(r.amountUSD) || 0), 0);
+  const gOut = Number(BigInt(est.toAmount)) / 1e18;
+  const gMin = Number(BigInt(est.toAmountMin)) / 1e18;
+  return json({
+    naira,
+    ngnPerUsd: rate,
+    usdtDelivered,
+    partnerFeeUsd: ONRAMP_FEE_RESERVE_USDT,
+    swapFeeUsd: Math.round(sum(est.feeCosts) * 10_000) / 10_000,
+    networkFeeUsd: Math.round(sum(est.gasCosts) * 10_000) / 10_000,
+    gOut,
+    gOutMin: gMin,
+    seconds: est.executionDuration ?? null,
+    minNaira,
+    // Quotes move; the app must ask again if it is older than this
+    validForSeconds: 30,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Slow-payout alert for the team
+//
+// A paid order should reach "settled" within minutes. If one sits in a paid-but-not-finished status for too
+// long, tell the team once, with the order reference only (never bank details), so nobody has to wait for a
+// customer to complain. Runs on a schedule (Cloudflare cron, free on the free plan).
+// ---------------------------------------------------------------------------
+
+/** Statuses meaning the partner already has the customer's deposit but has not finished. */
+const IN_FLIGHT_STATUSES = new Set(['deposited', 'pending', 'fulfilling', 'fulfilled', 'validated', 'settling']);
+const SLOW_PAYOUT_MINUTES = 25;
+
+export async function alertSlowPayouts(env: Env, now = Date.now()): Promise<{ checked: number; alerted: number }> {
+  let checked = 0;
+  let alerted = 0;
+  const list = await env.ORDER_STORE.list({ prefix: 'order:', limit: 100 });
+  for (const key of list.keys) {
+    const id = key.name.slice('order:'.length);
+    const raw = await env.ORDER_STORE.get(key.name);
+    if (!raw) continue;
+    let state: { status?: string; createdAt?: number };
+    try {
+      state = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (!state.createdAt || now - state.createdAt < SLOW_PAYOUT_MINUTES * 60_000) continue;
+    if (state.status && FINAL_STATUSES.has(state.status)) continue;
+    checked++;
+    if (await env.ORDER_STORE.get(`alerted:${id}`)) continue;
+
+    // Ask the partner for the live status (the saved copy can be out of date)
+    const live = await lookupOrderStatus(id, env);
+    if (!live || !IN_FLIGHT_STATUSES.has(live)) continue; // never paid, or already finished
+
+    await env.ORDER_STORE.put(`alerted:${id}`, String(now), { expirationTtl: 60 * 60 * 24 * 3 });
+    alerted++;
+    const minutes = Math.round((now - state.createdAt) / 60_000);
+    console.error(`[slow-payout] order ${id} has been "${live}" for about ${minutes} minutes`);
+    if (env.RESEND_API_KEY && env.SUPPORT_INBOX) {
+      try {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: env.RESEND_FROM || 'GoodCash Alerts <onboarding@resend.dev>',
+            to: [env.SUPPORT_INBOX],
+            subject: `[GoodCash] Slow payout: ${id.slice(0, 8)} is "${live}" after ${minutes} min`,
+            text: [
+              `A payout is taking longer than expected.`,
+              ``,
+              `Order: ${id}`,
+              `Status: ${live}`,
+              `Age: about ${minutes} minutes`,
+              ``,
+              `The customer's deposit was received by the payout partner, but the payout has not finished.`,
+              `Check it in the partner dashboard (https://app.paycrest.io) and contact the partner if it is stuck.`,
+              `(No bank details are included in this alert.)`,
+            ].join('\n'),
+          }),
+        });
+      } catch (e) {
+        console.error('[slow-payout] alert email failed:', e);
+      }
+    }
+  }
+  return { checked, alerted };
+}
+
+// ---------------------------------------------------------------------------
 // Main fetch handler
 // ---------------------------------------------------------------------------
 
@@ -1416,7 +1848,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
 
   // Read-only endpoints share a looser limit (many people sit behind one phone-network address)
-  if (m === 'GET' && (pathname === '/rates' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname))) {
+  if (m === 'GET' && (pathname === '/rates' || pathname === '/onramp/quote' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname))) {
     const limited = await checkRateLimit(request, env, 'read', 'read');
     if (limited) return limited;
   }
@@ -1424,6 +1856,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   // Requests that carry free text can't be huge
   if (m === 'POST' && ['/support', '/diag', '/notify'].includes(pathname)) {
     if (Number(request.headers.get('Content-Length') ?? '0') > 16_384) return err('Request too large', 413);
+  }
+
+  // GET /onramp/quote?naira=5000&wallet=0x... - what naira buys in G$ (read-only)
+  if (m === 'GET' && pathname === '/onramp/quote') {
+    return handleOnrampQuote(request, env);
   }
 
   // GET /rates — CORS-safe proxy for Paycrest rates
@@ -1440,6 +1877,17 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   // POST /verify-account — resolve bank account name through Paycrest
   if (m === 'POST' && pathname === '/verify-account') {
     return handleVerifyAccount(request, env);
+  }
+
+  // POST /orders/v2 - payout order created BEFORE a one-tap swap
+  if (m === 'POST' && pathname === '/orders/v2') {
+    return handleCreateOneTapOrder(request, env);
+  }
+
+  // POST /orders/:id/swap - link a finished one-tap swap to its order
+  const linkMatch = pathname.match(/^\/orders\/([^/]+)\/swap$/i);
+  if (m === 'POST' && linkMatch) {
+    return handleLinkOneTapSwap(linkMatch[1], request, env);
   }
 
   // POST /orders
@@ -1501,5 +1949,14 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const response = await handleRequest(request, env);
     return withCors(response, request, env);
+  },
+  /** Runs on a schedule: tells the team about payouts that are taking too long. */
+  async scheduled(_event: unknown, env: Env): Promise<void> {
+    try {
+      const out = await alertSlowPayouts(env);
+      if (out.alerted > 0) console.error(`[slow-payout] alerted ${out.alerted} of ${out.checked} open orders`);
+    } catch (e) {
+      console.error('[slow-payout] check failed:', e);
+    }
   },
 };

@@ -225,6 +225,41 @@ interface PaycrestOrderPayload {
   paymentReference?: string | null;
 }
 
+/** A payout order made BEFORE a one-tap swap, with the exact amount the swap must pay the partner. */
+export interface OneTapOrder extends OffRampOrder {
+  /** Exactly what the partner asked for, 6 decimals, as a whole number */
+  payAmountAtomic: string;
+  /** The router the server says to use (the app checks it against its own setting) */
+  routerAddress: string;
+}
+
+/**
+ * Ask for a payout order that the one-tap swap will pay directly.
+ * `minUsdt` is the swap's guaranteed minimum output; the order is sized below it by the partner's fee.
+ */
+export async function createOneTapOrder(input: {
+  minUsdt: string;
+  amountG: string;
+  refundAddress: string;
+  recipient: { institution: string; accountIdentifier: string; accountName: string; memo?: string };
+}): Promise<OneTapOrder> {
+  const data = await apiPost<PaycrestOrderPayload & { payAmountAtomic: string; routerAddress: string }>('/orders/v2', input);
+  return { ...data, status: (data.status as OffRampStatus) ?? 'initiated' };
+}
+
+/** Tell the server which swap paid an order, so History links them. Safe to call more than once; failures are harmless. */
+export async function linkOneTapSwap(orderId: string, txHash: string, wallet: string): Promise<void> {
+  for (let i = 0; i < 6; i++) {
+    const res = await fetch(`${ORDERS_BASE}/orders/${orderId}/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txHash, wallet }),
+    });
+    if (res.status === 204 || (res.status >= 400 && res.status < 500 && res.status !== 404)) return;
+    await new Promise((r) => setTimeout(r, 4000)); // not mined yet (202) or not found yet: try again shortly
+  }
+}
+
 export async function createPaycrestOrder(input: CreateOrderInput): Promise<OffRampOrder> {
   const receivedAtomic = toAtomic6(input.usdtReceived);
   if (!Number.isFinite(receivedAtomic) || receivedAtomic <= 0) {

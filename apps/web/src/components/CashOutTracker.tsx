@@ -16,6 +16,25 @@ import {
   type OffRampStatus,
 } from '../lib/useOffRamp';
 
+/** Plain words for where a payout is, from the partner's status. Never shows partner or token names. */
+function payoutStageText(status?: string): string {
+  switch (status) {
+    case 'initiated':
+      return "We haven't seen your payment yet. It can take a minute or two to show up after you send it.";
+    case 'deposited':
+    case 'pending':
+      return 'We have your payment. Your bank payout is being arranged.';
+    case 'fulfilling':
+    case 'fulfilled':
+    case 'validated':
+      return 'Your bank is being paid now. Banks can take a few minutes to show it.';
+    case 'settling':
+      return 'Almost there. Your payout is being confirmed.';
+    default:
+      return 'We have your payment. Your bank is being paid now.';
+  }
+}
+
 export interface CashOutTrackerProps {
   // Swap execution info
   txHash: string;
@@ -98,7 +117,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   depositSent = false,
   initialStep,
   initialFailureState = null,
-  delayedTimeoutMinutes = 5,
+  delayedTimeoutMinutes = 15,
   onDone,
   onCancel,
   onOrderClosed,
@@ -275,6 +294,15 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       if (!sentAt) setSentAt(Date.now());
     }
   }, [hookOrder?.status, localOrder.status, userSent, sentAt]);
+
+  // How long the customer has been waiting, so a slow payout never feels like a frozen screen
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!sentAt) return;
+    const iv = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(iv);
+  }, [sentAt]);
+  const waitedMinutes = sentAt ? Math.floor((nowTick - sentAt) / 60_000) : null;
 
   // Check delayed payout timer if deposit initiated or user marked sent
   useEffect(() => {
@@ -457,6 +485,36 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     pollOnce().catch(() => {});
   };
 
+  const emailPrompt = (
+  <div className="gc-note" style={{ textAlign: 'left', marginBottom: 16 }}>
+    {notifyState === 'done' ? (
+      <><b>We'll email you</b> the moment your naira is sent. You can close the app.</>
+    ) : (
+      <>
+        <b>Don't want to wait here?</b> We'll email you when your naira is sent.
+        <div className="flex gap-2" style={{ marginTop: 8 }}>
+          <input
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            aria-label="Email me when it's sent"
+            value={notifyEmail}
+            onChange={(e) => { setNotifyEmail(e.target.value); if (notifyState === 'error') setNotifyState('idle'); }}
+            placeholder="you@example.com"
+            className="min-w-0 flex-1 rounded-xl border border-[color:var(--gc-line-strong)] bg-[color:var(--gc-surface-2)] px-3 py-2 text-sm font-bold text-[color:var(--gc-ink)] outline-none"
+          />
+          <button type="button" onClick={handleNotify} disabled={notifyState === 'sending'} className="gc-pill gc-pill--on gc-hit" style={{ flex: 'none' }}>
+            {notifyState === 'sending' ? 'Saving…' : 'Email me'}
+          </button>
+        </div>
+        {notifyState === 'error' && (
+          <div role="alert" style={{ color: 'var(--gc-danger)', marginTop: 6 }}>Please enter a valid email address and try again.</div>
+        )}
+      </>
+    )}
+  </div>
+  );
+
   const explorerUrl = `https://celo.blockscout.com/tx/${txHash}`;
   const orderId = localOrder.orderId;
   const bankReference = localOrder.paymentReference || `PAY-NGN-${txHash.slice(2, 8).toUpperCase()}`;
@@ -523,7 +581,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
       {/* FAILURE STATES */}
       {activeFailure === 'expired' && (
-        <div className={failureCard} style={{ background: '#ffd23f' }}>
+        <div className={failureCard} style={{ background: 'var(--gc-warn-bg)' }}>
           <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><WarnIcon /> payment window expired</div>
           <p className="gc-sm" style={{ margin: '6px 0' }}>
             The payment window closed before the payment arrived. Nothing was taken. Please do not send anything to the old address.
@@ -537,7 +595,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       )}
 
       {activeFailure === 'refunded' && (
-        <div className={failureCard} style={{ background: '#ff9b9b' }}>
+        <div className={failureCard} style={{ background: 'var(--gc-danger-bg)' }}>
           <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><UndoIcon /> order refunded</div>
           <p className="gc-sm" style={{ margin: '6px 0' }}>
             This order was refunded to your Celo wallet. Any deposited funds have been returned.
@@ -551,10 +609,10 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       )}
 
       {activeFailure === 'delayed' && (
-        <div className={failureCard} style={{ background: '#ffd23f' }}>
+        <div className={failureCard} style={{ background: 'var(--gc-warn-bg)' }}>
           <div className="gc-lab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><ClockIcon /> Payment sent but naira not received after {delayedTimeoutMinutes} minutes</div>
           <p className="gc-sm" style={{ margin: '6px 0' }}>
-            Your deposit was confirmed, but the bank payout is taking longer than usual. Our support team can inspect the payment rail.
+            Your payment is safe and was received. The bank payout is taking longer than usual. It normally takes a few minutes, but it can take up to about 20 minutes. If it is still not there soon, tap Contact support and we will look into it straight away.
           </p>
           {/^[0-9a-f-]{36}$/i.test(orderId) && <div className="gc-note" style={{ marginBottom: 10 }}>Order ID: <b>{orderId}</b></div>}
           <div className="flex flex-col gap-2">
@@ -577,7 +635,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       {!activeFailure && currentStep === 2 && (
         <>
           {userSent && !paymentConfirmed && (
-            <div className="gc-note" role="status" style={{ background: '#ffd23f' }}>
+            <div className="gc-note" role="status" style={{ background: 'var(--gc-warn-bg)' }}>
               <b>Checking for your payment…</b> If you already sent it, you don't need to do anything. It can take a minute or two to show up here.
             </div>
           )}
@@ -600,7 +658,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
                 </button>
               )}
               {sendError && (
-                <div className="gc-note" role="alert" style={{ background: '#ff9b9b', overflowWrap: 'anywhere' }}>{sendError}</div>
+                <div className="gc-note" role="alert" style={{ background: 'var(--gc-danger-bg)', overflowWrap: 'anywhere' }}>{sendError}</div>
               )}
               {orderClosed && onOrderClosed && (
                 <button type="button" onClick={onOrderClosed} className="gc-btn gc-btn--white gc-hit">Start a fresh payout</button>
@@ -608,7 +666,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
             </>
           )}
           {addressReady ? (
-          <details open={!onSendDeposit} className="gc-fold" style={onSendDeposit ? { marginTop: 4, paddingTop: 10, borderTop: '2px dashed #9b86d6' } : undefined}>
+          <details open={!onSendDeposit} className="gc-fold" style={onSendDeposit ? { marginTop: 4, paddingTop: 10, borderTop: '1px solid var(--gc-line)' } : undefined}>
             <summary className="gc-sm gc-hit" style={{ display: onSendDeposit ? 'block' : 'none', cursor: 'pointer', textDecoration: 'underline', textAlign: 'center', padding: '4px 0' }}>
               Having trouble? Pay manually instead
             </summary>
@@ -657,7 +715,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
               </div>
             )}
 
-            <div className="gc-note" style={{ background: '#ffd23f' }}>
+            <div className="gc-note" style={{ background: 'var(--gc-warn-bg)' }}>
               <b>Warning:</b> A smaller amount is refunded. Please send the exact amount specified.
             </div>
           </div>
@@ -671,7 +729,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
           ) : (
             (loadFailed || !onSendDeposit) && (
               loadFailed ? (
-                <div className="gc-note" role="alert" style={{ background: '#ff9b9b' }}>
+                <div className="gc-note" role="alert" style={{ background: 'var(--gc-danger-bg)' }}>
                   <b>We couldn't load your payment.</b> Nothing was sent. Check your connection and try again.
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button type="button" className="gc-pill gc-pill--white gc-hit" onClick={() => { setLoadFailed(false); setLoadTry((n) => n + 1); }}>Try again</button>
@@ -697,44 +755,18 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
       {!activeFailure && currentStep === 3 && (
         <div className="gc-card" style={{ textAlign: 'center' }}>
-          <div className="w-10 h-10 rounded-full border-4 border-[#7b39fc] border-t-transparent animate-spin mx-auto mb-3" />
+          <div className="w-10 h-10 rounded-full border border-[#7b39fc] border-t-transparent animate-spin mx-auto mb-3" />
           <h3 className="gc-big" style={{ fontSize: 22 }}>Paying to your bank</h3>
-          <p className="gc-sm" style={{ margin: '6px 0 10px' }}>
-            {localOrder.status === 'initiated'
-              ? "We haven't seen your deposit yet. It can take a minute or two to show up after you send it."
-              : 'We have your payment. Your bank is being paid now.'}
+          <p className="gc-sm" style={{ margin: '6px 0 4px' }}>{payoutStageText(localOrder.status)}</p>
+          <p className="gc-sm" style={{ margin: '0 0 10px', opacity: 0.85 }}>
+            Usually a few minutes. Sometimes up to 20.
+            {waitedMinutes !== null && waitedMinutes >= 1 ? ` Waiting ${waitedMinutes} min so far.` : ''}
           </p>
+          {emailPrompt}
           <div className="gc-cost" style={{ textAlign: 'left', marginBottom: 12 }}>
             <div className="gc-row"><span>Destination Bank:</span><span>{bankName}</span></div>
             <div className="gc-row"><span>Account Number:</span><span className="font-mono">{accountNumber}</span></div>
             <div className="gc-row"><span>Beneficiary:</span><span>{accountHolderName}</span></div>
-          </div>
-          <div className="gc-note" style={{ textAlign: 'left', marginBottom: 16 }}>
-            {notifyState === 'done' ? (
-              <><b>We'll email you</b> the moment your naira is sent. You can close the app.</>
-            ) : (
-              <>
-                <b>Don't want to wait here?</b> We'll email you when your naira is sent.
-                <div className="flex gap-2" style={{ marginTop: 8 }}>
-                  <input
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    aria-label="Email me when it's sent"
-                    value={notifyEmail}
-                    onChange={(e) => { setNotifyEmail(e.target.value); if (notifyState === 'error') setNotifyState('idle'); }}
-                    placeholder="you@example.com"
-                    className="min-w-0 flex-1 rounded-xl border-[2.5px] border-[#111] bg-white px-3 py-2 text-sm font-bold text-[#111] outline-none"
-                  />
-                  <button type="button" onClick={handleNotify} disabled={notifyState === 'sending'} className="gc-pill gc-pill--on gc-hit" style={{ flex: 'none' }}>
-                    {notifyState === 'sending' ? 'Saving…' : 'Email me'}
-                  </button>
-                </div>
-                {notifyState === 'error' && (
-                  <div role="alert" style={{ color: '#b00020', marginTop: 6 }}>Please enter a valid email address and try again.</div>
-                )}
-              </>
-            )}
           </div>
           <div className="gc-sm" style={{ textAlign: 'center', margin: '0 0 8px', opacity: 0.8 }}>This page updates by itself. You only need to refresh if it seems stuck.</div>
           <button type="button" onClick={() => pollOnce().catch(() => {})} className="gc-btn gc-btn--white gc-hit" style={{ gap: 8 }}>
@@ -745,7 +777,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
       {!activeFailure && currentStep === 4 && (
         <>
-          <div className="gc-hero" style={{ height: 120, margin: 0, borderRadius: 18, border: '2.5px solid #111' }}>
+          <div className="gc-hero" style={{ height: 120, margin: 0, borderRadius: 14, border: '1px solid var(--gc-line)' }}>
             <div className="absolute left-1/2 top-0 w-[138px] -translate-x-1/2">
               <i className="gc-c1" style={{ width: 44, height: 44, left: 38, top: 24 }} />
               <i className="gc-c1" style={{ width: 30, height: 30, left: 98, top: 62 }} />

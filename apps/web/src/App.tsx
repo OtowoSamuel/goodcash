@@ -25,8 +25,8 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, connectInjectedWallet, fetchGBalance, friendlySwapError, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents } from './lib/router';
-import { createPaycrestOrder, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder } from './lib/useOffRamp';
+import { executeRouterSwap, IS_DEMO_MODE, connectInjectedWallet, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused } from './lib/router';
+import { createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { WALLETCONNECT_ENABLED, connectWithWalletConnect, restoreWalletConnect, disconnectWalletConnect } from './lib/walletConnect';
 import { PendingPayoutCard } from './components/PendingPayoutCard';
@@ -242,11 +242,15 @@ export function App({
   const walletStepTitle = walletStep
     ? walletStep.kind === 'order'
       ? 'Setting up your payout'
+      : walletStep.total === 1
+      ? 'Confirm in your wallet'
       : `Step ${walletStep.n} of ${walletStep.total}`
     : null;
   const walletStepBody = walletStep
     ? walletStep.kind === 'approve'
       ? 'Allow GoodCash to use your G$ for this cash out.'
+      : walletStep.kind === 'swap' && walletStep.total === 1
+      ? 'One confirmation does it all. Your naira is then on its way to your bank.'
       : walletStep.kind === 'swap'
       ? 'Confirm the cash out. Your G$ is converted to dollars in your wallet.'
       : walletStep.kind === 'order'
@@ -408,7 +412,15 @@ export function App({
         referral_tag: 'direct',
       });
     } catch (err) {
-      setWalletMessage(friendlySwapError(err));
+      setWalletMessage(friendlyConnectError(err));
+      // Tell the team why (code and wallet type only), unless the customer simply closed the request
+      const code = (err as { code?: unknown } | null)?.code;
+      // A broken phone-wallet session makes every try fail the same way: clear it so the next try starts fresh
+      if (!hasInjectedWallet()) void disconnectWalletConnect();
+      if (code !== 4001) {
+        const kind = hasInjectedWallet() ? 'browser-wallet' : 'walletconnect';
+        reportIssue('wallet_connect_failed', new Error(`kind=${kind} code=${String(code ?? '-')} ${(err as Error)?.message ?? ''}`));
+      }
     }
   };
 
@@ -442,9 +454,14 @@ export function App({
     return () => { alive = false; clearInterval(iv); };
   }, [isDemoMode, walletAddress]);
 
+  const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const handleDisconnectWallet = () => {
+    // Phone wallets (WalletConnect) are closed properly; a browser wallet is asked to forget this site
     void disconnectWalletConnect();
+    if (hasInjectedWallet()) void disconnectInjectedWallet();
     setWalletAddress(null);
+    setWalletMessage(null);
+    setWalletSheetOpen(false);
     if (!isDemoMode) setBalanceG(0);
   };
 
@@ -497,12 +514,115 @@ export function App({
     }
   };
 
+  // One-tap cash out: ONE wallet confirmation swaps the G$ and pays the payout partner exactly what the order asks.
+  // The order is created first, sized to the swap's guaranteed minimum. Any leftover dollars go back to the customer.
+  const handleConfirmOneTap = async () => {
+    if (!pendingQuote || !walletAddress) return;
+    const wallet = walletAddress;
+    const { amountG } = pendingQuote;
+    let quote = pendingQuote.quote;
+
+    setSwapError(null);
+    setConfirmStage('order');
+    setWalletStep({ kind: 'order', n: 0, total: 1 });
+    emitAnalyticsEvent('swap_submitted', { amount: amountG, slippage_setting: 0.5, route: quote.route });
+
+    let order: OneTapOrder | null = null;
+    try {
+      // Re-read live prices right before asking for the order, so the guaranteed minimum reflects the market now
+      if (LIVE_QUOTES) {
+        quote = await getLiveNetQuote(gToWei(amountG));
+        if (Number(quote.usdtOut) / 1e6 < MIN_NET_USDT_REQUIRED) {
+          throw new Error(`Minimum cash out is about ${getMinimumCashOutG().toLocaleString()} G$. Your amount is a little below it.`);
+        }
+      }
+      if (await isOneTapRouterPaused()) {
+        throw new Error('Cash out is paused right now. Nothing was sent. Please try again later.');
+      }
+      const minOut = computeOneTapMinOut(quote);
+      order = await createOneTapOrder({
+        minUsdt: `${minOut / 1_000_000n}.${(minOut % 1_000_000n).toString().padStart(6, '0')}`,
+        amountG: String(Math.floor(amountG * 1e6) / 1e6),
+        refundAddress: wallet,
+        recipient: {
+          institution: pendingQuote.bankCode || pendingQuote.bankName || '',
+          accountIdentifier: pendingQuote.accountNumber || '',
+          accountName: pendingQuote.accountHolderName || '',
+          memo: 'GoodCash payout',
+        },
+      });
+
+      setConfirmStage('swap');
+      const placed = order;
+      let result: { txHash: string; usdtOut: number; usdtPaid: number } | null = null;
+      let unconfirmedHash: string | null = null;
+      try {
+        result = await executeOneTapCashOut({
+          amountG,
+          quote,
+          minOut,
+          walletAddress: wallet,
+          order: placed,
+          onStep: (info) => setWalletStep(info),
+        });
+      } catch (e) {
+        // Sent to the network but not confirmed yet: it may still go through, so show progress rather than an error
+        if (e instanceof SwapPendingError) unconfirmedHash = e.hash;
+        else throw e;
+      }
+
+      const txHash = result?.txHash ?? unconfirmedHash ?? '';
+      const naira = placed.expectedNaira && Number(placed.expectedNaira) > 0 ? Number(placed.expectedNaira) : undefined;
+      setBalanceG((prev) => Math.max(0, prev - amountG));
+      upsertHistory({
+        id: `tx-${Date.now()}`,
+        txHash,
+        timestamp: Date.now(),
+        amountInG: amountG,
+        amountOutUsdt: result?.usdtOut ?? Number(quote.usdtOut) / 1e6,
+        route: 'GoodCash one-tap',
+        orderId: placed.orderId,
+        nairaAmount: naira,
+        steps: { swapped: result ? 'completed' : 'pending', sentToPartner: result ? 'completed' : 'pending', paidInNaira: 'pending' },
+      });
+      // The payment to the partner happened inside the same transaction, so nothing is left to pay by hand
+      setTrackerData({
+        txHash,
+        usdtReceived: result?.usdtPaid ?? Number(placed.payAmountAtomic) / 1e6,
+        amountGSwapped: amountG,
+        bankName: pendingQuote.bankName || '',
+        accountNumber: pendingQuote.accountNumber || '',
+        accountHolderName: pendingQuote.accountHolderName || '',
+        ngnPerUsdt: pendingQuote.ngnPerUsdt ?? null,
+        orderId: placed.orderId,
+        initialOrder: placed,
+        depositSent: true,
+      });
+      if (txHash) void linkOneTapSwap(placed.orderId, txHash, wallet).catch(() => undefined);
+      setConfirmResult({
+        settled: false,
+        paid: true,
+        nairaText: naira ? `₦${Math.round(naira).toLocaleString()}` : '—',
+        reference: null,
+      });
+      setConfirmStage(null);
+    } catch (err: unknown) {
+      setSwapError(friendlySwapError(err));
+      if (!/user rejected|user denied|rejected the request/i.test(String((err as Error)?.message ?? ''))) {
+        reportIssue('swap_failed', err, order ? { orderId: order.orderId } : {});
+      }
+      setConfirmStage(null);
+      throw err;
+    }
+  };
+
   const handleConfirmSwap = async () => {
     if (!pendingQuote) return;
     if (!walletAddress) {
       setSwapError('Connect your wallet before cashing out.');
       return;
     }
+    if (ONE_TAP_ENABLED && !isDemoMode) return handleConfirmOneTap();
     const refundAddress = walletAddress;
     const { amountG, slippageBps } = pendingQuote;
     let quote = pendingQuote.quote;
@@ -1087,10 +1207,32 @@ export function App({
             setCurrentTab('cashout');
             setMobileView(trackerData ? 'processing' : 'finish');
           }}
-          style={{ background: '#ffd23f', textAlign: 'left', cursor: 'pointer' }}
+          style={{ background: 'var(--gc-warn-bg)', textAlign: 'left', cursor: 'pointer' }}
         >
           <b>You have an unfinished cash out.</b> Tap to finish getting your naira.
         </button>
+      )}
+
+      {walletSheetOpen && walletAddress && (
+        <Modal
+          label="Your wallet"
+          title="Your wallet"
+          onClose={() => setWalletSheetOpen(false)}
+          z={120}
+          footer={
+            <button type="button" className="gc-btn gc-btn--white gc-hit" onClick={handleDisconnectWallet}>
+              Disconnect wallet
+            </button>
+          }
+        >
+          <div className="gc-card">
+            <div className="gc-lab">Connected</div>
+            <div className="font-mono break-all select-all" style={{ fontSize: 12, marginTop: 4 }}>{walletAddress}</div>
+          </div>
+          <p className="gc-sm" style={{ margin: 0 }}>
+            Disconnecting only signs GoodCash out of this wallet on this device. Your money stays in your wallet.
+          </p>
+        </Modal>
       )}
 
       {walletStep && walletStepTitle && (
@@ -1116,7 +1258,7 @@ export function App({
           role="status"
           className="gc-note fixed left-1/2 z-[200] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
           onClick={() => setOkNotice(null)}
-          style={{ background: '#8cf0c0', cursor: 'pointer', fontWeight: 800 }}
+          style={{ background: 'var(--gc-ok-bg)', cursor: 'pointer', fontWeight: 800 }}
         >
           ✓ {okNotice}
         </div>
@@ -1127,7 +1269,7 @@ export function App({
           role="alert"
           className="gc-note fixed left-1/2 z-[200] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
           onClick={() => setWalletMessage(null)}
-          style={{ background: '#ff9b9b', cursor: 'pointer' }}
+          style={{ background: 'var(--gc-danger-bg)', cursor: 'pointer' }}
         >
           {walletMessage}
         </div>
@@ -1154,7 +1296,7 @@ export function App({
           <SafetyBanner language={language} />
         </div>
 
-        <div className="gc-col pb-24">
+        <div className="gc-col pb-24 min-[900px]:pb-0">
           {currentTab === 'home' ? (
             <ReadinessCard
               balanceG={balanceG}
@@ -1289,7 +1431,7 @@ export function App({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="gc-inter"
-                    style={{ color: '#111', textDecoration: 'underline' }}
+                    style={{ color: 'var(--gc-pu-text)', textDecoration: 'underline' }}
                   >
                     Contract 0xA433…c407 ↗
                   </a>
@@ -1302,13 +1444,13 @@ export function App({
             <>
               <div className="gc-card">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold uppercase text-[#111]">WHAT YOU'LL PAY</h3>
+                  <h3 className="font-bold uppercase text-[color:var(--gc-ink)]">WHAT YOU'LL PAY</h3>
                 </div>
-                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
+                <div className="gc-row border-b-2 border-solid border-[color:var(--gc-line)] pt-3 pb-3">
                   <span>GoodDollar contribution (10%)</span>
-                  <span className="bg-[#ffd23f] px-2 py-0.5 rounded text-[#111] font-medium">−100 G$</span>
+                  <span className="bg-[color:var(--gc-warn-bg)] px-2 py-0.5 rounded text-[color:var(--gc-ink)] font-medium">−100 G$</span>
                 </div>
-                <div className="gc-row border-b-2 border-dashed border-[#d4c5fb] pt-3 pb-3">
+                <div className="gc-row border-b-2 border-solid border-[color:var(--gc-line)] pt-3 pb-3">
                   <span>Network fee</span>
                   <span>under $0.001</span>
                 </div>
@@ -1414,7 +1556,7 @@ export function App({
                 font: '800 13px Inter',
                 cursor: 'pointer',
                 padding: '2px 6px',
-                color: '#111',
+                color: 'var(--gc-mute)',
                 flex: 'none',
               }}
             >
@@ -1452,40 +1594,46 @@ export function App({
         />
       )}
 
-      <footer className="mt-auto flex justify-between items-center w-full bg-white border-t-4 border-[#111] px-6 py-4 text-xs">
-        <span className="font-bold text-[#111]">{t.footerText}</span>
+      <footer className="mt-auto flex justify-between items-center w-full bg-transparent border-t border-[color:var(--gc-line)] px-8 py-4 text-xs">
+        <span className="font-bold text-[color:var(--gc-ink)]">{t.footerText}</span>
         <div className="flex items-center gap-4">
           <a
             href={BLOCKSCOUT_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
+            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold"
           >
             {t.contractLinkText}
           </a>
-          <span className="text-[#111] font-bold">·</span>
+          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
           <a
             href="https://gooddollar.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
+            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold"
           >
             {t.goodDollarLinkText}
           </a>
-          <span className="text-[#111] font-bold">·</span>
+          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
           <a
             href="https://paycrest.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold"
+            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold"
           >
             {t.paycrestLinkText}
           </a>
-          <span className="text-[#111] font-bold">·</span>
+          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
+          <a href="/about" target="_blank" rel="noopener noreferrer" className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold">About</a>
+          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold">Privacy</a>
+          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] text-decoration-none font-bold">Terms</a>
+          <span className="text-[color:var(--gc-ink)] font-bold">·</span>
           <button
             type="button"
             onClick={() => setShowPrivacy((v) => !v)}
-            className="text-[#111] hover:text-[#111]/80 font-bold bg-transparent border-none p-0 cursor-pointer"
+            className="text-[color:var(--gc-ink)] hover:text-[color:var(--gc-ink)] font-bold bg-transparent border-none p-0 cursor-pointer"
           >
             {t.privacyLinkText}
           </button>
@@ -1495,7 +1643,7 @@ export function App({
       </div>
 
       {/* ── Mobile Shell ── */}
-      <div className="gc--mobile-shell md:!hidden w-full bg-[#d4c5fb] relative">
+      <div className="gc--mobile-shell md:!hidden w-full bg-[color:var(--gc-bg)] relative">
         {/* Debug Panel - Only visible in development */}
         {isDemoMode && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug') && (
           <div className="fixed bottom-24 right-2 z-[100] bg-black/80 text-white p-2 rounded-lg text-xs">
@@ -1684,16 +1832,15 @@ export function App({
             {/* Mobile Header */}
             <div className="gc-top">
               <div className="flex items-center gap-2">
-                <span className="gc-logo text-[#111]">GoodCash</span>
+                <span className="gc-logo text-[color:var(--gc-ink)]">GoodCash</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="gc-chip text-[#111]"
-                  onClick={walletAddress ? undefined : handleConnectWallet}
-                  disabled={Boolean(walletAddress)}
+                  className="gc-chip text-[color:var(--gc-ink)]"
+                  onClick={walletAddress ? () => setWalletSheetOpen(true) : handleConnectWallet}
                 >
-                  {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) : 'Connect wallet'}
+                  {walletAddress ? walletAddress.slice(0, 6) + '…' + walletAddress.slice(-4) + ' ▾' : 'Connect wallet'}
                 </button>
               </div>
             </div>
@@ -1708,6 +1855,13 @@ export function App({
                 isStale={balanceIsStale}
                 ngnPerUsdt={liveNgnRate}
               />
+              <div className="gc-sm" style={{ textAlign: 'center', marginTop: 4 }}>
+                <a href="/about" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>About</a>
+                {' · '}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Privacy</a>
+                {' · '}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Terms</a>
+              </div>
             </div>
 
             {/* Bottom Navigation */}

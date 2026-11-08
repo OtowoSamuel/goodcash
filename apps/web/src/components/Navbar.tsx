@@ -93,7 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {isMiniPayBlocked
                 ? t.browserOnly
                 : walletAddress
-                ? shortenAddress(walletAddress)
+                ? `${shortenAddress(walletAddress)} ▾`
                 : t.connectWallet}
             </button>
 
@@ -174,7 +174,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {isMiniPayBlocked
                 ? t.browserOnly
                 : walletAddress
-                ? shortenAddress(walletAddress)
+                ? `${shortenAddress(walletAddress)} ▾`
                 : t.connectWallet}
             </button>
 

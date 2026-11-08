@@ -65,3 +65,57 @@ describe('re-checks the order right before paying', () => {
     vi.unstubAllGlobals();
   });
 });
+
+import { connectInjectedWallet, friendlyConnectError } from './router';
+
+describe('connecting a wallet', () => {
+  const stubWallet = (handler: (method: string) => unknown) => {
+    vi.stubGlobal('window', { ethereum: { request: vi.fn(async ({ method }: { method: string }) => handler(method)) } });
+  };
+
+  it('is connected as soon as the wallet gives an account, even if it cannot move to Celo', async () => {
+    stubWallet((method) => {
+      if (method === 'eth_requestAccounts') return ['0x1111111111111111111111111111111111111111'];
+      if (method === 'eth_chainId') return '0x1'; // wallet is on Ethereum
+      throw Object.assign(new Error('Unrecognized chain'), { code: 4902 }); // can neither switch nor add Celo
+    });
+    await expect(connectInjectedWallet()).resolves.toBe('0x1111111111111111111111111111111111111111');
+    vi.unstubAllGlobals();
+  });
+
+  it('still fails clearly when the wallet gives no account', async () => {
+    stubWallet((method) => (method === 'eth_requestAccounts' ? [] : '0xa4ec'));
+    await expect(connectInjectedWallet()).rejects.toThrow(/No account/);
+    vi.unstubAllGlobals();
+  });
+
+  it('explains each failure in plain words and never talks about swaps', () => {
+    const cases: Array<[unknown, RegExp]> = [
+      [Object.assign(new Error('User rejected the request.'), { code: 4001 }), /cancelled/i],
+      [Object.assign(new Error("Request of type 'wallet_requestPermissions' already pending"), { code: -32002 }), /request waiting/i],
+      [new Error('MetaMask is locked'), /locked/i],
+      [new Error('No Celo wallet detected.'), /No wallet found/i],
+      [new Error('something odd'), /couldn't connect your wallet/i],
+    ];
+    for (const [err, expected] of cases) {
+      const msg = friendlyConnectError(err);
+      expect(msg).toMatch(expected);
+      expect(msg).not.toMatch(/swap|nothing was taken/i);
+    }
+  });
+});
+
+import { disconnectInjectedWallet } from './router';
+
+describe('disconnecting a wallet', () => {
+  it('asks a browser wallet to forget this site, and does not fail if it cannot', async () => {
+    const request = vi.fn().mockResolvedValue(null);
+    vi.stubGlobal('window', { ethereum: { request } });
+    await disconnectInjectedWallet();
+    expect(request).toHaveBeenCalledWith({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] });
+
+    vi.stubGlobal('window', { ethereum: { request: vi.fn().mockRejectedValue(new Error('unsupported')) } });
+    await expect(disconnectInjectedWallet()).resolves.toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+});

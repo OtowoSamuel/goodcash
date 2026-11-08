@@ -49,7 +49,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({ language }) => {
             font: '800 13px Inter',
             cursor: 'pointer',
             padding: '2px 6px',
-            color: '#111',
+            color: 'var(--gc-mute)',
             flex: 'none',
           }}
         >

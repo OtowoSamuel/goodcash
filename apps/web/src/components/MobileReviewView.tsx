@@ -1,3 +1,4 @@
+import { ONE_TAP_ENABLED } from '../lib/router';
 import React, { useState } from 'react';
 import type { BankDetailsState } from '../lib/useBankDetails';
 import { BankDetailsModal, type SavedBank } from '../components/BankDetailsModal';
@@ -80,7 +81,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           <div>
             <div className="gc-lab">Paid to</div>
             <div className="gc-sm">{displayBankName}</div>
-            {bank && <div className="gc-sm" style={{ color: '#333' }}>{bank.accountName}</div>}
+            {bank && <div className="gc-sm" style={{ color: 'var(--gc-mute)' }}>{bank.accountName}</div>}
           </div>
           {bank ? (
             <button
@@ -123,7 +124,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         </div>
 
         {errorMessage && (
-          <div className="gc-note" role="alert" style={{ background: '#ff9b9b', overflowWrap: 'anywhere' }}>
+          <div className="gc-note" role="alert" style={{ background: 'var(--gc-danger-bg)', overflowWrap: 'anywhere' }}>
             {errorMessage}
           </div>
         )}
@@ -135,7 +136,11 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}
       >
         <div className="gc-note" style={{ marginBottom: 10 }}>
-          <b>You'll confirm in your wallet app up to 3 times.</b> Each time, open MetaMask, tap Confirm, then come back here.
+          {ONE_TAP_ENABLED ? (
+            <><b>You'll confirm once in your wallet app.</b> Open MetaMask, tap Confirm, then come back here.</>
+          ) : (
+            <><b>You'll confirm in your wallet app up to 3 times.</b> Each time, open MetaMask, tap Confirm, then come back here.</>
+          )}
         </div>
         <button
           type="button"

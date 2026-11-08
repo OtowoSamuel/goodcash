@@ -33,7 +33,7 @@ export const MiniPayNotice: React.FC<{ language: Language }> = ({ language }) =>
         <button
           type="button"
           onClick={handleCopyLink}
-          className="gc-hit inline-flex items-center justify-center rounded-xl bg-[#7b39fc] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#7b39fc]/30 transition hover:bg-[#8c4eff] focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+          className="gc-hit inline-flex items-center justify-center rounded-xl bg-[color:var(--gc-pu)] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#7b39fc]/30 transition hover:bg-[#8c4eff] focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
         >
           {copied ? t.linkCopied : t.copyGoodCashLink}
         </button>
