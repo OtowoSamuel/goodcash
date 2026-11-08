@@ -1,3 +1,4 @@
+import { isPaidOutStatus } from './useOffRamp';
 import type { SwapHistoryItem } from '../components/HistoryCard';
 import { MIN_NET_USDT_REQUIRED } from './rate';
 
@@ -19,7 +20,7 @@ export interface ServerSwap {
 export const HIDDEN_SWAPS = new Set(['0x750c4c01399d1e5ab5614bdbbfb8a119496dcba5f47a7e86f2a5793038e614e5']);
 export const isHiddenSwap = (txHash: string) => HIDDEN_SWAPS.has(txHash.toLowerCase());
 
-const isPaid = (status?: string) => status === 'settled' || status === 'validated';
+const isPaid = (status?: string) => isPaidOutStatus(status);
 
 /**
  * Fold a wallet's swaps (from our service) into the history saved on this device, so the same wallet shows

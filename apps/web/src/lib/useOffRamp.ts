@@ -24,6 +24,7 @@ export type OffRampStatus =
   | 'deposited'
   | 'pending'
   | 'fulfilling'
+  | 'fulfilled'
   | 'validated'
   | 'settling'
   | 'settled'
@@ -124,6 +125,16 @@ export interface UseOffRampReturn {
 const TERMINAL_STATUSES: OffRampStatus[] = ['settled', 'refunded', 'error'];
 const EXPIRED_STATUSES: OffRampStatus[] = ['expired'];
 
+/**
+ * The bank has been paid. The partner says "fulfilled" once its provider has sent the naira; "validated",
+ * "settling" and "settled" only follow later (sometimes much later), so waiting for "settled" leaves the
+ * customer staring at a spinner after the money is already in their account.
+ */
+export const PAID_OUT_STATUSES = ['fulfilled', 'validated', 'settling', 'settled'] as const;
+export function isPaidOutStatus(s?: string | null): boolean {
+  return !!s && (PAID_OUT_STATUSES as readonly string[]).includes(s);
+}
+
 export function isTerminalStatus(s: OffRampStatus): boolean {
   return TERMINAL_STATUSES.includes(s);
 }
@@ -140,6 +151,7 @@ export function offRampStatusLabel(s: OffRampStatus): string {
     deposited: 'Deposit received — processing',
     pending: 'Processing your transfer',
     fulfilling: 'Fulfilling naira payout',
+    fulfilled: 'Naira sent to your bank',
     validated: 'Payout confirmed by provider',
     settling: 'Finalising settlement',
     settled: '✓ Naira delivered successfully',
@@ -393,7 +405,7 @@ export function useOffRamp(): UseOffRampReturn {
 
   const pollOnce = useCallback(async () => {
     if (!order?.orderId) return;
-    if (status === 'settled' || status === 'refunded' || status === 'expired' || status === 'error') return;
+    if (isPaidOutStatus(status) || status === 'refunded' || status === 'expired' || status === 'error') return;
 
     try {
       const data = await apiGet<{

@@ -1362,14 +1362,14 @@ describe('slow payout alert for the team', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('A1. Alerts once for a paid order stuck for too long, with no bank details', async () => {
-    await seed(ID1, 'fulfilled', 30);
-    const p = partner({ [ID1]: 'fulfilled' });
+    await seed(ID1, 'pending', 30);
+    const p = partner({ [ID1]: 'pending' });
     vi.stubGlobal('fetch', p.f);
     const first = await alertSlowPayouts(env, NOW);
     expect(first).toEqual({ checked: 1, alerted: 1 });
     expect(p.emails).toHaveLength(1);
     expect(p.emails[0].to).toEqual(['team@example.com']);
-    expect(p.emails[0].subject).toMatch(/Slow payout.*fulfilled/);
+    expect(p.emails[0].subject).toMatch(/Slow payout.*pending/);
     expect(p.emails[0].text).toContain(ID1);
     expect(p.emails[0].text).not.toMatch(/\b\d{10}\b|account number|GTBank/i);
     // a second run does not repeat the alert
@@ -1379,10 +1379,10 @@ describe('slow payout alert for the team', () => {
   });
 
   it('A2. Stays quiet for young orders, finished orders and orders that were never paid', async () => {
-    await seed(ID1, 'fulfilled', 10); // too young
+    await seed(ID1, 'pending', 10); // too young
     await seed(ID2, 'settled', 60); // finished
     await seed(ID3, 'initiated', 60); // never paid
-    const p = partner({ [ID1]: 'fulfilled', [ID2]: 'settled', [ID3]: 'initiated' });
+    const p = partner({ [ID1]: 'pending', [ID2]: 'settled', [ID3]: 'initiated' });
     vi.stubGlobal('fetch', p.f);
     const out = await alertSlowPayouts(env, NOW);
     expect(out.alerted).toBe(0);
@@ -1390,7 +1390,7 @@ describe('slow payout alert for the team', () => {
   });
 
   it('A3. Uses the partner’s live status, not a stale saved one', async () => {
-    await seed(ID1, 'fulfilled', 40); // saved copy says stuck...
+    await seed(ID1, 'pending', 40); // saved copy says stuck...
     const p = partner({ [ID1]: 'settled' }); // ...but it actually finished
     vi.stubGlobal('fetch', p.f);
     expect((await alertSlowPayouts(env, NOW)).alerted).toBe(0);

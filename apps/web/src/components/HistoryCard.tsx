@@ -1,3 +1,4 @@
+import { isPaidOutStatus } from '../lib/useOffRamp';
 import { nairaFromUsdt } from '../lib/units';
 import React, { useState } from 'react';
 import type { Language } from '../lib/i18n';
@@ -93,10 +94,10 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
     const liveOrder = item.orderId ? orderStatuses[item.orderId] : undefined;
     const liveStatus = liveOrder?.status;
 
-    if (liveStatus === 'settled' || item.steps?.paidInNaira === 'completed') {
+    if (isPaidOutStatus(liveStatus) || item.steps?.paidInNaira === 'completed') {
       return 'paid';
     }
-    if (liveStatus && ['initiated', 'deposited', 'pending', 'fulfilling', 'validated', 'settling'].includes(liveStatus)) {
+    if (liveStatus && ['initiated', 'deposited', 'pending', 'fulfilling'].includes(liveStatus)) {
       return 'onItsWay';
     }
     if (item.steps?.paidInNaira === 'processing' || item.steps?.sentToPartner === 'completed') {

@@ -1,3 +1,4 @@
+import { isPaidOutStatus } from '../lib/useOffRamp';
 import React, { useEffect, useState } from 'react';
 import { fetchOrderStatus, type OffRampStatus } from '../lib/useOffRamp';
 import { formatNaira, ORDERS_API_BASE } from '../lib/rate';
@@ -42,10 +43,10 @@ function describe(live: OffRampStatus | null, stage: Stage): { title: string; te
   if (live === 'expired') {
     return { title: 'Not completed', text: 'The payment window closed before the payment arrived. Nothing was taken from you.', tone: 'red' };
   }
-  if (live === 'settled' || live === 'validated' || stage === 'paid') {
+  if (isPaidOutStatus(live) || stage === 'paid') {
     return { title: 'Paid', text: 'Your naira has been sent to your bank account.', tone: 'mint' };
   }
-  if (live === 'deposited' || live === 'pending' || live === 'fulfilling' || live === 'settling') {
+  if (live === 'deposited' || live === 'pending' || live === 'fulfilling') {
     return { title: 'On its way', text: 'We have your payment and your bank is being paid now. This usually takes a few minutes.', tone: 'yellow' };
   }
   if (live === 'initiated') {

@@ -1,3 +1,4 @@
+import { isPaidOutStatus } from './lib/useOffRamp';
 import { gToWei, nairaFromUsdt } from './lib/units';
 import { Modal } from './components/Modal';
 import { getWalletLink, openWalletApp } from './lib/walletLink';
@@ -302,10 +303,10 @@ export function App({
       setMobileView('success');
     };
     const check = async () => {
-      if (trackerData?.initialOrder?.status === 'settled' || trackerData?.initialOrder?.status === 'validated') return finish();
+      if (isPaidOutStatus(trackerData?.initialOrder?.status)) return finish();
       try {
         const order = await fetchOrderStatus(orderId);
-        if (order.status === 'settled' || order.status === 'validated') finish();
+        if (isPaidOutStatus(order.status)) finish();
       } catch {
         // Demo mode has no payout API: treat the mock order as settled after a short wait
         if (isDemoMode) finish();
@@ -810,8 +811,8 @@ export function App({
       const rate = pendingQuote.ngnPerUsdt ?? null;
       const naira = rate ? nairaFromUsdt(realUsdtReceived, rate) : null;
       setConfirmResult({
-        settled: order.status === 'settled',
-        paid: paid || order.status === 'settled',
+        settled: isPaidOutStatus(order.status),
+        paid: paid || isPaidOutStatus(order.status),
         nairaText: naira !== null ? `₦${Math.round(naira).toLocaleString()}` : '—',
         reference: order.paymentReference ?? null,
       });
@@ -907,8 +908,8 @@ export function App({
       setConfirmStage(null);
       const rate = pendingQuote.ngnPerUsdt ?? null;
       setConfirmResult({
-        settled: order.status === 'settled',
-        paid: paidNow || order.status === 'settled',
+        settled: isPaidOutStatus(order.status),
+        paid: paidNow || isPaidOutStatus(order.status),
         nairaText: rate ? `₦${Math.round(nairaFromUsdt(recoveredUsdt, rate)).toLocaleString()}` : '—',
         reference: order.paymentReference ?? null,
       });
@@ -1054,7 +1055,7 @@ export function App({
           const res = await fetch(`${ORDERS_API_BASE}/swaps/${hash}`);
           if (!res.ok) continue;
           const data = (await res.json()) as { orderId?: string; status?: string };
-          if (alive && (data.status === 'settled' || data.status === 'validated')) {
+          if (alive && isPaidOutStatus(data.status)) {
             const row = historyRef.current.find((h) => h.txHash.toLowerCase() === hash);
             const naira = row ? getHistoryNaira(row, liveNgnRateRef.current) : null;
             announcePaid(data.orderId ?? hash, naira);
@@ -1113,7 +1114,7 @@ export function App({
 
   // Pays the payout partner automatically after an order is created. Returns true if the payment went through.
   const autoPayDeposit = async (order: OffRampOrder, usdtReceived: number): Promise<boolean> => {
-    if (isDemoMode || !walletAddress || order.status === 'settled' || !order.receiveAddress) return false;
+    if (isDemoMode || !walletAddress || isPaidOutStatus(order.status) || !order.receiveAddress) return false;
     setWalletStep({ kind: 'pay', n: stepTotalRef.current, total: stepTotalRef.current });
     try {
       await sendUsdtDeposit({
@@ -1812,7 +1813,7 @@ export function App({
               )
             }
           />
-        ) : mobileView === 'processing' && trackerData && (!trackerData.initialOrder || (trackerData.initialOrder.status !== 'settled' && trackerData.initialOrder.status !== 'validated')) ? (
+        ) : mobileView === 'processing' && trackerData && (!trackerData.initialOrder || !isPaidOutStatus(trackerData.initialOrder.status)) ? (
           <div className="gc fixed inset-0 z-40 overflow-y-auto">
             <div className="gc-col" style={{ padding: '14px 14px 40px' }}>
               <button

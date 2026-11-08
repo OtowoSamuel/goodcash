@@ -1,3 +1,4 @@
+import { isPaidOutStatus } from '../lib/useOffRamp';
 import { nairaFromUsdt } from '../lib/units';
 import { friendlyPayError, hasInjectedWallet, PLACEHOLDER_DEPOSIT_ADDRESS } from '../lib/router';
 import { getWalletLink, openWalletApp } from '../lib/walletLink';
@@ -25,11 +26,12 @@ function payoutStageText(status?: string): string {
     case 'pending':
       return 'We have your payment. Your bank payout is being arranged.';
     case 'fulfilling':
+      return 'Your bank is being paid now. Banks can take a few minutes to show it.';
     case 'fulfilled':
     case 'validated':
-      return 'Your bank is being paid now. Banks can take a few minutes to show it.';
     case 'settling':
-      return 'Almost there. Your payout is being confirmed.';
+    case 'settled':
+      return 'Your naira has been sent to your bank.';
     default:
       return 'We have your payment. Your bank is being paid now.';
   }
@@ -289,7 +291,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   // If order status updates to deposited/pending, auto-set userSent and record sentAt
   useEffect(() => {
     const s = hookOrder?.status ?? localOrder.status;
-    if (s === 'deposited' || s === 'pending' || s === 'fulfilling' || s === 'validated' || s === 'settling') {
+    if (s === 'deposited' || s === 'pending' || s === 'fulfilling' || isPaidOutStatus(s)) {
       if (!userSent) setUserSent(true);
       if (!sentAt) setSentAt(Date.now());
     }
@@ -311,7 +313,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     const interval = setInterval(() => {
       const elapsedMs = Date.now() - sentAt;
       const elapsedMinutes = elapsedMs / (1000 * 60);
-      const isSettled = localOrder.status === 'settled';
+      const isSettled = isPaidOutStatus(localOrder.status);
 
       if (!isSettled && elapsedMinutes >= delayedTimeoutMinutes) {
         setActiveFailure('delayed');
@@ -330,7 +332,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
       const remainingSecs = Math.max(0, Math.floor((expiryTime - Date.now()) / 1000));
       setSecondsRemaining(remainingSecs);
 
-      if (remainingSecs <= 0 && !userSent && localOrder.status !== 'settled') {
+      if (remainingSecs <= 0 && !userSent && !isPaidOutStatus(localOrder.status)) {
         setActiveFailure('expired');
       }
     };
@@ -342,7 +344,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
 
   // Poll status on load and on an interval regardless of tapping "I've sent it"
   useEffect(() => {
-    if (localOrder.status === 'settled' || localOrder.status === 'refunded' || localOrder.status === 'error' || activeFailure) return;
+    if (isPaidOutStatus(localOrder.status) || localOrder.status === 'refunded' || localOrder.status === 'error' || activeFailure) return;
 
     // Check on load
     pollOnce().catch(() => {});
@@ -376,7 +378,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   // Tell the parent when the payout settles so History can show "Paid"
   const settledReported = useRef(false);
   useEffect(() => {
-    if ((localOrder.status === 'settled' || localOrder.status === 'validated') && !settledReported.current) {
+    if (isPaidOutStatus(localOrder.status) && !settledReported.current) {
       settledReported.current = true;
       onSettled?.({ orderId: localOrder.orderId, nairaAmount: nairaEstimate });
     }
@@ -394,7 +396,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   const paymentConfirmed = paidByApp || paymentSeen;
   const currentStep = (() => {
     if (initialStep !== undefined && initialStep > 2) return initialStep;
-    if (localOrder.status === 'settled' || localOrder.status === 'validated') return 4;
+    if (isPaidOutStatus(localOrder.status)) return 4;
     if (paymentConfirmed) return 3;
     if (initialStep !== undefined) return initialStep;
     return 2; // Step 1 is completed instantly upon swap; default to Step 2 action

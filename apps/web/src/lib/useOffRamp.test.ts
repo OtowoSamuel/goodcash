@@ -161,3 +161,11 @@ describe('dev mock gates (demo mode off)', () => {
     expect(result.current.accountName).toBeNull();
   });
 });
+
+describe('paid out', () => {
+  it('counts "fulfilled" as paid to the bank (the partner can sit there long after the naira lands)', async () => {
+    const { isPaidOutStatus } = await import('./useOffRamp');
+    for (const s of ['fulfilled', 'validated', 'settling', 'settled']) expect(isPaidOutStatus(s)).toBe(true);
+    for (const s of ['initiated', 'deposited', 'pending', 'fulfilling', 'refunded', 'expired', undefined]) expect(isPaidOutStatus(s)).toBe(false);
+  });
+});

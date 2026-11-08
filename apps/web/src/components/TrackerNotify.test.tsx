@@ -65,7 +65,7 @@ describe('honest timing while the payout is slow', () => {
   it('waits 15 minutes by default before showing the "taking longer" card', () => {
     vi.useFakeTimers();
     try {
-      render(<CashOutTracker {...props} depositSent initialOrder={order('fulfilled') as never} />);
+      render(<CashOutTracker {...props} depositSent initialOrder={order('fulfilling') as never} />);
       act(() => { vi.advanceTimersByTime(10 * 60_000); });
       expect(screen.queryByText(/taking longer than usual|not received after/i)).not.toBeInTheDocument();
       act(() => { vi.advanceTimersByTime(6 * 60_000); });
@@ -77,13 +77,13 @@ describe('honest timing while the payout is slow', () => {
   });
 
   it('says plainly where the payout is, with the usual time, and offers the email option first', () => {
-    render(<CashOutTracker {...props} depositSent initialOrder={order('fulfilled') as never} />);
+    render(<CashOutTracker {...props} depositSent initialOrder={order('fulfilling') as never} />);
     expect(screen.getByText(/Your bank is being paid now/i)).toBeInTheDocument();
     expect(screen.getByText(/Usually a few minutes\. Sometimes up to 20\./i)).toBeInTheDocument();
     const email = screen.getByLabelText(/email me when it's sent/i);
     const bank = screen.getByText(/Destination Bank/i);
     // the email option sits above the bank details, so it is seen straight away
     expect(email.compareDocumentPosition(bank) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/paycrest|usdt|fulfilled/i);
+    expect(document.body.textContent).not.toMatch(/paycrest|usdt|fulfill/i);
   });
 });

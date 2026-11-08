@@ -471,7 +471,8 @@ const ROUTER_DEPLOY_BLOCK = 81917173;
 const THIRTY_DAYS_S = 60 * 60 * 24 * 30;
 
 
-const PAID_STATUSES = new Set(['settled', 'validated']);
+// The bank has been paid from "fulfilled" on; the later statuses are the partner's own bookkeeping
+const PAID_STATUSES = new Set(['fulfilled', 'validated', 'settling', 'settled']);
 
 const FINAL_STATUSES = new Set(['settled', 'refunded', 'expired', 'cancelled', 'error']);
 const STATUS_RANK: Record<string, number> = { initiated: 0, deposited: 1, pending: 2, fulfilling: 3, validated: 4, settling: 5, settled: 6 };
@@ -2036,7 +2037,8 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
 // ---------------------------------------------------------------------------
 
 /** Statuses meaning the partner already has the customer's deposit but has not finished. */
-const IN_FLIGHT_STATUSES = new Set(['deposited', 'pending', 'fulfilling', 'fulfilled', 'validated', 'settling']);
+// Paid but not yet paid out to the bank ("fulfilled" and later mean the bank already has it)
+const IN_FLIGHT_STATUSES = new Set(['deposited', 'pending', 'fulfilling']);
 const SLOW_PAYOUT_MINUTES = 25;
 
 export async function alertSlowPayouts(env: Env, now = Date.now()): Promise<{ checked: number; alerted: number }> {
