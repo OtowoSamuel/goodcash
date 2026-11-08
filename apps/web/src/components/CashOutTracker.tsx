@@ -13,6 +13,7 @@ import {
   useOffRamp,
   paycrestOrderAmount,
   fetchOrderDetails,
+  fetchOrderStatus,
   type OffRampOrder,
   type OffRampStatus,
 } from '../lib/useOffRamp';
@@ -130,7 +131,6 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     order: hookOrder,
     status: hookStatus,
     createOrder,
-    pollOnce,
   } = useOffRamp();
 
   // Translations
@@ -266,6 +266,34 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     };
   }, [localOrder.orderId, localOrder.receiveAddress, loadTry]);
 
+  // Ask the server where this order is. This must not depend on the hook's own `order`: an order that arrives already
+  // created (one tap, or after a reload) is never in the hook, and a check that needs it silently does nothing.
+  const [refreshing, setRefreshing] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const [checkFailed, setCheckFailed] = useState(false);
+  const checkNow = React.useCallback(async () => {
+    const id = localOrder.orderId;
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return; // a made-up demo id is never asked about
+    setRefreshing(true);
+    try {
+      const fresh = await fetchOrderStatus(id);
+      setLocalOrder((prev) => ({
+        ...prev,
+        status: fresh.status,
+        paymentReference: fresh.paymentReference ?? prev.paymentReference,
+        receiveAddress: prev.receiveAddress || fresh.receiveAddress,
+        amountToSend: prev.amountToSend || fresh.amountToSend,
+        validUntil: prev.validUntil || fresh.validUntil,
+      }));
+      setCheckedAt(Date.now());
+      setCheckFailed(false);
+    } catch {
+      setCheckFailed(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [localOrder.orderId]);
+
   // Sync hookOrder updates
   useEffect(() => {
     if (hookOrder) {
@@ -346,16 +374,11 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   useEffect(() => {
     if (isPaidOutStatus(localOrder.status) || localOrder.status === 'refunded' || localOrder.status === 'error' || activeFailure) return;
 
-    // Check on load
-    pollOnce().catch(() => {});
-
-    // Recurring poll
-    const interval = setInterval(() => {
-      pollOnce().catch(() => {});
-    }, 4000);
-
+    // Check on load, then every few seconds until the order is finished
+    void checkNow();
+    const interval = setInterval(() => void checkNow(), 4000);
     return () => clearInterval(interval);
-  }, [localOrder.status, activeFailure, pollOnce]);
+  }, [localOrder.status, activeFailure, checkNow]);
 
   // Format countdown string MM:SS
   const formatCountdown = (totalSecs: number) => {
@@ -484,7 +507,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
   const handleUserSent = () => {
     setUserSent(true);
     setSentAt(Date.now());
-    pollOnce().catch(() => {});
+    void checkNow();
   };
 
   const emailPrompt = (
@@ -619,7 +642,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
           {/^[0-9a-f-]{36}$/i.test(orderId) && <div className="gc-note" style={{ marginBottom: 10 }}>Order ID: <b>{orderId}</b></div>}
           <div className="flex flex-col gap-2">
             <button type="button" onClick={() => setSupportOpen(true)} className={failureBtns}>Contact support</button>
-            <button type="button" onClick={() => pollOnce().catch(() => {})} className={failureBtnsAlt}>Check again</button>
+            <button type="button" onClick={() => void checkNow()} disabled={refreshing} className={failureBtnsAlt}>{refreshing ? 'Checking…' : 'Check again'}</button>
           </div>
         </div>
       )}
@@ -771,9 +794,14 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
             <div className="gc-row"><span>Beneficiary:</span><span>{accountHolderName}</span></div>
           </div>
           <div className="gc-sm" style={{ textAlign: 'center', margin: '0 0 8px', opacity: 0.8 }}>This page updates by itself. You only need to refresh if it seems stuck.</div>
-          <button type="button" onClick={() => pollOnce().catch(() => {})} className="gc-btn gc-btn--white gc-hit" style={{ gap: 8 }}>
-            <RefreshIcon /> Refresh status
+          <button type="button" onClick={() => void checkNow()} disabled={refreshing} className="gc-btn gc-btn--white gc-hit" style={{ gap: 8 }}>
+            <RefreshIcon /> {refreshing ? 'Checking…' : 'Refresh status'}
           </button>
+          {checkFailed ? (
+            <div className="gc-sm" role="status" style={{ textAlign: 'center', marginTop: 8, color: '#b00020' }}>We couldn't check just now. Please try again in a moment.</div>
+          ) : checkedAt ? (
+            <div className="gc-sm" role="status" style={{ textAlign: 'center', marginTop: 8, opacity: 0.8 }}>Checked just now. Still waiting for your bank.</div>
+          ) : null}
         </div>
       )}
 
