@@ -612,13 +612,13 @@ describe('Abuse protection', () => {
     expect(res.status).toBe(201);
     const rpcCall = fetchSpy.mock.calls.find(([url]) => String(url) === 'https://rpc.test');
     expect(rpcCall).toBeDefined();
-    expect(JSON.parse(String((rpcCall![1] as RequestInit).body))).toMatchObject({
+    expect(JSON.parse(String(((rpcCall as unknown[])[1] as RequestInit).body))).toMatchObject({
       method: 'eth_getTransactionReceipt',
       params: [txHash],
     });
 
     const paycrestCall = fetchSpy.mock.calls.find(([url]) => String(url).includes('/v2/sender/orders'));
-    const paycrestBody = JSON.parse(String((paycrestCall![1] as RequestInit).body));
+    const paycrestBody = JSON.parse(String(((paycrestCall as unknown[])[1] as RequestInit).body));
     expect(paycrestBody.senderFee).toBeUndefined();
     expect(paycrestBody.senderFeeAddress).toBeUndefined();
     expect(paycrestBody.source.refundAddress).toBe(wallet);
@@ -1713,5 +1713,16 @@ describe('GoodCash fee on cash outs', () => {
     expect(goodcashFeePercent({ ...base, SENDER_FEE_PERCENT: '0.5', SENDER_FEE_ADDRESS: FEE_ADDR })).toBe(0.5);
     expect(goodcashFeePercent({ ...base, SENDER_FEE_PERCENT: 'abc', SENDER_FEE_ADDRESS: FEE_ADDR })).toBe(0);
     expect(goodcashFeePercent(base)).toBe(0);
+  });
+});
+
+
+describe('partner errors in our logs', () => {
+  it('never carry account numbers, ID numbers or emails', async () => {
+    const { safePartnerError } = await import('./index.js');
+    const out = safePartnerError('{"field":"Recipient","message":"Account 0123456789 for ada@example.com with BVN 22212345678 is invalid"}');
+    expect(out).toContain('field=Recipient');
+    expect(out).not.toMatch(/0123456789|22212345678|ada@example.com/);
+    expect(safePartnerError('plain 1234567 text')).toBe('plain [number] text');
   });
 });

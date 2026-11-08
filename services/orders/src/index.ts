@@ -1082,6 +1082,28 @@ export function chargedFeePercent(env: Env, shown: number | undefined): number {
   return configured > 0 && typeof shown === 'number' && Math.abs(shown - configured) < 1e-9 ? configured : 0;
 }
 
+/**
+ * A partner error, safe for our logs: the field and message only, with long digit runs (account numbers, BVN/NIN,
+ * phone numbers) and email addresses masked, because the partner may echo back what we sent.
+ */
+export function safePartnerError(text: string): string {
+  let field = '';
+  let message = text;
+  try {
+    const j = JSON.parse(text) as { field?: unknown; message?: unknown; error?: unknown };
+    field = typeof j.field === 'string' ? j.field : '';
+    message = typeof j.message === 'string' ? j.message : typeof j.error === 'string' ? j.error : text;
+  } catch {
+    // not JSON: keep the raw text, masked below
+  }
+  const masked = message
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '[email]')
+    .replace(/\d{6,}/g, '[number]')
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 160);
+  return `${field ? `field=${field} ` : ''}${masked}`;
+}
+
 async function createPaycrestOrderRaw(
   env: Env,
   input: {
@@ -1141,14 +1163,14 @@ async function createPaycrestOrderRaw(
     if (!res.ok && feePct > 0 && (res.status === 400 || res.status === 422)) {
       // The partner may refuse our fee setting (for example a cap on the profile). Never block a customer's cash out
       // over our own fee: log it for the team and create the order without the fee.
-      console.error(`[orders] Paycrest refused the GoodCash fee (${res.status}): ${(await res.text()).slice(0, 200)}. Retrying without it.`);
+      console.error(`[orders] Paycrest refused the GoodCash fee (${res.status}): ${safePartnerError(await res.text())}. Retrying without it.`);
       const { senderFeePercent: _a, senderFeeAddress: _b, transactionFeePayer: _c, ...noFee } = paycrestBody as Record<string, unknown>;
       res = await post(noFee);
     }
     if (!res.ok) {
       const errText = await res.text();
       // Sanitise: do not forward raw Paycrest error which may contain internal details
-      console.error(`[orders] Paycrest error ${res.status}: ${errText.slice(0, 200)}`);
+      console.error(`[orders] Paycrest error ${res.status}: ${safePartnerError(errText)}`);
       return { response: err('The payout partner could not create the order right now. Please try again shortly.', 502) };
     }
     return { order: unwrapPaycrestData<PaycrestOrderResponse>(await res.json()) };
