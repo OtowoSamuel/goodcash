@@ -1,6 +1,6 @@
 import { nairaFromUsdt } from '../lib/units';
 import { friendlyPayError, hasInjectedWallet, PLACEHOLDER_DEPOSIT_ADDRESS } from '../lib/router';
-import { getWalletLink, openWalletApp } from '../lib/walletConnect';
+import { getWalletLink, openWalletApp } from '../lib/walletLink';
 import { reportIssue } from '../lib/diag';
 import { ORDERS_API_BASE } from '../lib/rate';
 import { SupportModal } from './SupportModal';
