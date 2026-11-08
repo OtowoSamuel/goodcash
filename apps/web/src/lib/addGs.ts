@@ -190,3 +190,25 @@ export async function returnToCelo(): Promise<void> {
     // the customer can switch back themselves
   }
 }
+
+/**
+ * Plain wording for anything that goes wrong in Add G$. Customers never see technical text:
+ * only these sentences. Details go to the team through reportIssue.
+ */
+export function friendlyAddError(err: unknown): string {
+  const e = err as { message?: string; shortMessage?: string; code?: number } | null;
+  const raw = `${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
+  if (e?.code === 4001 || /user rejected|user denied|rejected the request|cancel/i.test(raw)) {
+    return 'You cancelled in your wallet. Nothing was taken. Tap to try again.';
+  }
+  if (/insufficient funds|gas required exceeds|not enough/i.test(raw)) {
+    return 'Your wallet needs a small top-up to cover the network fee. Add a little more and try again. Your money is safe.';
+  }
+  if (/chain|network|switch/i.test(raw)) {
+    return 'Your wallet did not switch network. Please switch it when asked, then try again. Nothing was taken.';
+  }
+  if (/did not match|not ready|price/i.test(raw)) return 'The price changed. Nothing was taken. Please try again.';
+  if (/connect your wallet/i.test(raw)) return 'Connect your wallet first.';
+  if (/has not shown up/i.test(raw)) return 'Your money has not shown up in your wallet yet. Please wait a minute and try again.';
+  return 'Something went wrong. Nothing was taken and your money is safe. Please try again.';
+}

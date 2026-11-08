@@ -6,6 +6,7 @@ import {
   fetchOnrampQuote,
   fetchOnrampStatus,
   fetchSwapStatus,
+  friendlyAddError,
   formatNaira,
   isAdultDate,
   readDollarsOnBase,
@@ -56,6 +57,12 @@ interface Props {
   onClose: () => void;
   /** Called when G$ has arrived, so the app can refresh the balance. */
   onArrived: () => void;
+}
+
+/** The server's own messages are already plain; anything else becomes a general line. */
+function friendlyOrderError(e: unknown): string {
+  const m = (e as Error)?.message ?? '';
+  return m && m.length < 160 && !/[{}]|0x|Error|undefined/.test(m) ? m : 'We could not start this order. Please check your details and try again.';
 }
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -184,7 +191,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       setIdNumber('');
       setStep('pay');
     } catch (e) {
-      setError((e as Error).message);
+      setError(friendlyOrderError(e));
     } finally {
       setBusy(false);
     }
@@ -196,7 +203,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     try {
       const have = await readDollarsOnBase(wallet);
       if (have < 500_000n) {
-        setError('Your money has not shown up in your wallet yet. Please wait a minute and try again.');
+        setError(friendlyAddError(new Error('has not shown up')));
         return;
       }
       const r = await startGasFreeSwap(wallet, have);
@@ -205,12 +212,8 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       setStep('working');
       void follow(r.requestId);
     } catch (e) {
-      const msg = (e as Error).message ?? '';
-      if (/reject|denied|cancel/i.test(msg)) setError('You cancelled in your wallet. Nothing was taken. Tap to try again.');
-      else {
-        reportIssue('addgs_swap_failed', { message: msg.slice(0, 200) });
-        setError(msg.length < 140 ? msg : 'Something went wrong. Nothing was taken. Please try again.');
-      }
+      reportIssue('addgs_swap_failed', { message: String((e as Error)?.message ?? e).slice(0, 300) });
+      setError(friendlyAddError(e));
     } finally {
       setBusy(false);
     }
@@ -251,7 +254,8 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
           </div>
         )}
         {quoteError && <div className="gc-note">{quoteError}</div>}
-        <div className="gc-note">You pay by bank transfer, from your own bank account. It takes a few minutes.</div>
+        <div className="gc-note">You pay by bank transfer, from your own bank account. Keep a little extra in that account, because your bank may charge its own transfer fee on top of the amount.</div>
+        {quote && <div className="gc-sm">The smallest amount you can add is {formatNaira(quote.minNaira)}.</div>}
       </>
     );
     footer = primary('Continue', () => setStep('details'), !!quote);

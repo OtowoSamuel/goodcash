@@ -43,3 +43,12 @@ describe('isAdultDate', () => {
     expect(isAdultDate('nope', now)).toBe(false);
   });
 });
+
+import { friendlyAddError } from './addGs';
+describe('friendlyAddError', () => {
+  it('never shows technical text, and asks for a top-up when fees cannot be paid', () => {
+    expect(friendlyAddError({ code: 4001, message: 'User rejected the request.' })).toMatch(/cancelled/);
+    expect(friendlyAddError(new Error('insufficient funds for gas * price + value'))).toMatch(/top-up/);
+    expect(friendlyAddError(new Error('RPC 0xdeadbeef execution reverted: Error(swap)'))).toBe('Something went wrong. Nothing was taken and your money is safe. Please try again.');
+  });
+});
