@@ -396,7 +396,7 @@ describe('pending payout survives reload', () => {
     expect(await screen.findByText(TYPED_HOLDER)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /confirm this is my account name/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /^Retry payout$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Try the payout again$/i }));
 
     await waitFor(() => {
       expect(createOrderSpy).toHaveBeenCalledTimes(1);
@@ -453,7 +453,7 @@ describe('pending payout survives reload', () => {
     fireEvent.change(screen.getByLabelText('Account number'), { target: { value: TYPED_ACCOUNT } });
     expect(await screen.findByText(TYPED_HOLDER)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /confirm this is my account name/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^Retry payout$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Try the payout again$/i }));
 
     await waitFor(() => expect(createOrderSpy).toHaveBeenCalledTimes(1));
     expect(createOrderSpy).toHaveBeenCalledWith(
@@ -542,15 +542,15 @@ describe('Swap succeeded but order creation failed — retry payout flow', () =>
 
     // User sees the error message indicating swap was confirmed but payout failed
     expect(
-      await screen.findByText(/Your swap went through, but the payout order couldn't be created yet/i)
+      await screen.findByText(/Your G\$ was converted, but we couldn't set up your payout yet/i)
     ).toBeInTheDocument();
 
     // User sees "Retry payout (swap already confirmed)" button
-    const retryBtn = screen.getByRole('button', { name: /Retry payout \(swap already confirmed\)/i });
+    const retryBtn = screen.getByRole('button', { name: /Try the payout again/i });
     expect(retryBtn).toBeInTheDocument();
 
     // Confirm button is disabled with text "Swap already confirmed" to prevent double-swapping
-    const disabledConfirmBtn = screen.getByRole('button', { name: /^Swap already confirmed$/i });
+    const disabledConfirmBtn = screen.getByRole('button', { name: /^Already confirmed$/i });
     expect(disabledConfirmBtn).toBeDisabled();
 
     // 6. User clicks "Retry payout"

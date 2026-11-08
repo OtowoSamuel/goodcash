@@ -137,7 +137,7 @@ export const PendingPayoutCard: React.FC<PendingPayoutCardProps> = ({
             : 'cursor-not-allowed bg-gray-200 text-gray-400'
         }`}
       >
-        {isRetrying ? 'Retrying payout…' : 'Retry payout'}
+        {isRetrying ? 'Trying again…' : 'Try the payout again'}
       </button>
 
       {/* Cancel Button */}

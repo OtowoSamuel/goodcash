@@ -799,7 +799,7 @@ export function App({
         });
       } catch (orderErr: unknown) {
         setPendingSwapResult({ txHash: realTxHash, usdtReceived: realUsdtReceived, amountG });
-        setSwapError(`Your swap went through, but the payout order couldn't be created yet. Your funds are safe in your wallet. Use Retry payout in a moment.`);
+        setSwapError(`Your G$ was converted, but we couldn't set up your payout yet. Your money is safe. Tap \"Try the payout again\" in a moment.`);
         setConfirmStage(null);
         return;
       }
@@ -1575,8 +1575,7 @@ export function App({
               <div className="gc-card">
                 <div className="gc-lab">{t.routeTitle}</div>
                 <div className="gc-sm" style={{ marginTop: '4px' }}>
-                  {t.routeExplanation}{' '}
-                  <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>{t.details}</span>
+                  {t.routeExplanation}
                 </div>
               </div>
               <div className="gc-card gc-card--ye">
