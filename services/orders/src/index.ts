@@ -24,8 +24,8 @@ export interface Env {
   ROUTER_ADDRESS?: string;        // GoodCashRouter address override
   SENDER_FEE?: string;            // Optional GoodCash fee in USDT (needs SENDER_FEE_ADDRESS)
   SENDER_FEE_ADDRESS?: string;    // Wallet that receives SENDER_FEE
-  RESEND_API_KEY?: string;        // Optional: emails support tickets to SUPPORT_TO (secret)
-  SUPPORT_TO?: string;            // Where support tickets are emailed
+  RESEND_API_KEY?: string;        // Optional: emails support tickets to SUPPORT_INBOX (secret)
+  SUPPORT_INBOX?: string;         // Where support tickets are emailed. A secret: never put it in code or wrangler.toml
   RATE_LIMITER_READ?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> };   // looser, for status polling
   RATE_LIMITER_STRICT?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }; // tight, for email-sending endpoints
   RATE_LIMITER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }; // Cloudflare rate-limit binding (no storage writes)
@@ -839,7 +839,7 @@ async function handleSupport(request: Request, env: Env): Promise<Response> {
   // The team's log gets the ticket id and topic only; the email address stays in the ticket itself.
   console.error(`[support] ticket ${ticketId} topic=${topic} order=${context.orderId ?? '-'}`);
 
-  if (env.RESEND_API_KEY && env.SUPPORT_TO) {
+  if (env.RESEND_API_KEY && env.SUPPORT_INBOX) {
     const text = [
       `Ticket ${ticketId}`,
       `Topic: ${TOPIC_LABELS[topic]}`,
@@ -862,8 +862,8 @@ async function handleSupport(request: Request, env: Env): Promise<Response> {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: 'GoodCash Support <onboarding@resend.dev>',
-          to: [env.SUPPORT_TO],
+          from: env.RESEND_FROM || 'GoodCash Support <onboarding@resend.dev>',
+          to: [env.SUPPORT_INBOX],
           reply_to: email,
           subject: `[${ticketId}] ${TOPIC_LABELS[topic]}`,
           text,

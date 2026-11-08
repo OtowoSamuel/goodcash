@@ -44,7 +44,6 @@ VERIFY_SWAP_ONCHAIN = "true"
 RATE_LIMIT_MAX = "30"
 RATE_LIMIT_WINDOW_SECONDS = "60"
 ALLOWED_ORIGINS = "https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"
-SUPPORT_TO = "support@example.invalid"
 
 [env.development.vars]
 ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"

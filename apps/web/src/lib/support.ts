@@ -1,8 +1,5 @@
 import { ORDERS_API_BASE } from './rate';
 
-/** Backup contact if the support form itself cannot be reached. Change this one line to change it everywhere. */
-export const SUPPORT_EMAIL = 'support@example.invalid';
-
 export type SupportTopic = 'not_arrived' | 'payment_failed' | 'wrong_amount' | 'charged_nothing' | 'other';
 
 export const SUPPORT_TOPICS: { id: SupportTopic; label: string }[] = [
@@ -59,21 +56,4 @@ export async function submitSupport(req: SupportRequest): Promise<string> {
   const data = (await res.json()) as { ticketId?: string };
   if (!data.ticketId) throw new Error('support request failed');
   return data.ticketId;
-}
-
-/** Fallback: an email to the team with the same details prefilled. Only used if the form can't be reached. */
-export function supportMailto(req: Pick<SupportRequest, 'topic' | 'message' | 'context'>): string {
-  const c = req.context;
-  const lines = [
-    req.message || 'Please describe what happened:',
-    '',
-    '--- Details (please keep) ---',
-    c.orderId ? `Order reference: ${c.orderId}` : '',
-    c.txHash ? `Swap transaction: ${c.txHash}` : '',
-    c.wallet ? `Wallet: ${c.wallet}` : '',
-    c.status ? `Status shown: ${c.status}` : '',
-    c.amountG ? `Amount: ${c.amountG} G$` : '',
-  ].filter(Boolean);
-  const subject = `Cash out help${c.orderId ? ` ${c.orderId}` : ''}`;
-  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
 }

@@ -745,7 +745,7 @@ describe('Support tickets, unfinished swaps and duplicate-payout guard', () => {
   it('S3. Emails the team when email is configured, without failing the ticket', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    env = makeEnv(kv, { RESEND_API_KEY: 'key', SUPPORT_TO: 'team@example.com' });
+    env = makeEnv(kv, { RESEND_API_KEY: 'key', SUPPORT_INBOX: 'team@example.com' });
     const res = await worker.fetch(
       makeRequest('POST', '/support', { email: 'user@example.com', topic: 'other', message: 'Something odd happened here' }),
       env

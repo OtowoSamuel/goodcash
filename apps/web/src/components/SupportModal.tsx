@@ -3,7 +3,6 @@ import { Modal } from './Modal';
 import {
   SUPPORT_TOPICS,
   submitSupport,
-  supportMailto,
   validateSupport,
   type SupportContext,
   type SupportTopic,
@@ -172,9 +171,9 @@ export const SupportModal: React.FC<SupportModalProps> = ({ context, defaultTopi
 
           {problem && <div className="gc-note" role="alert" style={{ background: '#ff9b9b' }}>{problem}</div>}
           {unreachable && (
-            <a className="gc-sm" style={{ textAlign: 'center', textDecoration: 'underline' }} href={supportMailto({ topic, message, context })}>
-              Email us instead
-            </a>
+            <div className="gc-sm" role="status" style={{ textAlign: 'center' }}>
+              We couldn't reach support just now. Your message wasn't lost: tap Send again in a minute.
+            </div>
           )}
     </Modal>
   );

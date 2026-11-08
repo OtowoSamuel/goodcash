@@ -49,13 +49,15 @@ describe('SupportModal', () => {
     expect(store['goodcash_support_email']).toBe('me@example.com');
   });
 
-  it('offers an email fallback when the form cannot be reached', async () => {
+  it('says plainly it could not reach support, and never shows an email address', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     render(<SupportModal context={context} onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/your email/i), { target: { value: 'me@example.com' } });
     fireEvent.change(screen.getByLabelText(/tell us what happened/i), { target: { value: 'It never arrived and I am worried' } });
     fireEvent.click(screen.getByRole('button', { name: /send message/i }));
-    await waitFor(() => expect(screen.getByRole('link', { name: /email us instead/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/couldn't reach support just now/i)).toBeInTheDocument());
     expect(screen.getByRole('alert')).toHaveTextContent(/couldn't send/i);
+    expect(screen.queryByRole('link', { name: /email us/i })).not.toBeInTheDocument();
+    expect(document.body.innerHTML).not.toMatch(/mailto:|@gmail\.com/i);
   });
 });
