@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getWalletLink } from './walletConnect';
+import { getWalletLink } from './walletLink';
 
 function stubStorage(initial: Record<string, string> = {}) {
   const data = { ...initial };

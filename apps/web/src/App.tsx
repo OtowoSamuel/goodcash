@@ -1,7 +1,7 @@
 import { gToWei, nairaFromUsdt } from './lib/units';
 import { Modal } from './components/Modal';
-import { getWalletLink, openWalletApp } from './lib/walletConnect';
-import { useState, useEffect, useRef } from 'react';
+import { getWalletLink, openWalletApp } from './lib/walletLink';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { SafetyBanner } from './components/SafetyBanner';
 import { ReadinessCard } from './components/ReadinessCard';
@@ -25,10 +25,10 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, connectInjectedWallet, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused } from './lib/router';
+import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused } from './lib/router';
 import { createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
-import { WALLETCONNECT_ENABLED, connectWithWalletConnect, restoreWalletConnect, disconnectWalletConnect } from './lib/walletConnect';
+import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
 import { PendingPayoutCard } from './components/PendingPayoutCard';
 import { reportIssue } from './lib/diag';
 
@@ -378,49 +378,65 @@ export function App({
     }
   }, [history]);
 
-  // Reuse an earlier WalletConnect session after a reload
+  // Pick up where the customer left off after a reload (a wallet they connected, or their Magic email wallet)
   useEffect(() => {
     if (isDemoMode || initialWalletAddress) return;
     let alive = true;
-    restoreWalletConnect(() => setWalletAddress(null)).then((acct) => {
+    restoreMagic().then((acct) => {
       if (alive && acct) setWalletAddress(acct);
     });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Wallet connection is Magic's Wallet Kit panel (loaded on demand). It reports back through onMagicConnected.
+  const [magicOpen, setMagicOpen] = useState(false);
+  const MagicConnect = React.useMemo(() => React.lazy(() => import('./components/MagicConnect')), []);
+
   const handleConnectWallet = async () => {
     if (miniPayBlocked || detectMiniPay()) return;
+    if (isDemoMode) {
+      setWalletAddress('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF');
+      setWalletMessage(null);
+      return;
+    }
+    if (!MAGIC_ENABLED) {
+      setWalletMessage('Wallet connection is not set up in this build yet.');
+      return;
+    }
+    setWalletMessage(null);
+    setMagicOpen(true);
+  };
+
+  const onMagicConnected = async (result: MagicLoginResult) => {
+    setMagicOpen(false);
     try {
-      // Demo keeps the fixed test wallet; production asks the user's wallet.
-      let address: string;
-      if (isDemoMode) {
-        address = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
-      } else if (hasInjectedWallet()) {
-        address = await connectInjectedWallet();
-      } else if (WALLETCONNECT_ENABLED) {
-        // No wallet in this browser (e.g. a phone browser): use WalletConnect
-        address = await connectWithWalletConnect(() => setWalletAddress(null));
-      } else {
-        throw new Error('No Celo wallet detected. Open GoodCash in your wallet app or install a wallet extension.');
-      }
+      reportIssue('magic_login_ok', new Error(`method=${result.method}`));
+      const address = await finishMagicLogin(result);
       setWalletAddress(address);
       setWalletMessage(null);
       emitAnalyticsEvent('wallet_connected', {
         wallet: address,
-        wallet_type: 'other',
+        wallet_type: result.method === 'wallet' ? 'other' : 'other',
         referral_tag: 'direct',
       });
     } catch (err) {
-      setWalletMessage(friendlyConnectError(err));
-      // Tell the team why (code and wallet type only), unless the customer simply closed the request
-      const code = (err as { code?: unknown } | null)?.code;
-      // A broken phone-wallet session makes every try fail the same way: clear it so the next try starts fresh
-      if (!hasInjectedWallet()) void disconnectWalletConnect();
-      if (code !== 4001) {
-        const kind = hasInjectedWallet() ? 'browser-wallet' : 'walletconnect';
-        reportIssue('wallet_connect_failed', new Error(`kind=${kind} code=${String(code ?? '-')} ${(err as Error)?.message ?? ''}`));
-      }
+      onMagicError(err, 'after-login');
+    }
+  };
+
+  const onMagicError = (err: unknown, stage: 'panel' | 'after-login' = 'panel') => {
+    setMagicOpen(false);
+    setWalletMessage(friendlyConnectError(err));
+    const code = (err as { code?: unknown } | null)?.code;
+    // The customer simply closing or cancelling is not worth a report
+    if (code !== 4001) {
+      const e = err as { name?: string; message?: string; rawMessage?: string; data?: unknown; stack?: string } | null;
+      const where = String(e?.stack ?? '').split('\n').slice(1, 3).map((l) => l.trim().replace(/https?:\/\/[^/]+/, '')).join(' < ');
+      reportIssue(
+        'wallet_connect_failed',
+        new Error(`kind=magic stage=${stage} code=${String(code ?? '-')} name=${e?.name ?? '-'} ${e?.message ?? ''} raw=${e?.rawMessage ?? '-'} data=${JSON.stringify(e?.data ?? null)?.slice(0, 80)} at=${where}`)
+      );
     }
   };
 
@@ -456,8 +472,8 @@ export function App({
 
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const handleDisconnectWallet = () => {
-    // Phone wallets (WalletConnect) are closed properly; a browser wallet is asked to forget this site
-    void disconnectWalletConnect();
+    // Sign out of Magic (closes a Magic email wallet or a connected wallet); a browser wallet is also asked to forget this site
+    void disconnectMagic();
     if (hasInjectedWallet()) void disconnectInjectedWallet();
     setWalletAddress(null);
     setWalletMessage(null);
@@ -1211,6 +1227,12 @@ export function App({
         >
           <b>You have an unfinished cash out.</b> Tap to finish getting your naira.
         </button>
+      )}
+
+      {magicOpen && (
+        <React.Suspense fallback={null}>
+          <MagicConnect onConnected={onMagicConnected} onError={onMagicError} onClose={() => setMagicOpen(false)} />
+        </React.Suspense>
       )}
 
       {walletSheetOpen && walletAddress && (
