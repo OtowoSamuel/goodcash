@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { SafetyBanner } from './components/SafetyBanner';
 import { ReadinessCard } from './components/ReadinessCard';
+const AddGsModal = React.lazy(() => import('./components/AddGsModal'));
 import { CashOutCard } from './components/CashOutCard';
 import { MobileCashOut } from './components/MobileCashOut';
 import { MobileReviewView } from './components/MobileReviewView';
@@ -481,6 +482,18 @@ export function App({
     return () => { alive = false; clearInterval(iv); };
   }, [isDemoMode, walletAddress]);
 
+  const [addOpen, setAddOpen] = useState(false);
+  const handleAddClick = () => {
+    if (isDemoMode) {
+      setWalletMessage('Adding G$ works with a real wallet. Connect your wallet to try it.');
+      return;
+    }
+    if (!walletAddress) {
+      handleConnectWallet();
+      return;
+    }
+    setAddOpen(true);
+  };
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const handleDisconnectWallet = () => {
     // Sign out of Magic (closes a Magic email wallet or a connected wallet); a browser wallet is also asked to forget this site
@@ -1250,6 +1263,17 @@ export function App({
         </React.Suspense>
       )}
 
+      {addOpen && walletAddress && (
+        <React.Suspense fallback={null}>
+          <AddGsModal
+            wallet={walletAddress}
+            onClose={() => setAddOpen(false)}
+            onArrived={() => {
+              void fetchGBalance(walletAddress).then((b) => setBalanceG(Math.floor(b * 100) / 100)).catch(() => {});
+            }}
+          />
+        </React.Suspense>
+      )}
       {walletSheetOpen && walletAddress && (
         <Modal
           label="Your wallet"
@@ -1339,6 +1363,7 @@ export function App({
               balanceG={balanceG}
               dailyClaimG={123.48}
               onCashOutClick={() => setCurrentTab('cashout')}
+              onAddClick={handleAddClick}
               language={language}
               isStale={balanceIsStale}
               ngnPerUsdt={liveNgnRate}
@@ -1889,6 +1914,7 @@ export function App({
                 balanceG={balanceG}
                 dailyClaimG={123.48}
                 onCashOutClick={() => setMobileView('cashout')}
+                onAddClick={handleAddClick}
                   language={language}
                 isStale={balanceIsStale}
                 ngnPerUsdt={liveNgnRate}

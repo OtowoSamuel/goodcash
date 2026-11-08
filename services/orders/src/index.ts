@@ -25,6 +25,7 @@ export interface Env {
   ROUTER_V2_ADDRESS?: string;     // One-tap router (GoodCashRouterV2). Unset means the one-tap flow is off
   ROUTER_V2_DEPLOY_BLOCK?: string; // Block the one-tap router was deployed in (where history scanning starts)
   SENDER_FEE?: string;            // Optional GoodCash fee in USDT (needs SENDER_FEE_ADDRESS)
+  RELAY_API_KEY?: string;         // Optional key for the swap service (a secret; raises its limits)
   SENDER_FEE_ADDRESS?: string;    // Wallet that receives SENDER_FEE
   RESEND_API_KEY?: string;        // Optional: emails support tickets to SUPPORT_INBOX (secret)
   SUPPORT_INBOX?: string;         // Where support tickets are emailed. A secret: never put it in code or wrangler.toml
@@ -1668,7 +1669,7 @@ async function handleLinkOneTapSwap(orderId: string, request: Request, env: Env)
 // This endpoint only READS prices. It creates no order and moves no money.
 // ---------------------------------------------------------------------------
 
-const BASE_USDT = '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2';
+const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const CELO_G_DOLLAR = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A';
 /** Assumed partner fee for a naira order, in dollars. UNVERIFIED: the real fee comes back when an order is created. */
 const ONRAMP_FEE_RESERVE_USDT = 0.02;
@@ -1687,6 +1688,17 @@ interface LifiQuote {
   };
 }
 
+interface RelayQuote {
+  fees?: { relayer?: { amountUsd?: string }; gas?: { amountUsd?: string }; app?: { amountUsd?: string } };
+  details?: { currencyOut?: { amount?: string; minimumAmount?: string } };
+}
+
+interface OnrampPaycrestOrder {
+  id: string;
+  status?: string;
+  providerAccount?: { institution?: string; accountIdentifier?: string; accountName?: string; amountToTransfer?: string; currency?: string; validUntil?: string };
+}
+
 async function handleOnrampQuote(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const naira = Number(url.searchParams.get('naira'));
@@ -1702,7 +1714,7 @@ async function handleOnrampQuote(request: Request, env: Env): Promise<Response> 
   let rate: number;
   try {
     const guess = Math.max(ONRAMP_MIN_USDT, Math.round((naira / 1385) * 100) / 100);
-    const res = await fetch(`${base}/v2/rates/base/USDT/${guess}/NGN?side=buy`, { headers: { Accept: 'application/json' } });
+    const res = await fetch(`${base}/v2/rates/base/USDC/${guess}/NGN?side=buy`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return unavailable();
     const body = (await res.json()) as { data?: { buy?: { rate?: string } } };
     rate = Number(body?.data?.buy?.rate);
@@ -1720,48 +1732,299 @@ async function handleOnrampQuote(request: Request, env: Env): Promise<Response> 
   }
   const atomic = BigInt(Math.floor(usdtDelivered * 1e6));
 
-  // 3. What one cross-chain swap turns those dollars into (G$ on Celo, same wallet)
+  // 3. What one gasless swap turns those dollars into (G$ on Celo, same wallet)
   const from = wallet || QUOTE_WALLET_PLACEHOLDER;
-  let lifi: LifiQuote;
+  let relay: RelayQuote;
   try {
-    const q = new URLSearchParams({
-      fromChain: '8453',
-      toChain: '42220',
-      fromToken: BASE_USDT,
-      toToken: CELO_G_DOLLAR,
-      fromAmount: atomic.toString(),
-      fromAddress: from,
-      toAddress: from,
-      slippage: '0.01',
-      integrator: 'goodcash',
+    const res = await fetch('https://api.relay.link/quote/v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        user: from,
+        recipient: from,
+        originChainId: 8453,
+        originCurrency: BASE_USDC,
+        destinationChainId: 42220,
+        destinationCurrency: CELO_G_DOLLAR,
+        tradeType: 'EXACT_INPUT',
+        amount: atomic.toString(),
+        usePermit: true,
+      }),
     });
-    const res = await fetch(`https://li.quest/v1/quote?${q.toString()}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return unavailable();
-    lifi = (await res.json()) as LifiQuote;
+    relay = (await res.json()) as RelayQuote;
   } catch (e) {
     console.error('[onramp] swap quote failed:', e);
     return unavailable();
   }
-  const est = lifi.estimate;
-  if (!est?.toAmount || !est.toAmountMin) return unavailable();
-
-  const sum = (rows?: Array<{ amountUSD?: string }>) => (rows ?? []).reduce((t, r) => t + (Number(r.amountUSD) || 0), 0);
-  const gOut = Number(BigInt(est.toAmount)) / 1e18;
-  const gMin = Number(BigInt(est.toAmountMin)) / 1e18;
+  const out = relay.details?.currencyOut;
+  if (!out?.amount) return unavailable();
+  const gOut = Number(BigInt(out.amount)) / 1e18;
+  const minOut = relay.details?.currencyOut?.minimumAmount ? Number(BigInt(relay.details.currencyOut.minimumAmount)) / 1e18 : gOut * 0.99;
+  const feeUsd = Number(relay.fees?.relayer?.amountUsd ?? 0) + Number(relay.fees?.gas?.amountUsd ?? 0) + Number(relay.fees?.app?.amountUsd ?? 0);
   return json({
     naira,
     ngnPerUsd: rate,
     usdtDelivered,
     partnerFeeUsd: ONRAMP_FEE_RESERVE_USDT,
-    swapFeeUsd: Math.round(sum(est.feeCosts) * 10_000) / 10_000,
-    networkFeeUsd: Math.round(sum(est.gasCosts) * 10_000) / 10_000,
+    swapFeeUsd: Math.round(feeUsd * 10_000) / 10_000,
+    networkFeeUsd: 0,
     gOut,
-    gOutMin: gMin,
-    seconds: est.executionDuration ?? null,
+    gOutMin: minOut,
+    seconds: null,
     minNaira,
     // Quotes move; the app must ask again if it is older than this
     validForSeconds: 30,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Add G$: create the naira order, and follow it
+//
+// The customer's ID details (name, birth date, BVN or NIN) go straight to the payout partner, which the partner
+// requires to take naira. We never write them to storage and never log them.
+// ---------------------------------------------------------------------------
+
+const OnrampOrderSchema = z.object({
+  naira: z.number().int().min(1000).max(ONRAMP_MAX_NAIRA),
+  wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  fullName: z.string().trim().min(3).max(100),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  idType: z.enum(['BVN', 'NIN']),
+  idNumber: z.string().regex(/^\d{11}$/),
+  refundAccount: z.object({
+    institution: z.string().regex(/^[A-Za-z0-9]{4,16}$/),
+    accountIdentifier: z.string().regex(/^\d{10}$/),
+    accountName: z.string().trim().min(3).max(100),
+  }),
+});
+
+export function isAdult(birthDate: string, now = Date.now()): boolean {
+  const [y, m, d] = birthDate.split('-').map(Number);
+  const born = new Date(Date.UTC(y, m - 1, d));
+  if (Number.isNaN(born.getTime()) || born.getUTCMonth() !== m - 1 || y < 1900) return false;
+  const t = new Date(now);
+  let age = t.getUTCFullYear() - y;
+  if (t.getUTCMonth() < m - 1 || (t.getUTCMonth() === m - 1 && t.getUTCDate() < d)) age -= 1;
+  return age >= 18;
+}
+
+async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'onramp', 'strict');
+  if (limited) return limited;
+  if (Number(request.headers.get('Content-Length') ?? '0') > 8_192) return err('Request too large', 413);
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const parsed = OnrampOrderSchema.safeParse(body);
+  if (!parsed.success) return err('Please check your details and try again.');
+  const input = parsed.data;
+  if (!isAdult(input.birthDate)) return err('You must be 18 or older to use this.', 400);
+
+  const reference = generateRef('goodcash-in');
+  const paycrestBody = {
+    amount: String(input.naira),
+    amountIn: 'fiat',
+    source: {
+      type: 'fiat',
+      currency: 'NGN',
+      refundAccount: input.refundAccount,
+      kyc: {
+        entityType: 'person',
+        personDetails: {
+          fullName: input.fullName,
+          birthDate: input.birthDate,
+          idDocument: { type: input.idType === 'BVN' ? 'BVN' : 'nationalID', number: input.idNumber, issuerCountry: 'NG' },
+        },
+      },
+    },
+    destination: { type: 'crypto', currency: 'USDC', recipient: { address: input.wallet, network: 'base' } },
+    reference,
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'API-Key': env.PAYCREST_API_KEY },
+      body: JSON.stringify(paycrestBody),
+    });
+  } catch (e) {
+    console.error('[onramp] partner unreachable:', e);
+    return err('Adding G$ is not available right now. Please try again later.', 503);
+  }
+  if (!res.ok) {
+    const text = (await res.text()).slice(0, 300);
+    // The partner's message can quote back the customer's details, so log only the status and the field name
+    console.error(`[onramp] partner error ${res.status}: ${(text.match(/"field":"([A-Za-z]+)"/) ?? [])[1] ?? 'unknown'}`);
+    if (res.status === 400 && /name does not match/i.test(text)) {
+      return err('The name on your details must match the name on the bank account you will pay from.', 400);
+    }
+    return err('We could not start this order. Please check your details and try again.', res.status >= 500 ? 502 : 400);
+  }
+  const order = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
+  const pa = order?.providerAccount;
+  if (!order?.id || !pa?.accountIdentifier || !pa.amountToTransfer) {
+    console.error('[onramp] unexpected partner response shape');
+    return err('We could not start this order. Please try again.', 502);
+  }
+  await env.ORDER_STORE.put(
+    `onramp:${order.id}`,
+    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, createdAt: Date.now() }),
+    { expirationTtl: 14 * 24 * 3600 }
+  );
+  return json(
+    {
+      orderId: order.id,
+      status: order.status ?? 'initiated',
+      bank: { institution: pa.institution, accountIdentifier: pa.accountIdentifier, accountName: pa.accountName },
+      amountToTransfer: pa.amountToTransfer,
+      validUntil: pa.validUntil,
+    },
+    201
+  );
+}
+
+// The swap service is reached through us, so its key (if any) stays secret and this is not an open relay:
+// only the one fixed swap (dollars on Base -> G$ on Celo, to the customer's own wallet) can be asked for.
+function relayHeaders(env: Env): Record<string, string> {
+  return { 'Content-Type': 'application/json', Accept: 'application/json', ...(env.RELAY_API_KEY ? { 'x-api-key': env.RELAY_API_KEY } : {}) };
+}
+
+const RelayQuoteSchema = z.object({
+  wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  amount: z.string().regex(/^\d{1,12}$/), // USDC, 6 decimals
+});
+
+async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'relay');
+  if (limited) return limited;
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const parsed = RelayQuoteSchema.safeParse(body);
+  if (!parsed.success || BigInt(parsed.data.amount) < 500_000n) return err('Invalid request');
+  try {
+    const res = await fetch('https://api.relay.link/quote/v2', {
+      method: 'POST',
+      headers: relayHeaders(env),
+      body: JSON.stringify({
+        user: parsed.data.wallet,
+        recipient: parsed.data.wallet,
+        originChainId: 8453,
+        originCurrency: BASE_USDC,
+        destinationChainId: 42220,
+        destinationCurrency: CELO_G_DOLLAR,
+        tradeType: 'EXACT_INPUT',
+        amount: parsed.data.amount,
+        usePermit: true,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[relay] quote ${res.status}`);
+      return err('Could not get a price right now. Please try again.', 502);
+    }
+    return json(await res.json());
+  } catch (e) {
+    console.error('[relay] quote failed:', e);
+    return err('Could not get a price right now. Please try again.', 503);
+  }
+}
+
+const RelayExecuteSchema = z.object({
+  signature: z.string().regex(/^0x[0-9a-fA-F]{130,}$/),
+  requestId: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+  kind: z.literal('eip3009'),
+  api: z.enum(['swap', 'bridge', 'user-swap']).optional(),
+});
+
+async function handleRelayExecute(request: Request, env: Env): Promise<Response> {
+  const limited = await checkRateLimit(request, env, 'relay');
+  if (limited) return limited;
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return err('Invalid JSON body');
+  }
+  const parsed = RelayExecuteSchema.safeParse(body);
+  if (!parsed.success) return err('Invalid request');
+  const { signature, ...rest } = parsed.data;
+  try {
+    const res = await fetch(`https://api.relay.link/execute/permits?signature=${signature}`, {
+      method: 'POST',
+      headers: relayHeaders(env),
+      body: JSON.stringify(rest),
+    });
+    if (!res.ok) {
+      console.error(`[relay] execute ${res.status}`);
+      return err('The swap could not be started. Nothing was taken. Please try again.', 502);
+    }
+    return json(await res.json());
+  } catch (e) {
+    console.error('[relay] execute failed:', e);
+    return err('The swap could not be started. Nothing was taken. Please try again.', 503);
+  }
+}
+
+async function handleRelayStatus(request: Request, env: Env): Promise<Response> {
+  const requestId = new URL(request.url).searchParams.get('requestId') ?? '';
+  if (!/^0x[0-9a-fA-F]{64}$/.test(requestId)) return err('Invalid request');
+  try {
+    const res = await fetch(`https://api.relay.link/intents/status/v3?requestId=${requestId}`, { headers: relayHeaders(env) });
+    if (!res.ok) return err('Could not check this right now.', 502);
+    const d = (await res.json()) as { status?: string };
+    return json({ status: d.status ?? 'unknown' });
+  } catch {
+    return err('Could not check this right now.', 503);
+  }
+}
+
+/** Customer-facing stages for a naira order. */
+export function onrampStage(status: string): 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review' {
+  switch (status) {
+    case 'settled':
+      return 'done';
+    case 'pending':
+    case 'fulfilling':
+    case 'fulfilled':
+    case 'validated':
+    case 'settling':
+    case 'deposited':
+      return 'received';
+    case 'expired':
+    case 'cancelled':
+      return 'expired';
+    case 'refunding':
+    case 'refunded':
+      return 'refund';
+    case 'compliance_hold':
+      return 'review';
+    default:
+      return 'waiting';
+  }
+}
+
+async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response> {
+  if (!/^[0-9a-f-]{36}$/.test(orderId)) return err('Invalid order ID format', 400);
+  const known = await env.ORDER_STORE.get(`onramp:${orderId}`);
+  if (!known) return err('Order not found', 404);
+  try {
+    const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${orderId}`, { headers: { 'API-Key': env.PAYCREST_API_KEY } });
+    if (!res.ok) return err('Could not check this order right now.', 502);
+    const o = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
+    const status = String(o?.status ?? 'initiated');
+    return json({ orderId, status, stage: onrampStage(status) });
+  } catch {
+    return err('Could not check this order right now.', 502);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1856,6 +2119,23 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   // Requests that carry free text can't be huge
   if (m === 'POST' && ['/support', '/diag', '/notify'].includes(pathname)) {
     if (Number(request.headers.get('Content-Length') ?? '0') > 16_384) return err('Request too large', 413);
+  }
+
+  // POST /onramp/orders - start a naira order; GET /onramp/orders/:id - follow it
+  if (m === 'POST' && pathname === '/onramp/orders') return handleCreateOnrampOrder(request, env);
+  const onrampMatch = pathname.match(/^\/onramp\/orders\/([^/]+)$/i);
+  if (m === 'GET' && onrampMatch) {
+    const limitedRead = await checkRateLimit(request, env, 'read', 'read');
+    if (limitedRead) return limitedRead;
+    return handleGetOnrampOrder(onrampMatch[1], env);
+  }
+
+  if (m === 'POST' && pathname === '/relay/quote') return handleRelayQuote(request, env);
+  if (m === 'POST' && pathname === '/relay/execute') return handleRelayExecute(request, env);
+  if (m === 'GET' && pathname === '/relay/status') {
+    const limitedRead = await checkRateLimit(request, env, 'read', 'read');
+    if (limitedRead) return limitedRead;
+    return handleRelayStatus(request, env);
   }
 
   // GET /onramp/quote?naira=5000&wallet=0x... - what naira buys in G$ (read-only)

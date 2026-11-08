@@ -576,6 +576,11 @@ export function subscribeWalletEvents(
   };
 }
 
+/** The wallet the customer connected (for flows outside this file). */
+export function getWalletProvider(): Eip1193 | null {
+  return getEthereum();
+}
+
 export function hasInjectedWallet(): boolean {
   return typeof window !== 'undefined' && Boolean((window as unknown as { ethereum?: unknown }).ethereum);
 }

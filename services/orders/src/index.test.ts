@@ -1074,23 +1074,17 @@ describe('nobody else can get a customer paid out to their own bank', () => {
 describe('GET /onramp/quote (Add G$)', () => {
   const WALLET2 = '0x1111111111111111111111111111111111111111';
   const lifiOk = (toAmount: string, min: string) => ({
-    tool: 'squid',
-    estimate: {
-      toAmount,
-      toAmountMin: min,
-      executionDuration: 24,
-      feeCosts: [{ amountUSD: '0.0125' }, { amountUSD: '0.0350' }],
-      gasCosts: [{ amountUSD: '0.0139' }],
-    },
+    fees: { relayer: { amountUsd: '0.0475' }, gas: { amountUsd: '0' } },
+    details: { currencyOut: { amount: toAmount, minimumAmount: min } },
   });
   const mockFetch = (opts: { rate?: string | null; lifi?: unknown; lifiStatus?: number } = {}) =>
     vi.fn().mockImplementation(async (url: string) => {
       const u = String(url);
-      if (u.includes('/v2/rates/base/USDT')) {
+      if (u.includes('/v2/rates/base/USDC')) {
         if (opts.rate === null) return new Response(JSON.stringify({ status: 'error', data: null }), { status: 400 });
         return new Response(JSON.stringify({ data: { buy: { rate: opts.rate ?? '1384.52' } } }), { status: 200 });
       }
-      if (u.includes('li.quest')) {
+      if (u.includes('api.relay.link')) {
         return new Response(JSON.stringify(opts.lifi ?? lifiOk('43429796433269220000000', '42663850916546540000000')), { status: opts.lifiStatus ?? 200 });
       }
       return new Response('{}', { status: 404 });
@@ -1108,12 +1102,10 @@ describe('GET /onramp/quote (Add G$)', () => {
     expect(q.gOut).toBeCloseTo(43429.796, 2);
     expect(q.gOutMin).toBeLessThan(q.gOut);
     expect(q.swapFeeUsd).toBeCloseTo(0.0475, 4);
-    expect(q.seconds).toBe(24);
     // the swap quote was asked for the exact delivered amount, Base -> Celo, into the customer's own wallet
-    const lifiCall = f.mock.calls.map((c) => String(c[0])).find((u) => u.includes('li.quest'))!;
-    expect(lifiCall).toContain('fromChain=8453');
-    expect(lifiCall).toContain('toChain=42220');
-    expect(lifiCall).toContain(`toAddress=${WALLET2}`);
+    const call = f.mock.calls.find((c) => String(c[0]).includes('api.relay.link'))!;
+    const sent = JSON.parse(String((call[1] as RequestInit).body));
+    expect(sent).toMatchObject({ originChainId: 8453, destinationChainId: 42220, usePermit: true, recipient: WALLET2, user: WALLET2 });
   });
 
   it('Q2. Says the minimum plainly when the amount is too small', async () => {
@@ -1418,5 +1410,79 @@ describe('slow payout alert for the team', () => {
     await worker.fetch(makeRequest('POST', '/orders', VALID_BODY), makeEnv(kv));
     const saved = JSON.parse((await kv.get(`order:${MOCK_PAYCREST_RESPONSE.id}`))!) as { createdAt?: number };
     expect(saved.createdAt).toBeGreaterThan(NOW - 5_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Add G$ (naira in)
+// ---------------------------------------------------------------------------
+describe('Add G$ orders', () => {
+  const ID = '660e8400-e29b-41d4-a716-446655440001';
+  const BODY = {
+    naira: 5000,
+    wallet: '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF',
+    fullName: 'Ada Obi',
+    birthDate: '1995-03-02',
+    idType: 'BVN',
+    idNumber: '22212345678',
+    refundAccount: { institution: 'GTBINGLA', accountIdentifier: '0123456789', accountName: 'Ada Obi' },
+  };
+  let kv: MockKV;
+  let sent: Array<Record<string, any>>;
+  beforeEach(() => {
+    kv = new MockKV();
+    sent = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          sent.push(JSON.parse(String(init.body)));
+          return new Response(
+            JSON.stringify({ status: 'success', data: { id: ID, status: 'initiated', providerAccount: { institution: 'Bank X', accountIdentifier: '9990001111', accountName: 'Pay Partner', amountToTransfer: '5000', currency: 'NGN', validUntil: '2026-11-08T22:00:00Z' } } }),
+            { status: 201 }
+          );
+        }
+        return new Response(JSON.stringify({ status: 'success', data: { id: ID, status: 'settled' } }));
+      })
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('A1. Sends the ID details to the partner, asks for USDC on Base to the customer wallet, and stores none of them', async () => {
+    const res = await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), makeEnv(kv));
+    expect(res.status).toBe(201);
+    const out = (await res.json()) as { orderId: string; bank: { accountIdentifier: string }; amountToTransfer: string };
+    expect(out.orderId).toBe(ID);
+    expect(out.bank.accountIdentifier).toBe('9990001111');
+    expect(sent[0].destination).toEqual({ type: 'crypto', currency: 'USDC', recipient: { address: BODY.wallet, network: 'base' } });
+    expect(sent[0].source.kyc.personDetails.idDocument).toEqual({ type: 'BVN', number: '22212345678', issuerCountry: 'NG' });
+    const stored = (await kv.get(`onramp:${ID}`))!;
+    expect(stored).not.toContain('22212345678');
+    expect(stored).not.toContain('Ada');
+  });
+
+  it('A2. Uses nationalID for a NIN, and refuses under-18s and malformed details', async () => {
+    await worker.fetch(makeRequest('POST', '/onramp/orders', { ...BODY, idType: 'NIN' }), makeEnv(kv));
+    expect(sent[0].source.kyc.personDetails.idDocument.type).toBe('nationalID');
+    const young = new Date().getUTCFullYear() - 10;
+    expect((await worker.fetch(makeRequest('POST', '/onramp/orders', { ...BODY, birthDate: `${young}-01-01` }), makeEnv(kv))).status).toBe(400);
+    expect((await worker.fetch(makeRequest('POST', '/onramp/orders', { ...BODY, idNumber: '123' }), makeEnv(kv))).status).toBe(400);
+    expect((await worker.fetch(makeRequest('POST', '/onramp/orders', { ...BODY, naira: 10 }), makeEnv(kv))).status).toBe(400);
+  });
+
+  it('A3. Only follows orders it created, and reports plain stages', async () => {
+    expect((await worker.fetch(makeRequest('GET', `/onramp/orders/${ID}`), makeEnv(kv))).status).toBe(404);
+    await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), makeEnv(kv));
+    const res = await worker.fetch(makeRequest('GET', `/onramp/orders/${ID}`), makeEnv(kv));
+    expect(((await res.json()) as { stage: string }).stage).toBe('done');
+  });
+
+  it('A4. Never prints the customer details when the partner refuses', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"message":"bad BVN 22212345678","field":"Source"}', { status: 400 })));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), makeEnv(kv));
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('22212345678');
+    log.mockRestore();
   });
 });

@@ -1,0 +1,192 @@
+import { ORDERS_API_BASE } from './rate';
+import { getWalletProvider } from './router';
+
+/**
+ * Add G$ (naira in): the customer pays naira by bank transfer, dollars arrive in their own wallet on Base,
+ * then one signed message (no fee to pay in the wallet) turns those dollars into G$ on Celo.
+ * All calls go through our own server; customer ID details are sent once and never kept.
+ */
+
+export const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const BASE_CHAIN_HEX = '0x2105';
+const CELO_CHAIN_HEX = '0xa4ec';
+
+export interface OnrampQuote {
+  naira: number;
+  ngnPerUsd: number;
+  gOut: number;
+  gOutMin: number;
+  swapFeeUsd: number;
+  minNaira: number;
+  validForSeconds: number;
+}
+
+export interface OnrampOrder {
+  orderId: string;
+  status: string;
+  bank: { institution: string; accountIdentifier: string; accountName: string };
+  amountToTransfer: string;
+  validUntil: string;
+}
+
+export type OnrampStage = 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review';
+
+export interface OnrampInput {
+  naira: number;
+  wallet: string;
+  fullName: string;
+  birthDate: string;
+  idType: 'BVN' | 'NIN';
+  idNumber: string;
+  refundAccount: { institution: string; accountIdentifier: string; accountName: string };
+}
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${ORDERS_API_BASE}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+  return data as T;
+}
+
+export const fetchOnrampQuote = (naira: number, wallet?: string) =>
+  api<OnrampQuote>(`/onramp/quote?naira=${naira}${wallet ? `&wallet=${wallet}` : ''}`);
+
+export const createOnrampOrder = (input: OnrampInput) =>
+  api<OnrampOrder>('/onramp/orders', { method: 'POST', body: JSON.stringify(input) });
+
+export const fetchOnrampStatus = (orderId: string) =>
+  api<{ orderId: string; status: string; stage: OnrampStage }>(`/onramp/orders/${orderId}`);
+
+/** Whole-day check used by the form (the server checks again). */
+export function isAdultDate(birthDate: string, now = new Date()): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const born = new Date(Date.UTC(y, mo - 1, d));
+  if (born.getUTCMonth() !== mo - 1 || y < 1900) return false;
+  let age = now.getUTCFullYear() - y;
+  if (now.getUTCMonth() < mo - 1 || (now.getUTCMonth() === mo - 1 && now.getUTCDate() < d)) age -= 1;
+  return age >= 18;
+}
+
+/** 4,50,000 style is avoided; plain thousands separators. */
+export const formatNaira = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;
+
+// ---------------------------------------------------------------------------
+// The swap: dollars on Base -> G$ on Celo
+// ---------------------------------------------------------------------------
+
+type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+
+async function switchChain(p: Eip1193, hex: string, add?: Record<string, unknown>): Promise<void> {
+  const current = (await p.request({ method: 'eth_chainId' })) as string;
+  if (current.toLowerCase() === hex) return;
+  try {
+    await p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] });
+  } catch (e) {
+    if (!add) throw e;
+    await p.request({ method: 'wallet_addEthereumChain', params: [add] });
+  }
+}
+
+const BASE_ADD = {
+  chainId: BASE_CHAIN_HEX,
+  chainName: 'Base',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: ['https://mainnet.base.org'],
+  blockExplorerUrls: ['https://basescan.org'],
+};
+
+/** How many dollars (6 decimals, as a whole number of millionths) are waiting in the wallet on Base. */
+export async function readDollarsOnBase(wallet: string): Promise<bigint> {
+  const p = getWalletProvider();
+  if (!p) throw new Error('Connect your wallet first.');
+  await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
+  const data = `0x70a08231${'0'.repeat(24)}${wallet.slice(2).toLowerCase()}`;
+  const raw = (await p.request({ method: 'eth_call', params: [{ to: BASE_USDC, data }, 'latest'] })) as string;
+  return BigInt(raw);
+}
+
+interface RelayStep {
+  items?: Array<{ data?: { sign?: { domain: Record<string, unknown>; types: Record<string, unknown>; primaryType: string; value: Record<string, unknown> }; post?: { body?: { kind?: string; api?: string } } } }>;
+}
+interface RelayQuoteResponse {
+  requestId: string;
+  steps: RelayStep[];
+  details?: { currencyOut?: { amount?: string; minimumAmount?: string } };
+}
+
+/** The signing details Relay returned must be exactly what we expect before the wallet is asked to sign. */
+export function checkRelaySigning(q: RelayQuoteResponse, wallet: string, amount: bigint): {
+  sign: NonNullable<NonNullable<NonNullable<RelayStep['items']>[number]['data']>['sign']>;
+  api?: string;
+} {
+  const item = q.steps?.[0]?.items?.[0]?.data;
+  const sign = item?.sign;
+  if (!sign || !q.requestId) throw new Error('The swap price was not ready. Please try again.');
+  const v = sign.value as Record<string, string | number>;
+  const d = sign.domain as Record<string, string | number>;
+  const ok =
+    sign.primaryType === 'ReceiveWithAuthorization' &&
+    String(d.verifyingContract).toLowerCase() === BASE_USDC.toLowerCase() &&
+    Number(d.chainId) === 8453 &&
+    String(v.from).toLowerCase() === wallet.toLowerCase() &&
+    BigInt(String(v.value)) === amount;
+  if (!ok) throw new Error('The swap details did not match, so nothing was signed. Please try again.');
+  return { sign, api: item?.post?.body?.api };
+}
+
+export interface SwapResult {
+  requestId: string;
+  gMinimum: number;
+}
+
+/** Ask for the price, get the customer's one signature, and hand it to the swap service. */
+export async function startGasFreeSwap(wallet: string, amount: bigint): Promise<SwapResult> {
+  const p = getWalletProvider();
+  if (!p) throw new Error('Connect your wallet first.');
+  const quote = await api<RelayQuoteResponse>('/relay/quote', { method: 'POST', body: JSON.stringify({ wallet, amount: amount.toString() }) });
+  const { sign, api: apiKind } = checkRelaySigning(quote, wallet, amount);
+  await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
+  const typed = {
+    types: { EIP712Domain: eip712DomainType(sign.domain), ...sign.types },
+    primaryType: sign.primaryType,
+    domain: sign.domain,
+    message: sign.value,
+  };
+  const signature = (await p.request({ method: 'eth_signTypedData_v4', params: [wallet, JSON.stringify(typed)] })) as string;
+  await api('/relay/execute', { method: 'POST', body: JSON.stringify({ signature, requestId: quote.requestId, kind: 'eip3009', api: apiKind ?? 'swap' }) });
+  const min = quote.details?.currencyOut?.minimumAmount;
+  return { requestId: quote.requestId, gMinimum: min ? Number(BigInt(min)) / 1e18 : 0 };
+}
+
+function eip712DomainType(domain: Record<string, unknown>) {
+  const all: Array<{ name: string; type: string }> = [
+    { name: 'name', type: 'string' },
+    { name: 'version', type: 'string' },
+    { name: 'chainId', type: 'uint256' },
+    { name: 'verifyingContract', type: 'address' },
+  ];
+  return all.filter((f) => f.name in domain);
+}
+
+export type SwapStatus = 'waiting' | 'pending' | 'success' | 'failure' | 'refund' | 'unknown';
+
+export async function fetchSwapStatus(requestId: string): Promise<SwapStatus> {
+  const { status } = await api<{ status: string }>(`/relay/status?requestId=${requestId}`);
+  return (['waiting', 'pending', 'success', 'failure', 'refund'] as const).includes(status as never) ? (status as SwapStatus) : 'unknown';
+}
+
+/** Put the wallet back on Celo, where GoodCash works. */
+export async function returnToCelo(): Promise<void> {
+  const p = getWalletProvider();
+  if (!p) return;
+  try {
+    await switchChain(p, CELO_CHAIN_HEX);
+  } catch {
+    // the customer can switch back themselves
+  }
+}

@@ -9,6 +9,8 @@ interface ReadinessCardProps {
   balanceG: number;
   dailyClaimG?: number;
   onCashOutClick: () => void;
+  /** Opens the naira-to-G$ screen. The button shows only when this is given. */
+  onAddClick?: () => void;
   language: Language;
   isLoading?: boolean;
   isStale?: boolean;
@@ -36,6 +38,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   balanceG,
   dailyClaimG = 0,
   onCashOutClick,
+  onAddClick,
   isStale = false,
   ngnPerUsdt = null,
   history = [],
@@ -114,6 +117,12 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
       ) : (
         <button type="button" disabled className="gc-btn gc-btn--dis gc-hit w-full">
           {t.cashOutOpensAt.replace('{n}', Math.ceil(rate.remainingG).toLocaleString())}
+        </button>
+      )}
+
+      {onAddClick && (
+        <button type="button" onClick={onAddClick} className="gc-btn gc-btn--white gc-hit w-full" style={{ marginTop: 10 }}>
+          Add G$ with naira
         </button>
       )}
 
