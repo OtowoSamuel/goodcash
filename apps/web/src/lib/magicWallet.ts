@@ -51,7 +51,8 @@ export function getMagic(): Promise<MagicLike> {
     magicPromise = (async () => {
       const [{ Magic }, { WalletKitExtension }] = await Promise.all([import('magic-sdk'), import('@magic-ext/wallet-kit')]);
       return new Magic(KEY, {
-        ...magicOptions(CELO_RPC_URL),
+        // EXPERIMENT: pointing Magic at our own Celo node may be what its servers choke on. Off unless asked for.
+        ...(env.VITE_MAGIC_CELO_NETWORK === 'true' ? magicOptions(CELO_RPC_URL) : {}),
         extensions: [new WalletKitExtension(REOWN_PROJECT_ID ? { projectId: REOWN_PROJECT_ID } : undefined)],
       } as never) as unknown as MagicLike;
     })();

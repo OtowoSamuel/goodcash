@@ -4,7 +4,7 @@ import { getMagic, MAGIC_WALLETS, type MagicLoginResult } from '../lib/magicWall
 
 interface Props {
   onConnected: (result: MagicLoginResult) => void;
-  onError: (error: unknown) => void;
+  onError: (error: unknown, stage?: 'panel' | 'after-login') => void;
   onClose: () => void;
 }
 

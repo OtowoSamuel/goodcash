@@ -411,6 +411,7 @@ export function App({
   const onMagicConnected = async (result: MagicLoginResult) => {
     setMagicOpen(false);
     try {
+      reportIssue('magic_login_ok', new Error(`method=${result.method}`));
       const address = await finishMagicLogin(result);
       setWalletAddress(address);
       setWalletMessage(null);
@@ -420,17 +421,22 @@ export function App({
         referral_tag: 'direct',
       });
     } catch (err) {
-      onMagicError(err);
+      onMagicError(err, 'after-login');
     }
   };
 
-  const onMagicError = (err: unknown) => {
+  const onMagicError = (err: unknown, stage: 'panel' | 'after-login' = 'panel') => {
     setMagicOpen(false);
     setWalletMessage(friendlyConnectError(err));
     const code = (err as { code?: unknown } | null)?.code;
     // The customer simply closing or cancelling is not worth a report
     if (code !== 4001) {
-      reportIssue('wallet_connect_failed', new Error(`kind=magic code=${String(code ?? '-')} ${(err as Error)?.message ?? ''}`));
+      const e = err as { name?: string; message?: string; rawMessage?: string; data?: unknown; stack?: string } | null;
+      const where = String(e?.stack ?? '').split('\n').slice(1, 3).map((l) => l.trim().replace(/https?:\/\/[^/]+/, '')).join(' < ');
+      reportIssue(
+        'wallet_connect_failed',
+        new Error(`kind=magic stage=${stage} code=${String(code ?? '-')} name=${e?.name ?? '-'} ${e?.message ?? ''} raw=${e?.rawMessage ?? '-'} data=${JSON.stringify(e?.data ?? null)?.slice(0, 80)} at=${where}`)
+      );
     }
   };
 
