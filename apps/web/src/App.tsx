@@ -1647,7 +1647,7 @@ export function App({
           </a>
           <span className="text-[#111] font-bold">·</span>
           <a href="/about" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">About</a>
-                <span className="gc-logo text-[#111]">GoodCash</span>
+          <span className="text-[#111] font-bold">·</span>
           <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">Privacy</a>
           <span className="text-[#111] font-bold">·</span>
           <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#111] hover:text-[#111]/80 text-decoration-none font-bold">Terms</a>
