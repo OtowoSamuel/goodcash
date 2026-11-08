@@ -155,3 +155,13 @@ describe('pause check', () => {
     expect(await r.isOneTapRouterPaused({ readContract: vi.fn().mockResolvedValue(false) } as never)).toBe(true);
   });
 });
+
+describe('which cash-out flow is used', () => {
+  it('uses one tap only when it is switched on and the one-tap router is open; otherwise the three-step flow', async () => {
+    const { chooseCashOutFlow } = await import('./router');
+    expect(chooseCashOutFlow(true, false)).toBe('one-tap');
+    expect(chooseCashOutFlow(true, true)).toBe('three-step'); // paused: customers are not locked out
+    expect(chooseCashOutFlow(false, false)).toBe('three-step'); // not switched on
+    expect(chooseCashOutFlow(false, true)).toBe('three-step');
+  });
+});

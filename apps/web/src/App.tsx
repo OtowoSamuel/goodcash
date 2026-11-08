@@ -25,7 +25,7 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused } from './lib/router';
+import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow } from './lib/router';
 import { createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
@@ -390,6 +390,17 @@ export function App({
   }, []);
 
   // Wallet connection is Magic's Wallet Kit panel (loaded on demand). It reports back through onMagicConnected.
+  // Whether the one-tap router is paused right now (decides what the review screen promises)
+  const [oneTapPaused, setOneTapPaused] = useState(false);
+  useEffect(() => {
+    if (!ONE_TAP_ENABLED || isDemoMode || !pendingQuote) return;
+    let alive = true;
+    isOneTapRouterPaused().then((p) => alive && setOneTapPaused(p)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [pendingQuote, isDemoMode]);
+
   const [magicOpen, setMagicOpen] = useState(false);
   const MagicConnect = React.useMemo(() => React.lazy(() => import('./components/MagicConnect')), []);
 
@@ -638,7 +649,11 @@ export function App({
       setSwapError('Connect your wallet before cashing out.');
       return;
     }
-    if (ONE_TAP_ENABLED && !isDemoMode) return handleConfirmOneTap();
+    if (ONE_TAP_ENABLED && !isDemoMode) {
+      // If the one-tap router is paused, fall back to the three-step flow so nobody is locked out
+      const paused = await isOneTapRouterPaused().catch(() => false);
+      if (chooseCashOutFlow(true, paused) === 'one-tap') return handleConfirmOneTap();
+    }
     const refundAddress = walletAddress;
     const { amountG, slippageBps } = pendingQuote;
     let quote = pendingQuote.quote;
@@ -1717,6 +1732,7 @@ export function App({
                 : null
             }
             usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
+            oneTap={ONE_TAP_ENABLED && !oneTapPaused}
             onBack={() => setMobileView('cashout')}
             onConfirm={async () => {
               try {

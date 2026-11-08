@@ -421,6 +421,14 @@ export async function isOneTapRouterPaused(publicClient?: ReturnType<typeof crea
   return paused === true;
 }
 
+/**
+ * Which cash-out path to use. One-tap is used only when it is switched on AND the one-tap router is open; if that
+ * router is ever paused, customers fall back to the three-step flow instead of being locked out.
+ */
+export function chooseCashOutFlow(oneTapEnabled: boolean, oneTapPaused: boolean): 'one-tap' | 'three-step' {
+  return oneTapEnabled && !oneTapPaused ? 'one-tap' : 'three-step';
+}
+
 export interface OneTapOrderForSwap {
   receiveAddress: string;
   /** Exactly what the payout partner asked for, 6 decimals, as a whole number */

@@ -8,6 +8,8 @@ export interface MobileReviewViewProps {
   amountG: number | null;
   nairaEstimate: number | null;
   usdtEstimate: number | null;
+  /** True when one tap does everything (the one-tap router is on and open). */
+  oneTap?: boolean;
   onBack: () => void;
   onConfirm: () => void | Promise<void>;
   errorMessage?: string | null;
@@ -22,6 +24,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
   amountG,
   nairaEstimate,
   usdtEstimate,
+  oneTap,
   onBack,
   onConfirm,
   onBankSaved,
@@ -136,7 +139,7 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)' }}
       >
         <div className="gc-note" style={{ marginBottom: 10 }}>
-          {ONE_TAP_ENABLED ? (
+          {(oneTap ?? ONE_TAP_ENABLED) ? (
             <><b>You'll confirm once in your wallet app.</b> Open MetaMask, tap Confirm, then come back here.</>
           ) : (
             <><b>You'll confirm in your wallet app up to 3 times.</b> Each time, open MetaMask, tap Confirm, then come back here.</>
