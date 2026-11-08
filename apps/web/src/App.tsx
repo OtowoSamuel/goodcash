@@ -1,4 +1,5 @@
 import { isPaidOutStatus } from './lib/useOffRamp';
+import { useAddGsWatcher, type AddGsPhase } from './lib/useAddGsWatcher';
 import { gToWei, nairaFromUsdt } from './lib/units';
 import { Modal } from './components/Modal';
 import { getWalletLink, openWalletApp } from './lib/walletLink';
@@ -516,6 +517,45 @@ export function App({
     }
     setAddOpen(true);
   };
+  // Add G$: follow this device's open order even when the pop-up is closed, and tell the customer when to act
+  const refreshGBalance = () => {
+    if (!walletAddress) return;
+    void fetchGBalance(walletAddress).then((b) => setBalanceG(Math.floor(b * 100) / 100)).catch(() => undefined);
+  };
+  const addPhase = useAddGsWatcher({
+    wallet: ADDG_ENABLED && !isDemoMode ? walletAddress : null,
+    popupOpen: addOpen,
+    onReady: () => {
+      setOkNotice('Your money has arrived. Tap "Get my G$" to finish.');
+      setAddOpen(true); // take them straight to the last step, no hunting for the button
+    },
+    onArrived: () => {
+      setOkNotice('Your G$ is in your wallet.');
+      refreshGBalance();
+    },
+  });
+  const addInProgress = addPhase !== null && addPhase !== 'problem';
+
+  // Leaving this page now would leave the customer's money waiting: ask first
+  useEffect(() => {
+    if (!addInProgress) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [addInProgress]);
+
+  // The tab title tells them when something needs doing, even if they are in another tab
+  useEffect(() => {
+    const original = document.title;
+    if (addPhase === 'ready') document.title = '✓ Your money is here: tap Get my G$';
+    return () => {
+      document.title = original;
+    };
+  }, [addPhase]);
+
   const [walletSheetOpen, setWalletSheetOpen] = useState(false);
   const handleDisconnectWallet = () => {
     // Sign out of Magic (closes a Magic email wallet or a connected wallet); a browser wallet is also asked to forget this site
@@ -1279,6 +1319,25 @@ export function App({
         </button>
       )}
 
+      {walletAddress && addPhase && !addOpen && (
+        <button
+          type="button"
+          className="gc-note gc-banner fixed left-1/2 z-[150] w-[min(92vw,420px)] -translate-x-1/2 bottom-[96px] md:bottom-auto md:top-3"
+          onClick={() => setAddOpen(true)}
+          style={{ background: addPhase === 'ready' ? '#8cf0c0' : addPhase === 'problem' ? '#ffd6d6' : '#ffd23f', textAlign: 'left', cursor: 'pointer' }}
+        >
+          {addPhase === 'ready' ? (
+            <><b>Your money is here!</b> Tap to get your G$.</>
+          ) : addPhase === 'problem' ? (
+            <><b>Your Add G$ order needs a look.</b> Tap to see what happened.</>
+          ) : addPhase === 'working' ? (
+            <><b>Getting your G$…</b> Keep this tab open. Tap to watch.</>
+          ) : (
+            <><b>Your Add G$ order is open.</b> Keep this tab open. Tap to see where it is.</>
+          )}
+        </button>
+      )}
+
       {magicOpen && (
         <React.Suspense fallback={null}>
           <MagicConnect onConnected={onMagicConnected} onError={onMagicError} onClose={() => setMagicOpen(false)} />
@@ -1291,7 +1350,8 @@ export function App({
             wallet={walletAddress}
             onClose={() => setAddOpen(false)}
             onArrived={() => {
-              void fetchGBalance(walletAddress).then((b) => setBalanceG(Math.floor(b * 100) / 100)).catch(() => {});
+              setOkNotice('Your G$ is in your wallet.');
+              refreshGBalance();
             }}
           />
         </React.Suspense>

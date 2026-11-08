@@ -20,6 +20,7 @@ import {
 } from '../lib/addGs';
 import { reportIssue } from '../lib/diag';
 import { BankPicker } from './BankPicker';
+import { loadSavedAddGs, saveAddGs, type SavedAddGs } from '../lib/addGsSaved';
 
 /**
  * Add G$: pay naira by bank transfer and get G$ in your wallet.
@@ -28,34 +29,9 @@ import { BankPicker } from './BankPicker';
  * Customer wording only: no partner, token or network names.
  */
 
-const SAVED_KEY = 'goodcash_addg_order';
-
-interface Saved {
-  order: OnrampOrder;
-  wallet: string;
-  swapRequestId?: string;
-  /** The customer asked for emails (kept only so the box is not shown twice) */
-  emailed?: boolean;
-  /** The customer said they sent the transfer */
-  sent?: boolean;
-}
-
-function loadSaved(wallet: string): Saved | null {
-  try {
-    const s = JSON.parse(localStorage.getItem(SAVED_KEY) ?? 'null') as Saved | null;
-    return s && s.wallet.toLowerCase() === wallet.toLowerCase() ? s : null;
-  } catch {
-    return null;
-  }
-}
-function save(s: Saved | null) {
-  try {
-    if (s) localStorage.setItem(SAVED_KEY, JSON.stringify(s));
-    else localStorage.removeItem(SAVED_KEY);
-  } catch {
-    // private mode: the order simply will not resume after a reload
-  }
-}
+const loadSaved = loadSavedAddGs;
+const save = saveAddGs;
+type Saved = SavedAddGs;
 
 type Step = 'amount' | 'details' | 'confirm' | 'pay' | 'waiting' | 'swap' | 'working' | 'done';
 
@@ -175,6 +151,17 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
       clearInterval(id);
     };
   }, [step, order]);
+
+  // Closing the tab mid-way leaves the customer's money waiting. Ask before it happens.
+  useEffect(() => {
+    if (step !== 'waiting' && step !== 'swap' && step !== 'working') return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [step]);
 
   // Countdown on the pay screen
   useEffect(() => {
@@ -491,7 +478,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
         {stage === 'received' ? (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
             <b>We got your {formatNaira(Number(order.amountToTransfer))}.</b>
-            <div className="gc-sm">Your money is on its way to your wallet. This usually takes a few minutes, then you tap once to get your G$.</div>
+            <div className="gc-sm">Your money is on its way to your wallet. Keep this page open. In a few minutes it will ask you to tap once to get your G$.</div>
           </div>
         ) : stage === 'review' ? (
           <div className="gc-note" style={{ background: '#fff3c4' }}>
@@ -509,7 +496,9 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
             {showBank ? 'Hide bank details' : 'Show bank details again'}
           </button>
         )}
-        <div className="gc-sm">You can close this. Your order is saved, so open Add G$ again any time to carry on.</div>
+        <div className="gc-note" style={{ background: '#fff3c4' }}>
+          <b>Please keep GoodCash open in this tab.</b> Don't close the tab or the browser. This page moves to the next step by itself when your money arrives, and you will see a message here.
+        </div>
         {stage !== 'review' && emailBox}
         {stage === 'waiting' && showBank && (
           <div className="gc-card gc-cost" style={{ padding: '8px 14px' }}>
@@ -521,14 +510,14 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
         )}
       </>
     );
-    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Close, I'll come back</button>;
+    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Hide this (keep the tab open)</button>;
   } else if (step === 'swap') {
     title = 'Your money is here';
     body = (
       <>
         <div className="gc-note" style={{ background: '#8cf0c0' }}>
-          <b>Your naira payment is done.</b>
-          <div className="gc-sm">One last step: tap below to turn it into G$. Your wallet may ask you to change network and sign one message. It costs you no fee.</div>
+          <b>Your naira payment is done. One last step!</b>
+          <div className="gc-sm">Tap below to turn it into G$. Your wallet may ask you to change network and sign one message. It costs you no fee. Your G$ is only added after you tap.</div>
         </div>
         {error && <div className="gc-note" style={{ background: '#ffd6d6' }}>{error}</div>}
       </>
@@ -536,8 +525,12 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived }) => {
     footer = primary('Get my G$', () => void getG(), true);
   } else if (step === 'working') {
     title = 'Getting your G$';
-    body = <div className="gc-note">Almost there. This takes about a minute. You can keep this open.</div>;
-    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Close, I'll come back</button>;
+    body = (
+      <div className="gc-note" style={{ background: '#fff3c4' }}>
+        <b>Almost there. Please keep this tab open.</b> It takes about a minute. You will see a message here when your G$ arrives.
+      </div>
+    );
+    footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Hide this (keep the tab open)</button>;
   } else {
     title = 'All done';
     body = (
