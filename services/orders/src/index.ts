@@ -1229,7 +1229,7 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
 
   const parsed = CreateOrderSchema.safeParse(body);
   if (!parsed.success) {
-    const msgs = parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+    const msgs = parsed.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`);
     return err(msgs.join('; '));
   }
 
@@ -1615,7 +1615,7 @@ async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Resp
     return err('Invalid JSON body');
   }
   const parsed = OneTapOrderSchema.safeParse(body);
-  if (!parsed.success) return err(parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; '));
+  if (!parsed.success) return err(parsed.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; '));
   const input = parsed.data;
 
   // Only people who really hold the G$ can ask for an order (keeps junk orders out)
