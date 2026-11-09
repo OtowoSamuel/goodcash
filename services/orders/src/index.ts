@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import { handleV1, isV1Path, type V1Deps } from './v1';
+import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
 
 // ---------------------------------------------------------------------------
 // Environment bindings (declared in wrangler.toml or via CF dashboard)
@@ -1409,7 +1409,7 @@ async function handleGetOrder(orderId: string, env: Env): Promise<Response> {
  * Receives signed Paycrest events and updates KV order state.
  * Bank details are NOT stored or logged.
  */
-async function handleWebhook(request: Request, env: Env): Promise<Response> {
+async function handleWebhook(request: Request, env: Env, waitUntil?: (p: Promise<unknown>) => void): Promise<Response> {
   const rawBody = await request.text();
 
   // Verify signature: X-Paycrest-Signature header is HMAC-SHA256(secret, body)
@@ -1455,6 +1455,9 @@ async function handleWebhook(request: Request, env: Env): Promise<Response> {
   }
 
   if (status && PAID_STATUSES.has(status)) await sendPaidEmailIfRequested(id, env);
+
+  // A partner's cash out: refresh it and send the partner's webhook (in the background when possible)
+  await partnerOrderUpdated(env, id, v1Deps, waitUntil);
 
   // Return 200 quickly so Paycrest does not retry
   return new Response('OK', { status: 200 });
@@ -2461,7 +2464,7 @@ export async function alertSlowPayouts(env: Env, now = Date.now()): Promise<{ ch
 // Main fetch handler
 // ---------------------------------------------------------------------------
 
-async function handleRequest(request: Request, env: Env): Promise<Response> {
+async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise<unknown>) => void): Promise<Response> {
   const url = new URL(request.url);
   const { pathname } = url;
   const m = request.method;
@@ -2581,7 +2584,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   // POST /webhooks/paycrest
   if (m === 'POST' && pathname === '/webhooks/paycrest') {
-    return handleWebhook(request, env);
+    return handleWebhook(request, env, waitUntil);
   }
 
   // Health check
@@ -2610,7 +2613,7 @@ export default {
   async fetch(request: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     // Partner API: its own keys, CORS and errors. Off unless PARTNER_API_ENABLED is "true".
     if (isV1Path(new URL(request.url).pathname)) return handleV1(request, env, v1Deps, ctx ? (p) => ctx.waitUntil(p) : undefined);
-    const response = await handleRequest(request, env);
+    const response = await handleRequest(request, env, ctx ? (p) => ctx.waitUntil(p) : undefined);
     return withCors(response, request, env);
   },
   /** Runs on a schedule: tells the team about payouts that are taking too long. */
@@ -2620,6 +2623,11 @@ export default {
       if (out.alerted > 0) console.error(`[slow-payout] alerted ${out.alerted} of ${out.checked} open orders`);
     } catch (e) {
       console.error('[slow-payout] check failed:', e);
+    }
+    try {
+      await runPartnerSchedule(env, v1Deps);
+    } catch (e) {
+      console.error('[v1-schedule] failed:', e);
     }
   },
 };

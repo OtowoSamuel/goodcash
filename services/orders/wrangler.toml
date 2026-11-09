@@ -39,7 +39,15 @@ type = "ratelimit"
 namespace_id = "1003"
 simple = { limit = 5, period = 60 }
 
-# Every 10 minutes: look for payouts that are taking too long and tell the team
+# Partner API (/v1): requests per partner and mode
+[[unsafe.bindings]]
+name = "RATE_LIMITER_PARTNER"
+type = "ratelimit"
+namespace_id = "1004"
+simple = { limit = 600, period = 60 }
+
+# Every 10 minutes: look for payouts that are taking too long and tell the team,
+# and (when the partner API is on) retry partner webhooks and refresh open partner cash outs
 [triggers]
 crons = ["*/10 * * * *"]
 
@@ -50,6 +58,10 @@ enabled = true
 # Production-only origins. Dev origins live in [env.development.vars] so they
 # are never shipped to production.
 RESEND_FROM = "GoodCash <hello@goodcash.xyz>"
+# Partner API (/v1). Off until you switch it on; nothing else changes while it is off.
+PARTNER_API_ENABLED = "false"
+WIDGET_ORIGINS = "https://pay.goodcash.xyz"
+PARTNER_MAX_G = "1000000"
 PAYCREST_BASE_URL = "https://api.paycrest.io"
 CELO_RPC_URL = "https://forno.celo.org"
 VERIFY_SWAP_ONCHAIN = "true"

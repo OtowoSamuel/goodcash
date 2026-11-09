@@ -18,6 +18,7 @@ import {
   type Hex,
 } from '@goodcash/core';
 import { V1Error } from './http';
+import { emitCashOutEvent, eventForStatus } from './webhooks';
 import { ethCallVia, feeLines, parseAmountG, priceCashOut } from './pricing';
 import type { AuthContext, CashOutRecord, Env, V1Deps } from './types';
 
@@ -230,6 +231,8 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
   const ttl = ctx.mode === 'test' ? TEST_TTL : LIVE_TTL;
   await env.ORDER_STORE.put(`pcl:${ctx.partner.id}:${ctx.mode}:${wallet}:${inv(now)}:${id}`, '1', { expirationTtl: ttl });
   await env.ORDER_STORE.put(`pca:${ctx.partner.id}:${ctx.mode}:${inv(now)}:${id}`, '1', { expirationTtl: ttl });
+  // Open cash outs the schedule keeps an eye on (for webhooks when nobody is polling)
+  await env.ORDER_STORE.put(`pcopen:${id}`, '1', { expirationTtl: 3 * DAY });
 
   const body = {
     ...publicCashOut(rec),
@@ -342,4 +345,43 @@ export async function listCashOuts(env: Env, ctx: AuthContext, url: URL) {
     if (raw) items.push(publicCashOut(JSON.parse(raw) as CashOutRecord));
   }
   return { object: 'list', data: items, nextCursor: page.list_complete ? null : (page as { cursor?: string }).cursor ?? null };
+}
+
+const FINAL = new Set(['paid', 'failed', 'refunded', 'expired']);
+/** A payout counts as late after this long (same as the team alert). */
+export const DELAYED_AFTER_MS = 25 * 60_000;
+
+/** After a refresh: tell the partner about a new final status (or a late payout), and stop watching finished ones. */
+export async function notifyChange(
+  env: Env,
+  rec: CashOutRecord,
+  changed: boolean,
+  delayed: boolean,
+  waitUntil?: (p: Promise<unknown>) => void
+): Promise<void> {
+  if (changed) {
+    const type = eventForStatus(rec.status);
+    if (type) await emitCashOutEvent(env, rec, type, publicCashOut(rec), waitUntil);
+  }
+  const late = delayed || (rec.mode === 'live' && !!rec.sentAt && (rec.status === 'sent' || rec.status === 'processing') && Date.now() - rec.sentAt > DELAYED_AFTER_MS);
+  if (late) await emitCashOutEvent(env, rec, 'cashout.delayed', publicCashOut(rec), waitUntil);
+  if (FINAL.has(rec.status)) await env.ORDER_STORE.delete(`pcopen:${rec.id}`);
+}
+
+/** Refresh open cash outs on the schedule, so partners get webhooks even when nobody is polling. */
+export async function sweepOpenCashOuts(env: Env, deps: V1Deps): Promise<{ checked: number }> {
+  const page = await env.ORDER_STORE.list({ prefix: 'pcopen:', limit: 50 });
+  let checked = 0;
+  for (const k of page.keys) {
+    const id = k.name.slice('pcopen:'.length);
+    const raw = await env.ORDER_STORE.get(`pc:${id}`);
+    if (!raw) {
+      await env.ORDER_STORE.delete(k.name);
+      continue;
+    }
+    checked++;
+    const { rec, changed, delayed } = await refreshCashOut(env, JSON.parse(raw) as CashOutRecord, deps);
+    await notifyChange(env, rec, changed, !!delayed);
+  }
+  return { checked };
 }

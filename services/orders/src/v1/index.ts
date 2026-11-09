@@ -4,7 +4,10 @@
  */
 import { CELO_CHAIN_ID, fetchCeloUsd, isAddress, networkFeeFrom } from '@goodcash/core';
 import { authenticate } from './auth';
-import { createCashOut, listCashOuts, loadCashOut, publicCashOut, refreshCashOut, reportTransaction } from './cashouts';
+import { createCashOut, listCashOuts, loadCashOut, notifyChange, publicCashOut, refreshCashOut, reportTransaction, sweepOpenCashOuts } from './cashouts';
+import { buildEvent, deliver, processWebhookQueue, setWebhook } from './webhooks';
+import { requireSecret } from './auth';
+import type { CashOutRecord } from './types';
 import { requestId, V1Error, v1ErrorResponse, v1Json, v1Preflight, withV1Headers } from './http';
 import { ethCallVia, feeLines, maxG, minimumG, parseAmountG, priceCashOut } from './pricing';
 import type { AuthContext, Env, V1Deps } from './types';
@@ -144,13 +147,19 @@ async function route(request: Request, env: Env, ctx: AuthContext, deps: V1Deps,
   const one = path.match(/^\/v1\/cashouts\/([^/]+)$/);
   if (m === 'GET' && one) {
     const rec = await loadCashOut(env, ctx, one[1]);
-    const { rec: fresh } = await refreshCashOut(env, rec, deps);
+    const { rec: fresh, changed, delayed } = await refreshCashOut(env, rec, deps);
+    await notifyChange(env, fresh, changed, !!delayed, waitUntil);
     return v1Json(publicCashOut(fresh));
   }
 
   const tx = path.match(/^\/v1\/cashouts\/([^/]+)\/transaction$/);
   if (m === 'POST' && tx) {
     const out = await reportTransaction(request, env, ctx, deps, tx[1]);
+    const raw = await env.ORDER_STORE.get(`pc:${tx[1]}`);
+    if (raw) {
+      const rec = JSON.parse(raw) as CashOutRecord;
+      await notifyChange(env, rec, rec.status !== 'sent' && rec.status !== 'awaiting_signature', false, waitUntil);
+    }
     return v1Json(out.body, out.status);
   }
 
@@ -168,6 +177,53 @@ async function route(request: Request, env: Env, ctx: AuthContext, deps: V1Deps,
     return v1Json(publicCashOut(rec));
   }
 
-  void waitUntil;
+  if (path === '/v1/webhooks') {
+    requireSecret(ctx);
+    if (m === 'GET') {
+      const p = ctx.partner;
+      return v1Json({ url: p.webhookUrl?.[ctx.mode] ?? null, mode: ctx.mode, hasSecret: !!p.webhookSecretEnc?.[ctx.mode] });
+    }
+    if (m === 'PUT') {
+      let body: { url?: unknown; rotateSecret?: unknown };
+      try {
+        body = (await request.json()) as typeof body;
+      } catch {
+        throw new V1Error('invalid_request', 'The body must be JSON: { "url": "https://..." }.');
+      }
+      return v1Json(await setWebhook(env, ctx.partner, ctx.mode, body));
+    }
+  }
+
+  if (m === 'POST' && path === '/v1/webhooks/test') {
+    requireSecret(ctx);
+    if (!ctx.partner.webhookUrl?.[ctx.mode]) throw new V1Error('webhook_not_configured', 'Set a webhook URL first with PUT /v1/webhooks.');
+    const event = buildEvent('cashout.test', ctx.mode, { message: 'This is a test event from GoodCash.' });
+    const out = await deliver(env, ctx.partner, ctx.mode, event);
+    return v1Json({ delivered: out.ok, status: out.status, eventId: event.id, ...(out.reason ? { reason: out.reason } : {}) });
+  }
+
   throw new V1Error('not_found', `No ${m} ${path} in the partner API.`);
+}
+
+/** The payout partner told us about an order. If it belongs to a partner cash out, refresh it and notify the partner. */
+export async function partnerOrderUpdated(env: Env, orderId: string, deps: V1Deps, waitUntil?: (p: Promise<unknown>) => void): Promise<void> {
+  if (env.PARTNER_API_ENABLED !== 'true') return;
+  const raw = await env.ORDER_STORE.get(`pc:${orderId}`);
+  if (!raw) return;
+  try {
+    const { rec, changed, delayed } = await refreshCashOut(env, JSON.parse(raw) as CashOutRecord, deps);
+    await notifyChange(env, rec, changed, !!delayed, waitUntil);
+  } catch (e) {
+    console.error('[v1] partner order update failed:', (e as Error)?.message);
+  }
+}
+
+/** Partner work for the worker's schedule: retry webhooks and refresh open cash outs. */
+export async function runPartnerSchedule(env: Env, deps: V1Deps): Promise<void> {
+  if (env.PARTNER_API_ENABLED !== 'true') return;
+  const swept = await sweepOpenCashOuts(env, deps);
+  const q = await processWebhookQueue(env);
+  if (q.delivered + q.retried + q.dropped > 0 || swept.checked > 0) {
+    console.log(`[v1-schedule] open checked ${swept.checked}; webhooks delivered ${q.delivered}, retrying ${q.retried}, dropped ${q.dropped}`);
+  }
 }
