@@ -23,6 +23,8 @@ export interface OnrampQuote {
   /** The amount of whichever asset was asked for (same numbers as gOut / gOutMin) */
   amountOut?: number;
   amountOutMin?: number;
+  /** Dollars that reach the wallet before the G$ / CELO step (History label only) */
+  usdtDelivered?: number;
   asset?: AddAsset;
   swapFeeUsd: number;
   minNaira: number;

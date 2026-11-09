@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getHistoryNaira, getHistoryStatusLabel, getHistoryTitle, getSavedHistoryStatus, type SwapHistoryItem } from './HistoryCard';
+import { getHistoryNaira, getHistoryStatusLabel, getHistoryTitle, getOnrampLook, getSavedHistoryStatus, type SwapHistoryItem } from './HistoryCard';
 import { formatNaira } from '../lib/rate';
 import { MobileBottomNav, type MobileTab } from './MobileBottomNav';
 import { HistoryDetailModal } from './HistoryDetailModal';
@@ -98,8 +98,11 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
                   <div className="gc-big" style={{ fontSize: 22 }}>
                     {getHistoryTitle(item, ngnPerUsdt)}
                   </div>
-                  <span className={`gc-pill ${paid ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : ''}`} style={{ whiteSpace: 'nowrap', flex: 'none' }}>
-                    {getHistoryStatusLabel(status)}
+                  <span
+                    className={`gc-pill ${onramp ? (getOnrampLook(item).tone === 'mint' ? 'gc-pill--mint' : getOnrampLook(item).tone === 'yellow' ? 'gc-pill--yellow' : '') : paid ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : ''}`}
+                    style={{ whiteSpace: 'nowrap', flex: 'none' }}
+                  >
+                    {onramp ? getOnrampLook(item).label : getHistoryStatusLabel(status)}
                   </span>
                 </div>
                 <div className="gc-sm" style={{ color: '#444', marginTop: 4 }}>

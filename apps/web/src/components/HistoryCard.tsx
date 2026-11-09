@@ -88,6 +88,31 @@ export function getHistoryStatusLabel(
   return labels?.unknown || 'Checking status';
 }
 
+/**
+ * How a naira-in row (Naira -> G$ / CELO) reads in the list. Words are plain and each says what is really true:
+ * "In your wallet" only once the asset arrived; an order that closed without payment, or was returned, is not left
+ * saying "Checking status" forever.
+ */
+export function getOnrampLook(item: SwapHistoryItem): { label: string; tone: 'mint' | 'yellow' | 'plain' } {
+  if (item.arrived) return { label: 'In your wallet', tone: 'mint' };
+  switch (item.onrampStage) {
+    case 'refund':
+      return { label: 'Returned', tone: 'plain' };
+    case 'expired':
+      return { label: 'Not completed', tone: 'plain' };
+    case 'review':
+      return { label: 'Under review', tone: 'yellow' };
+    case 'done':
+      return { label: 'Naira received', tone: 'yellow' };
+    case 'received':
+      return { label: 'On its way', tone: 'yellow' };
+    default:
+      return { label: 'Waiting for your transfer', tone: 'yellow' };
+  }
+}
+
+const pillTone = (tone: 'mint' | 'yellow' | 'plain') => (tone === 'mint' ? 'gc-pill--mint' : tone === 'yellow' ? 'gc-pill--yellow' : '');
+
 interface HistoryCardProps {
   history: SwapHistoryItem[];
   onCashOutClick: () => void;
@@ -239,9 +264,9 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                     </div>
                   </div>
                   <span
-                    className={`gc-pill gc-hit ${status === 'paid' ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : 'gc-pill'} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
+                    className={`gc-pill gc-hit ${onramp ? pillTone(getOnrampLook(item).tone) : status === 'paid' ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : 'gc-pill'} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
                   >
-                    {getHistoryStatusLabel(status, { paid: t.statusPaid, onItsWay: t.statusOnItsWay, unknown: t.statusUnknown })}
+                    {onramp ? getOnrampLook(item).label : getHistoryStatusLabel(status, { paid: t.statusPaid, onItsWay: t.statusOnItsWay, unknown: t.statusUnknown })}
                   </span>
                 </div>
 
