@@ -88,4 +88,36 @@ export interface Page<T> {
   nextCursor: string | null;
 }
 
+export type TopUpAsset = 'g' | 'celo';
+/** awaiting_payment, then paid_in (the naira arrived), then delivered (the G$ or CELO is in the wallet); or failed / expired. */
+export type TopUpStatus = 'awaiting_payment' | 'paid_in' | 'delivered' | 'failed' | 'expired';
+
+export interface TopUp {
+  id: string;
+  object: 'topup';
+  mode: Mode;
+  status: TopUpStatus;
+  amountNaira: number;
+  asset: TopUpAsset;
+  wallet: `0x${string}`;
+  partnerRef: string | null;
+  txHash?: string;
+  createdAt: string;
+  updatedAt: string;
+  deliveredAt?: string;
+}
+
+export interface TopUpQuote {
+  object: 'topup_quote';
+  mode: Mode;
+  amountNaira: number;
+  asset: TopUpAsset;
+  /** What the customer gets (about), and the least they are guaranteed */
+  youGet: { amount: number; minimum: number };
+  /** Every fee on its own line, in dollars */
+  fees: Array<{ label: string; usd: number }>;
+  minimumNaira: number;
+  validForSeconds: number;
+}
+
 export type { CashOutTransaction, NetworkFeeInfo };

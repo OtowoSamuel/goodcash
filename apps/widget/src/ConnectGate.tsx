@@ -14,12 +14,14 @@ function ensureStyles() {
 
 interface Props {
   theme: GoodCashTheme;
+  /** The line under the title (what the customer is protecting) */
+  intro?: string;
   onConnected: (w: ConnectedWallet) => void;
   onClose?: () => void;
 }
 
 /** "Connect your wallet": shown before the cash-out flow when a live cash out needs a wallet. */
-export function ConnectGate({ theme, onConnected, onClose }: Props) {
+export function ConnectGate({ theme, intro, onConnected, onClose }: Props) {
   ensureStyles();
   const [panel, setPanel] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,7 +96,7 @@ export function ConnectGate({ theme, onConnected, onClose }: Props) {
           </button>
         )}
       </div>
-      <p className="gcw-sub">Your G$ stays in your wallet until you confirm the cash out.</p>
+      <p className="gcw-sub">{intro ?? 'Your G$ stays in your wallet until you confirm the cash out.'}</p>
       {restoring ? (
         <div className="gcw-card" role="status" aria-live="polite">
           <div className="gcw-spin" aria-hidden />

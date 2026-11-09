@@ -6,6 +6,7 @@ import { checkHost, readParams, type WidgetParams } from './params';
 import { hostSigner, postToHost } from './bridge';
 import { ConnectGate } from './ConnectGate';
 import type { ConnectedWallet } from './wallet';
+import { TopUpFlow, type TopUpEventType } from './topup/TopUpFlow';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'https://api.goodcash.xyz';
 
@@ -17,10 +18,10 @@ function originOf(u: string | null | undefined): string | null {
   }
 }
 
-function Problem({ text }: { text: string }) {
+function Problem({ text, flow = 'cashout' }: { text: string; flow?: 'cashout' | 'topup' }) {
   return (
     <div style={{ font: '600 15px system-ui, sans-serif', background: '#fff', border: '2.5px solid #111', borderRadius: 18, padding: 16, maxWidth: 420 }} role="alert">
-      <b>Cash out can't open here.</b>
+      <b>{flow === 'topup' ? "Adding money can't open here." : "Cash out can't open here."}</b>
       <p style={{ margin: '6px 0 0' }}>{text}</p>
     </div>
   );
@@ -65,7 +66,7 @@ function Widget({ p }: { p: WidgetParams }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [p]);
 
-  if (state.problem) return <Problem text={state.problem} />;
+  if (state.problem) return <Problem text={state.problem} flow={p.flow} />;
   if (!state.ready || !state.client) return <div aria-busy="true" style={{ font: '600 15px system-ui', padding: 20 }}>Loading…</div>;
 
   const viaHost = p.bridge && !!p.wallet && !!p.hostOrigin;
@@ -76,6 +77,36 @@ function Widget({ p }: { p: WidgetParams }) {
     if (p.mode === 'popup') window.close();
     if (p.mode === 'redirect' && p.returnUrl) window.location.assign(p.returnUrl);
   };
+
+  // Adding G$/CELO: the customer pays naira, then signs once in THEIR OWN wallet (a host's embedded wallet is not supported yet)
+  if (p.flow === 'topup') {
+    if (state.client.mode === 'live' && !conn) {
+      return <ConnectGate theme={theme} intro="Your G$ or CELO is sent straight to your own wallet." onConnected={setConn} onClose={close} />;
+    }
+    const onTopUp = (type: TopUpEventType, topUp: unknown) => {
+      postToHost(p.hostOrigin, { source: 'goodcash', type, topUp });
+      if (p.mode === 'redirect' && p.returnUrl && (type === 'topup.delivered' || type === 'topup.failed')) {
+        const back = new URL(p.returnUrl);
+        back.searchParams.set('goodcash_topup', (topUp as { id: string }).id);
+        back.searchParams.set('status', (topUp as { status: string }).status);
+        setTimeout(() => window.location.assign(back.toString()), 1500);
+      }
+    };
+    return (
+      <TopUpFlow
+        client={state.client}
+        theme={theme}
+        wallet={conn?.address}
+        provider={conn?.provider as never}
+        apiBase={API_BASE}
+        defaultNaira={p.amountNaira}
+        defaultAsset={p.asset}
+        partnerRef={p.partnerRef}
+        onEvent={onTopUp}
+        onClose={close}
+      />
+    );
+  }
 
   // A live cash out needs a wallet: the host's (bridge), or one the customer connects here. Test keys never sign.
   if (state.client.mode === 'live' && !viaHost && !conn) return <ConnectGate theme={theme} onConnected={setConn} onClose={close} />;

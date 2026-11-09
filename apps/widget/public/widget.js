@@ -7,6 +7,8 @@
  *       publishableKey: 'gc_pk_test_...',
  *       mode: 'popup',            // 'popup' | 'embed' | 'redirect'
  *       amountG: 5000,            // optional starting amount
+ *       // To let people ADD G$ / CELO with naira instead: flow: 'topup', amountNaira: 5000, asset: 'g' | 'celo'
+ *       // (events then carry e.topUp: topup.created, topup.paid_in, topup.delivered, topup.failed)
  *       partnerRef: 'player-42',  // optional, your own id
  *       onEvent: (e) => console.log(e.type, e.cashOut),
  *     });
@@ -32,7 +34,10 @@
     q.set('key', o.publishableKey);
     q.set('mode', o.mode || 'popup');
     if (o.mode !== 'redirect') q.set('origin', window.location.origin);
+    if (o.flow === 'topup') q.set('flow', 'topup');
     if (o.amountG != null) q.set('amountG', String(o.amountG));
+    if (o.amountNaira != null) q.set('amountNaira', String(o.amountNaira));
+    if (o.asset) q.set('asset', String(o.asset));
     if (o.partnerRef) q.set('ref', o.partnerRef);
     if (o.returnUrl) q.set('returnUrl', o.returnUrl);
     if (o.appId) q.set('app', o.appId);
@@ -107,13 +112,13 @@
         onEvent({ type: 'closed' });
         return;
       }
-      onEvent({ type: d.type, cashOut: d.cashOut });
+      onEvent(d.topUp !== undefined ? { type: d.type, topUp: d.topUp } : { type: d.type, cashOut: d.cashOut });
     }
 
     window.addEventListener('message', onMessage);
 
     if (mode === 'popup') {
-      child = window.open(url, 'goodcash_cashout', 'popup,width=440,height=780');
+      child = window.open(url, o.flow === 'topup' ? 'goodcash_topup' : 'goodcash_cashout', 'popup,width=440,height=780');
       if (!child) {
         cleanup();
         onEvent({ type: 'error', code: 'popup_blocked', message: 'Your browser blocked the cash out window. Please allow pop-ups and try again.' });
@@ -122,7 +127,7 @@
     } else {
       frame = document.createElement('iframe');
       frame.src = url;
-      frame.title = 'Cash out to your bank';
+      frame.title = o.flow === 'topup' ? 'Add G$ with naira' : 'Cash out to your bank';
       frame.setAttribute('allow', 'clipboard-write');
       frame.style.cssText = 'width:100%;max-width:460px;height:min(780px, calc(100vh - 24px));border:0;border-radius:24px;background:transparent;display:block;';
       if (o.container) {

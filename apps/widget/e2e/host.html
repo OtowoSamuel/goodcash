@@ -4,6 +4,7 @@
   <body>
     <h1>Acme Game</h1>
     <button id="cash">Cash out</button>
+    <button id="topup">Add G$</button>
     <script src="http://localhost:5199/widget.js"></script>
     <script>
       window.__events = [];
@@ -13,6 +14,16 @@
           mode: 'embed',
           amountG: 5000,
           partnerRef: 'player-e2e',
+          onEvent: function (e) { window.__events.push(e); },
+        });
+      });
+      document.getElementById('topup').addEventListener('click', function () {
+        window.__w = GoodCash.open({
+          publishableKey: new URLSearchParams(location.search).get('key'),
+          mode: 'embed',
+          flow: 'topup',
+          amountNaira: 5000,
+          partnerRef: 'player-e2e-topup',
           onEvent: function (e) { window.__events.push(e); },
         });
       });

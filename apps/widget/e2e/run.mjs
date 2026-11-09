@@ -62,7 +62,7 @@ async function main() {
 
   log('starting the worker');
   procs.push(
-    spawn('npx', ['wrangler', 'dev', '--port', '8799', '--persist-to', persist, '--var', 'PARTNER_API_ENABLED:true', '--var', 'WIDGET_ORIGINS:http://localhost:5199', '--var', 'SENDER_FEE_PERCENT:1', '--var', 'SENDER_FEE_ADDRESS:0x735Ef948F746bc141D04042d2A18aA7f967bce2f'], { cwd: WORKER_DIR, stdio: 'ignore' })
+    spawn('npx', ['wrangler', 'dev', '--port', '8799', '--persist-to', persist, '--var', 'PARTNER_API_ENABLED:true', '--var', 'PARTNER_ONRAMP_ENABLED:true', '--var', 'WIDGET_ORIGINS:http://localhost:5199', '--var', 'SENDER_FEE_PERCENT:1', '--var', 'SENDER_FEE_ADDRESS:0x735Ef948F746bc141D04042d2A18aA7f967bce2f'], { cwd: WORKER_DIR, stdio: 'ignore' })
   );
   log('building and serving the widget');
   execFileSync('npx', ['vite', 'build'], { cwd: WIDGET_DIR, stdio: 'ignore', env: { ...process.env, VITE_API_BASE: 'http://localhost:8799' } });
@@ -122,13 +122,44 @@ async function main() {
     await sleep(300);
     check((await page.locator('[data-goodcash-overlay]').count()) === 0, 'Escape closes the widget');
 
+    // 1b. Adding G$ with naira (test mode): quote, pretend to pay, delivered; events back to the page
+    await page.evaluate(() => { window.__events.length = 0; });
+    await page.click('#topup');
+    const tf = page.frameLocator('iframe[title="Add G$ with naira"]');
+    await tf.getByText('Test mode: no real money moves.').waitFor({ timeout: 30_000 });
+    check((await tf.getByLabel('How much naira do you want to add?').inputValue()) === '5000', 'top-up: opens with the amount from the partner page');
+    await tf.getByText('You will get about').first().waitFor();
+    await tf.getByText(/^[\d,]+ G\$$/).first().waitFor({ timeout: 30_000 });
+    check(await tf.getByText('Payment partner fee').isVisible(), 'top-up: fees are shown as their own lines');
+    const topText = await tf.locator('body').innerText();
+    check(!/swap|slippage|usdt|usdc|paycrest|relay|quote|bvn|nin/i.test(topText), 'top-up: no jargon or ID prompts on the amount screen');
+    await page.screenshot({ path: path.join(here, 'topup-quote.png') });
+    await tf.getByRole('button', { name: 'Continue' }).click();
+    await tf.getByText('Test mode: pretending you paid.').waitFor();
+    try {
+      await tf.getByText(/Your G\$ has arrived/).waitFor({ timeout: 60_000 });
+    } catch (e) {
+      await page.screenshot({ path: path.join(here, 'failure.png') });
+      log('widget says:', (await tf.locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 600));
+      throw e;
+    }
+    await page.screenshot({ path: path.join(here, 'topup-done.png') });
+    const topEvents = await page.evaluate(() => window.__events.map((e) => e.type + ':' + (e.topUp ? e.topUp.status : '-')));
+    log('host events', topEvents.join(', '));
+    check(['topup.created:awaiting_payment', 'topup.paid_in:paid_in', 'topup.delivered:delivered'].every((x) => topEvents.includes(x)), 'top-up: host page got created, paid in and delivered');
+    check(!/bvn|nin|idnumber/i.test(JSON.stringify(await page.evaluate(() => window.__events))), 'top-up: no ID details ever reach the partner page');
+    await page.keyboard.press('Escape');
+    await sleep(300);
+
     // 2. A live cash out needs a wallet: "Connect your wallet" first. Test keys (above) never ask.
     const bare = await browser.newPage({ viewport: { width: 390, height: 844 } });
     await bare.goto(`http://localhost:5198/?key=${liveKey}`);
     await bare.click('#cash');
     const noWallet = bare.frameLocator('iframe[title="Cash out to your bank"]');
     await noWallet.getByRole('heading', { name: 'Connect your wallet' }).waitFor({ timeout: 30_000 });
-    check(await noWallet.getByText(/No wallet was found/).isVisible(), 'live key with no wallet: asked to connect, with a kind note');
+    // With wallet keys built in, the customer is offered "Use my wallet app" / email; without them, a kind note says how to continue
+    await noWallet.getByText(/No wallet was found|Use my wallet app|Choose a wallet|Sign in with email/).first().waitFor({ timeout: 30_000 });
+    check(true, 'live key with no wallet: asked to connect (wallet options, or a kind note when none are set up)');
     check((await noWallet.getByLabel('How much G$?').count()) === 0, 'no cash-out screen before a wallet is connected');
     const noWalletText = await noWallet.locator('body').innerText();
     check(!/swap|slippage|usdt|paycrest|relay|quote|magic|walletconnect/i.test(noWalletText), 'no jargon on the connect screen');

@@ -1,11 +1,12 @@
 import { checkCashOutTransaction, CELO_RPC_DEFAULT, ROUTER_V2, type Hex } from './core';
 import { GoodCashError, type GoodCashErrorCode } from './errors';
-import type { Bank, CashOut, CreatedCashOut, Limits, Mode, NetworkFeeInfo, Page, PartnerInfo, Quote, Recipient } from './types';
+import type { Bank, CashOut, CreatedCashOut, Limits, Mode, NetworkFeeInfo, Page, PartnerInfo, Quote, Recipient, TopUp, TopUpAsset, TopUpQuote } from './types';
 import { findPaymentOnChain, sendTransaction, signerAddress, sleep, type Signer } from './wallet';
 
 export const DEFAULT_BASE_URL = 'https://api.goodcash.xyz';
 export const SDK_VERSION = '0.1.0';
 const FINAL: CashOut['status'][] = ['paid', 'failed', 'refunded', 'expired'];
+const TOPUP_FINAL: TopUp['status'][] = ['delivered', 'failed', 'expired'];
 /** Used in test mode when no wallet is connected (test cash outs never touch a wallet). */
 export const TEST_WALLET = '0x0000000000000000000000000000000000007e57' as const;
 
@@ -243,6 +244,55 @@ export class GoodCash {
    * Follow a cash out until it is paid (or failed/refunded/expired). Calls onChange on every status change.
    * Polls every 3 s, slowing to 15 s. Pass an AbortSignal to stop.
    */
+  // ---------------------------------------------------------------------------- naira in (top-ups)
+  // The customer's ID details (BVN/NIN) are typed on pay.goodcash.xyz (the widget), never through these calls.
+
+  /** What a customer would get for this much naira. Needs top-ups to be switched on for you (test mode needs nothing). */
+  topUpQuote(args: { amountNaira: number; asset?: TopUpAsset; wallet?: string }): Promise<TopUpQuote> {
+    const q = new URLSearchParams({ amountNaira: String(args.amountNaira) });
+    if (args.asset) q.set('asset', args.asset);
+    if (args.wallet) q.set('wallet', args.wallet);
+    return this.api<TopUpQuote>('GET', `/v1/topup/quote?${q}`).then((r) => r.data);
+  }
+  /** Register a top-up. Test mode: a simulated one. Live: the widget does this after the order exists (needs `orderId`). */
+  createTopUp(args: { wallet: string; amountNaira: number; asset?: TopUpAsset; partnerRef?: string; orderId?: string }): Promise<TopUp> {
+    return this.api<TopUp>('POST', '/v1/topups', args).then((r) => r.data);
+  }
+  getTopUp(id: string): Promise<TopUp> {
+    return this.api<TopUp>('GET', `/v1/topups/${encodeURIComponent(id)}`).then((r) => r.data);
+  }
+  /** Secret key only. */
+  listTopUps(args: { limit?: number; cursor?: string } = {}): Promise<Page<TopUp>> {
+    const q = new URLSearchParams();
+    if (args.limit) q.set('limit', String(args.limit));
+    if (args.cursor) q.set('cursor', args.cursor);
+    return this.api<Page<TopUp>>('GET', `/v1/topups${q.size ? `?${q}` : ''}`).then((r) => r.data);
+  }
+  /** Follow a top-up until it is finished. `onChange` runs when the status changes. */
+  async watchTopUp(id: string, onChange: (t: TopUp) => void, opts: { signal?: AbortSignal; minIntervalMs?: number; maxIntervalMs?: number } = {}): Promise<TopUp> {
+    let wait = opts.minIntervalMs ?? 3000;
+    const max = opts.maxIntervalMs ?? 15000;
+    let last: string | null = null;
+    for (;;) {
+      if (opts.signal?.aborted) throw new GoodCashError('unavailable', { detail: 'Aborted' });
+      let t: TopUp | null = null;
+      try {
+        t = await this.getTopUp(id);
+      } catch (e) {
+        if (e instanceof GoodCashError && (e.code === 'not_found' || e.code === 'unauthorized' || e.code === 'partner_disabled' || e.code === 'topups_not_enabled')) throw e;
+      }
+      if (t) {
+        if (t.status !== last) {
+          last = t.status;
+          onChange(t);
+        }
+        if (TOPUP_FINAL.includes(t.status)) return t;
+      }
+      await sleep(wait, opts.signal);
+      wait = Math.min(Math.round(wait * 1.5), max);
+    }
+  }
+
   async watchCashOut(id: string, onChange: (c: CashOut) => void, opts: { signal?: AbortSignal; minIntervalMs?: number; maxIntervalMs?: number } = {}): Promise<CashOut> {
     let wait = opts.minIntervalMs ?? 3000;
     const max = opts.maxIntervalMs ?? 15000;

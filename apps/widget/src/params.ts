@@ -6,7 +6,12 @@ export interface WidgetParams {
   mode: WidgetMode;
   /** The partner page that opened us (popup/embed), used as the only postMessage target */
   hostOrigin: string | null;
+  /** What the customer wants to do: cash out G$ (default), or add G$/CELO with naira */
+  flow: 'cashout' | 'topup';
   amountG?: string;
+  /** Top-up: naira the customer wants to add, and which asset */
+  amountNaira?: string;
+  asset?: 'g' | 'celo';
   partnerRef?: string;
   returnUrl?: string;
   /** The host signs (games with embedded wallets): we ask it over postMessage */
@@ -32,6 +37,7 @@ export function readParams(search: string): WidgetParams | { error: string } {
     }
   }
   const amountG = q.get('amountG') ?? undefined;
+  const amountNaira = q.get('amountNaira') ?? undefined;
   const wallet = q.get('wallet');
   const accent = q.get('accent');
   const theme = q.get('theme');
@@ -39,6 +45,9 @@ export function readParams(search: string): WidgetParams | { error: string } {
     key,
     mode,
     hostOrigin,
+    flow: q.get('flow') === 'topup' ? 'topup' : 'cashout',
+    amountNaira: amountNaira && /^\d{1,9}$/.test(amountNaira) ? amountNaira : undefined,
+    asset: q.get('asset') === 'celo' ? 'celo' : q.get('asset') === 'g' ? 'g' : undefined,
     amountG: amountG && /^\d+(\.\d{1,6})?$/.test(amountG) ? amountG : undefined,
     partnerRef: q.get('ref') && /^[A-Za-z0-9_.:-]{1,64}$/.test(q.get('ref')!) ? q.get('ref')! : undefined,
     returnUrl: q.get('returnUrl') ?? undefined,

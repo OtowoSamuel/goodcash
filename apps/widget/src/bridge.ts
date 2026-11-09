@@ -4,6 +4,7 @@ import type { SendFunction } from '@goodcash/sdk';
 export type HostMessage =
   | { source: 'goodcash'; type: 'ready' }
   | { source: 'goodcash'; type: 'cashout.created' | 'cashout.sent' | 'cashout.paid' | 'cashout.failed'; cashOut: unknown }
+  | { source: 'goodcash'; type: 'topup.created' | 'topup.paid_in' | 'topup.delivered' | 'topup.failed'; topUp: unknown }
   | { source: 'goodcash'; type: 'closed' }
   | { source: 'goodcash'; type: 'sign_request'; id: string; tx: unknown };
 

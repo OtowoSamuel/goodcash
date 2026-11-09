@@ -29,6 +29,7 @@ export type GoodCashErrorCode =
   | 'not_found'
   | 'idempotency_conflict'
   | 'webhook_not_configured'
+  | 'topups_not_enabled'
   | 'invalid_signature'
   | 'unavailable'
   | 'network_error';
