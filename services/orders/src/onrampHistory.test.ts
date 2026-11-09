@@ -3,7 +3,7 @@
  * without wearing out storage, without ever breaking an order, plus the one-time catch-up for earlier orders.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import worker, { backfillOnrampHistory } from './index.js';
+import worker, { backfillOnrampHistory, matchOnrampDeliveries } from './index.js';
 import type { Env } from './index.js';
 
 class MockKV {
@@ -38,6 +38,9 @@ let kv: MockKV;
 let env: Env;
 let partnerStatus = 'pending';
 let partnerCalls = 0;
+let relayRequests: unknown[] = [];
+let relayCalls = 0;
+let relayHttp = 200;
 
 const call = (method: string, path: string, body?: unknown) =>
   worker.fetch(
@@ -59,6 +62,9 @@ beforeEach(() => {
   kv = new MockKV();
   partnerStatus = 'pending';
   partnerCalls = 0;
+  relayRequests = [];
+  relayCalls = 0;
+  relayHttp = 200;
   env = {
     PAYCREST_API_KEY: 'k',
     PAYCREST_API_SECRET: 's',
@@ -75,6 +81,10 @@ beforeEach(() => {
       if (u.includes('forno.celo.org')) {
         const { method } = JSON.parse(String(init?.body)) as { method: string };
         return Response.json({ result: method === 'eth_blockNumber' ? '0x100000' : [] });
+      }
+      if (u.includes('api.relay.link/requests/v2')) {
+        relayCalls++;
+        return relayHttp === 200 ? Response.json({ requests: relayRequests }) : new Response('slow down', { status: relayHttp });
       }
       if (u.endsWith('/v2/sender/orders') && init?.method === 'POST') {
         return Response.json(
@@ -206,5 +216,148 @@ describe('catching up orders made before History existed', () => {
     await old(ID, WALLET, 5000, 'g', 1);
     await worker.scheduled({}, env);
     expect(await kv.get(`onramp-wallet:${WALLET.toLowerCase()}:${ID}`)).not.toBeNull();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// The real delivery: amount, receipt and Paid come from the finished transfer itself
+// ---------------------------------------------------------------------------
+const G = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A';
+const CELO = '0x471EcE3750Da237f93B8E339c536989b8978a438';
+const TX1 = `0x${'98d5dd6bce'.padEnd(64, 'a')}`;
+const TX2 = `0x${'4444'.padEnd(64, 'b')}`;
+
+const transfer = (over: { at: string; out?: string; usd?: string; address?: string; symbol?: string; tx?: string; status?: string; inChain?: number; outChain?: number }) => ({
+  status: over.status ?? 'success',
+  createdAt: over.at,
+  data: {
+    inTxs: [{ chainId: over.inChain ?? 8453, hash: `0x${'1'.repeat(64)}` }],
+    outTxs: [{ chainId: over.outChain ?? 42220, hash: over.tx ?? TX1 }],
+    metadata: {
+      currencyIn: { amountFormatted: over.usd ?? '0.702272' },
+      currencyOut: { amountFormatted: over.out ?? '5606.33626932625801216', currency: { address: over.address ?? G, symbol: over.symbol ?? 'G$' } },
+    },
+  },
+});
+
+describe('matching naira orders to the transfers that delivered them', () => {
+  const T0 = 1_794_223_810; // order created 11:30:10
+  const iso = (sec: number) => new Date(sec * 1000).toISOString();
+
+  it('D1. your case: an order and a transfer a minute later', () => {
+    const m = matchOnrampDeliveries([{ orderId: 'a', asset: 'g', at: T0 }], [transfer({ at: iso(T0 + 91) })]);
+    expect(m.get('a')).toEqual({ txHash: TX1.toLowerCase(), out: 5606.33626932625801216, usd: 0.702272 });
+  });
+
+  it('D2. several orders: oldest first, each transfer used once, and an order with no transfer stays unmatched', () => {
+    const m = matchOnrampDeliveries(
+      [
+        { orderId: 'second', asset: 'g', at: T0 + 1000 },
+        { orderId: 'first', asset: 'g', at: T0 },
+        { orderId: 'third', asset: 'g', at: T0 + 5000 },
+      ],
+      [transfer({ at: iso(T0 + 60), tx: TX1 }), transfer({ at: iso(T0 + 1100), tx: TX2, out: '3000' })]
+    );
+    expect(m.get('first')?.txHash).toBe(TX1.toLowerCase());
+    expect(m.get('second')?.txHash).toBe(TX2.toLowerCase());
+    expect(m.has('third')).toBe(false);
+  });
+
+  it('D3. an order that already knows its transaction is matched exactly, even out of order', () => {
+    const m = matchOnrampDeliveries(
+      [{ orderId: 'late', asset: 'g', at: T0 + 10, txHash: TX2 }, { orderId: 'early', asset: 'g', at: T0 }],
+      [transfer({ at: iso(T0 + 60), tx: TX1 }), transfer({ at: iso(T0 + 100), tx: TX2 })]
+    );
+    expect(m.get('late')?.txHash).toBe(TX2.toLowerCase());
+    expect(m.get('early')?.txHash).toBe(TX1.toLowerCase());
+  });
+
+  it('D4. the right asset, and only finished Base -> Celo transfers made after the order began', () => {
+    const celoOrder = [{ orderId: 'c', asset: 'celo' as const, at: T0 }];
+    expect(matchOnrampDeliveries(celoOrder, [transfer({ at: iso(T0 + 60) })]).size).toBe(0); // a G$ transfer is not for a CELO order
+    expect(matchOnrampDeliveries(celoOrder, [transfer({ at: iso(T0 + 60), address: CELO, symbol: 'CELO', out: '10.26' })]).get('c')?.out).toBe(10.26);
+    const g = [{ orderId: 'g', asset: 'g' as const, at: T0 }];
+    for (const bad of [
+      transfer({ at: iso(T0 + 60), status: 'pending' }),
+      transfer({ at: iso(T0 + 60), status: 'failure' }),
+      transfer({ at: iso(T0 + 60), inChain: 1 }),
+      transfer({ at: iso(T0 + 60), outChain: 8453 }),
+      transfer({ at: iso(T0 - 3600) }), // made before the order began
+      transfer({ at: iso(T0 + 60), out: '0' }),
+      transfer({ at: iso(T0 + 60), tx: '0x12' }),
+    ]) {
+      expect(matchOnrampDeliveries(g, [bad]).size).toBe(0);
+    }
+  });
+});
+
+describe('History fills in the real delivery', () => {
+  const makeOrder = async () => {
+    await call('POST', '/onramp/orders', ORDER_BODY);
+    partnerStatus = 'settled'; // the payout partner delivered the dollars
+  };
+  const rowOf = async () => (await history()).onramps[0] as Record<string, unknown>;
+
+  it('H12. a settled order whose G$ arrived shows the real amount, the receipt and Paid', async () => {
+    await makeOrder();
+    const created = JSON.parse((await kv.get(`onramp-wallet:${WALLET.toLowerCase()}:${ID}`))!).at as number;
+    relayRequests = [transfer({ at: new Date((created + 91) * 1000).toISOString() })];
+    const row = await rowOf();
+    expect(row).toMatchObject({ orderId: ID, naira: 5000, stage: 'done', arrived: true, actual: true, txHash: TX1.toLowerCase(), usd: 0.702272 });
+    expect(row.out).toBeCloseTo(5606.336, 3);
+  });
+
+  it('H13. the answer is kept: the transfer service is not asked again', async () => {
+    await makeOrder();
+    const created = JSON.parse((await kv.get(`onramp-wallet:${WALLET.toLowerCase()}:${ID}`))!).at as number;
+    relayRequests = [transfer({ at: new Date((created + 91) * 1000).toISOString() })];
+    await history();
+    await history();
+    await history();
+    expect(relayCalls).toBe(1);
+  });
+
+  it('H14. no transfer yet: the order stays "on its way" and the service is asked at most every 15 minutes', async () => {
+    await makeOrder();
+    const first = await rowOf();
+    expect(first).toMatchObject({ stage: 'done', arrived: false });
+    await history();
+    await history();
+    expect(relayCalls).toBe(1);
+    // 16 minutes later it asks again, and now finds it
+    const key = `onramp-wallet:${WALLET.toLowerCase()}:${ID}`;
+    const row = JSON.parse((await kv.get(key))!);
+    await kv.put(key, JSON.stringify({ ...row, arrivalCheckedAt: Date.now() - 16 * 60_000 }));
+    relayRequests = [transfer({ at: new Date((row.at + 120) * 1000).toISOString() })];
+    expect(await rowOf()).toMatchObject({ arrived: true, actual: true });
+    expect(relayCalls).toBe(2);
+  });
+
+  it('H15. if the transfer service is slow or limits us, nothing breaks and it is not hammered', async () => {
+    await makeOrder();
+    relayHttp = 429;
+    expect(await rowOf()).toMatchObject({ stage: 'done', arrived: false });
+    await history();
+    await history();
+    expect(relayCalls).toBe(1);
+  });
+
+  it('H16. an order still waiting for its naira is never matched to anything', async () => {
+    await call('POST', '/onramp/orders', ORDER_BODY);
+    partnerStatus = 'pending';
+    relayRequests = [transfer({ at: new Date(Date.now() + 60_000).toISOString() })];
+    expect(await rowOf()).toMatchObject({ stage: 'waiting', arrived: false });
+    expect(relayCalls).toBe(0);
+  });
+
+  it('H17. an order the app already marked arrived gets the real amount instead of the quoted minimum', async () => {
+    await call('POST', '/onramp/orders', { ...ORDER_BODY, expectedOut: 5357 });
+    const key = `onramp-wallet:${WALLET.toLowerCase()}:${ID}`;
+    const row = JSON.parse((await kv.get(key))!);
+    await kv.put(key, JSON.stringify({ ...row, stage: 'done', arrived: true, checkedAt: Date.now(), txHash: TX1 }));
+    relayRequests = [transfer({ at: new Date((row.at + 90) * 1000).toISOString() })];
+    expect(await rowOf()).toMatchObject({ arrived: true, actual: true });
+    expect((await rowOf()).out).toBeCloseTo(5606.336, 3);
   });
 });

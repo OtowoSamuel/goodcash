@@ -79,6 +79,35 @@ describe('mergeServerHistory', () => {
   });
 });
 
+describe('the real delivery of a naira order', () => {
+  const TX = `0x${'98'.repeat(32)}`;
+  const quoted = (): SwapHistoryItem[] => [{
+    id: 'in-in-1', txHash: '', timestamp: 1000, amountInG: 0, amountOutUsdt: 0, route: 'Naira → G$',
+    orderId: 'in-1', kind: 'onramp', asset: 'g', nairaIn: 1000, assetOut: 5357, onrampStage: 'done',
+  }];
+
+  it('replaces the amount quoted at the start with what really arrived, and adds the receipt and Paid', () => {
+    const merged = mergeServerHistory(quoted(), [], [
+      { orderId: 'in-1', naira: 1000, asset: 'g', at: 1, stage: 'done', arrived: true, out: 5606.336, usd: 0.702272, txHash: TX, actual: true },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ assetOut: 5606.336, amountOutUsdt: 0.702272, txHash: TX, arrived: true, onrampStage: 'done' });
+  });
+
+  it('a quote-only server row never overrides what the phone knows', () => {
+    const merged = mergeServerHistory(quoted(), [], [{ orderId: 'in-1', naira: 1000, asset: 'g', at: 1, stage: 'done', out: 5000 }]);
+    expect(merged[0].assetOut).toBe(5357);
+    expect(merged[0].arrived).toBeFalsy();
+  });
+
+  it('an older order the phone never saw is created from the server row with its real amount', () => {
+    const merged = mergeServerHistory([], [], [
+      { orderId: 'old-1', naira: 1000, asset: 'g', at: 1794223810, stage: 'done', arrived: true, out: 5606.336, txHash: TX, actual: true },
+    ]);
+    expect(merged[0]).toMatchObject({ kind: 'onramp', nairaIn: 1000, assetOut: 5606.336, txHash: TX, arrived: true });
+  });
+});
+
 import { isHiddenSwap } from './historySync';
 describe('scrapped swaps', () => {
   it('never appear in merged history', () => {

@@ -33,6 +33,8 @@ export interface ServerOnramp {
   out?: number;
   usd?: number;
   txHash?: string;
+  /** `out`, `usd` and `txHash` are the real delivery (read from the transfer), not the quote */
+  actual?: boolean;
 }
 
 /**
@@ -119,10 +121,12 @@ export function mergeServerHistory(
     const i = next.findIndex((h) => h === existing);
     next[i] = {
       ...existing,
-      ...(on.txHash && !existing.txHash ? { txHash: on.txHash } : {}),
+      ...(on.txHash && (!existing.txHash || on.actual) ? { txHash: on.txHash } : {}),
+      // The real delivery beats the amount the app quoted when the order began
+      ...(on.actual && on.usd ? { amountOutUsdt: on.usd } : {}),
       ...(on.usd && !existing.amountOutUsdt ? { amountOutUsdt: on.usd } : {}),
       nairaIn: existing.nairaIn ?? on.naira,
-      assetOut: existing.assetOut ?? on.out,
+      assetOut: on.actual && on.out ? on.out : existing.assetOut ?? on.out,
       onrampStage: mergeOnrampStage(existing.onrampStage, stage),
       arrived: existing.arrived === true || on.arrived === true,
     };
