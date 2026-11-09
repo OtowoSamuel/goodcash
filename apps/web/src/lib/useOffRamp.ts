@@ -132,10 +132,8 @@ const EXPIRED_STATUSES: OffRampStatus[] = ['expired'];
  * "settling" and "settled" only follow later (sometimes much later), so waiting for "settled" leaves the
  * customer staring at a spinner after the money is already in their account.
  */
-export const PAID_OUT_STATUSES = ['fulfilled', 'validated', 'settling', 'settled'] as const;
-export function isPaidOutStatus(s?: string | null): boolean {
-  return !!s && (PAID_OUT_STATUSES as readonly string[]).includes(s);
-}
+export { PAID_OUT_STATUSES, isPaidOutStatus } from '@goodcash/core/status';
+import { isPaidOutStatus } from '@goodcash/core/status';
 
 export function isTerminalStatus(s: OffRampStatus): boolean {
   return TERMINAL_STATUSES.includes(s);

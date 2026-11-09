@@ -6,7 +6,8 @@ export const ORDERS_API_BASE =
   (typeof import.meta !== 'undefined' &&
     (import.meta as { env?: { VITE_ORDERS_API_URL?: string } }).env?.VITE_ORDERS_API_URL) ??
   'http://localhost:8787';
-export const MIN_NET_USDT_REQUIRED = 0.53; // Unified swap floor ($0.50 Paycrest min + $0.02 Paycrest fee + margin)
+export { MIN_NET_USDT_REQUIRED } from '@goodcash/core/oneTap'; // Unified swap floor ($0.50 Paycrest min + $0.02 Paycrest fee + margin)
+import { MIN_NET_USDT_REQUIRED } from '@goodcash/core/oneTap';
 export const GOODCASH_G_TO_USD_RATE = 126_658_838_063_094n / 1_000_000_000_000_000n;
 
 export interface CashoutRate {

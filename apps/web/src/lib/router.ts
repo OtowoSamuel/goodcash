@@ -16,6 +16,7 @@ import {
 import { celo } from 'viem/chains';
 import type { QuoteResult } from './quote';
 import { MIN_NET_USDT_REQUIRED } from './rate';
+import { computeMinAmountOut, computeOneTapMinOut as coreComputeOneTapMinOut, encodeOneTapData, MIN_AMOUNT_OUT, ONE_TAP_SLIPPAGE_BPS, provesNothingWasSent } from '@goodcash/core';
 
 // ---------------------------------------------------------------------------
 const envRouter =
@@ -80,14 +81,9 @@ export const ROUTE_NUMBER_BY_QUOTE_ROUTE: Record<QuoteResult['route'], number> =
   uniswap: ROUTE_UNISWAP_THEN_UNISWAP,
 };
 
-// Single unified threshold: swap floor ($0.51 = Paycrest $0.50 min + $0.01 fee margin)
+// Single unified threshold and price protection maths live in @goodcash/core (shared with the partner SDK)
 export const SWAP_FLOOR_USDT = MIN_NET_USDT_REQUIRED;
-export const MIN_AMOUNT_OUT = BigInt(Math.round(SWAP_FLOOR_USDT * 1e6)); // 510_000 atomic USDT = $0.51
-
-export function computeMinAmountOut(usdtOut: bigint, slippageBps: number): bigint {
-  const slippageAdjusted = (usdtOut * BigInt(10_000 - slippageBps)) / 10_000n;
-  return slippageAdjusted > MIN_AMOUNT_OUT ? slippageAdjusted : MIN_AMOUNT_OUT;
-}
+export { MIN_AMOUNT_OUT, computeMinAmountOut } from '@goodcash/core/oneTap';
 
 // ---------------------------------------------------------------------------
 // Contract ABIs
@@ -113,19 +109,7 @@ export class SwapUncertainError extends Error {
   }
 }
 
-/** True only when the error proves the wallet never sent anything: the customer said no, or the network refused it first. */
-export function provesNothingWasSent(err: unknown): boolean {
-  let e: unknown = err;
-  for (let depth = 0; e && depth < 8; depth++) {
-    const x = e as { name?: string; code?: number; message?: string; shortMessage?: string; cause?: unknown };
-    const text = `${x.name ?? ''} ${x.shortMessage ?? ''} ${x.message ?? ''}`;
-    if (x.code === 4001 || /UserRejected|user rejected|user denied|rejected the request|denied transaction/i.test(text)) return true;
-    // The network's own pre-check (gas estimate) failed, so the wallet was never asked to sign
-    if (/EstimateGasExecutionError|ExecutionRevertedError|InsufficientFundsError|execution reverted|insufficient funds|gas required exceeds/i.test(text)) return true;
-    e = x.cause;
-  }
-  return false;
-}
+export { provesNothingWasSent } from '@goodcash/core/wallet';
 
 /** The swap was sent to the network but we could not confirm it yet. It may well have gone through. */
 export class SwapPendingError extends Error {
@@ -516,7 +500,7 @@ export const ROUTER_V2_ADDRESS: Address | null = parseRouterV2Address(envRouterV
 export const ONE_TAP_ENABLED = ROUTER_V2_ADDRESS !== null;
 
 /** Tighter than the three-step flow: the order is sized to this minimum, so a small cushion keeps the naira close to the estimate. */
-export const ONE_TAP_SLIPPAGE_BPS = 50;
+export { ONE_TAP_SLIPPAGE_BPS } from '@goodcash/core/oneTap';
 
 const ONE_TAP_ABI = parseAbi([
   'function transferAndCall(address to, uint256 amount, bytes data) external returns (bool)',
@@ -528,27 +512,11 @@ const CASH_OUT_PAID_EVENT_ABI = parseAbiItem(
 
 /** The guaranteed minimum USDT of a swap. The payout order is sized from this, before the swap. */
 export function computeOneTapMinOut(quote: QuoteResult): bigint {
-  return computeMinAmountOut(quote.usdtOut, ONE_TAP_SLIPPAGE_BPS);
+  return coreComputeOneTapMinOut(quote);
 }
 
 /** Exactly what the router decodes: abi.encode(route, minOut, deadline, payTo, payAmount, ref). */
-export function encodeOneTapData(args: {
-  route: 0 | 1;
-  minOut: bigint;
-  deadline: bigint;
-  payTo: Address;
-  payAmount: bigint;
-  ref: `0x${string}`;
-}): `0x${string}` {
-  return encodeAbiParameters(parseAbiParameters('uint8, uint256, uint256, address, uint256, bytes32'), [
-    args.route,
-    args.minOut,
-    args.deadline,
-    args.payTo,
-    args.payAmount,
-    args.ref,
-  ]);
-}
+export { encodeOneTapData } from '@goodcash/core/oneTap';
 
 /** True when the one-tap router is paused. Checked BEFORE a payout order is created, so a pause never leaves orders behind. */
 export async function isOneTapRouterPaused(publicClient?: ReturnType<typeof createPublicClient>): Promise<boolean> {
