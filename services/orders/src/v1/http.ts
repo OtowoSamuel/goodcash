@@ -20,7 +20,8 @@ export type ErrorCode =
   | 'not_found'
   | 'idempotency_conflict'
   | 'transaction_mismatch'
-  | 'webhook_not_configured';
+  | 'webhook_not_configured'
+  | 'topups_not_enabled';
 
 const SETUP = "This app isn't set up correctly for cash out. Please contact the app's support.";
 
@@ -45,6 +46,7 @@ export const ERRORS: Record<ErrorCode, { status: number; message: string }> = {
   idempotency_conflict: { status: 409, message: 'This request was already used for a different cash out. Please start again.' },
   transaction_mismatch: { status: 400, message: "That transaction doesn't match this cash out." },
   webhook_not_configured: { status: 400, message: SETUP },
+  topups_not_enabled: { status: 403, message: SETUP },
 };
 
 export class V1Error extends Error {

@@ -9,9 +9,18 @@
  */
 import { V1Error } from './http';
 import { loadPartner } from './auth';
-import type { CashOutRecord, Env, Mode, Partner } from './types';
+import type { CashOutRecord, Env, Mode, Partner, TopUpRecord } from './types';
 
-export type EventType = 'cashout.paid' | 'cashout.failed' | 'cashout.refunded' | 'cashout.expired' | 'cashout.delayed' | 'cashout.test';
+export type EventType =
+  | 'cashout.paid'
+  | 'cashout.failed'
+  | 'cashout.refunded'
+  | 'cashout.expired'
+  | 'cashout.delayed'
+  | 'cashout.test'
+  | 'topup.paid_in'
+  | 'topup.delivered'
+  | 'topup.failed';
 
 export interface PartnerEvent {
   id: string;
@@ -116,15 +125,24 @@ async function enqueue(env: Env, item: QueueItem, now = Date.now()): Promise<voi
  * Partners without a webhook are skipped (they poll instead).
  */
 export async function emitCashOutEvent(env: Env, rec: CashOutRecord, type: EventType, data: unknown, waitUntil?: (p: Promise<unknown>) => void): Promise<void> {
-  const once = `evt:${rec.id}:${type}`;
+  return emitEvent(env, { id: rec.id, partnerId: rec.partnerId, mode: rec.mode }, type, data, waitUntil);
+}
+
+/** The same, for a top-up. */
+export async function emitTopUpEvent(env: Env, rec: TopUpRecord, type: EventType, data: unknown, waitUntil?: (p: Promise<unknown>) => void): Promise<void> {
+  return emitEvent(env, { id: rec.id, partnerId: rec.partnerId, mode: rec.mode }, type, data, waitUntil);
+}
+
+async function emitEvent(env: Env, subject: { id: string; partnerId: string; mode: Mode }, type: EventType, data: unknown, waitUntil?: (p: Promise<unknown>) => void): Promise<void> {
+  const once = `evt:${subject.id}:${type}`;
   if (await env.ORDER_STORE.get(once)) return;
-  const partner = await loadPartner(env, rec.partnerId);
-  if (!partner?.webhookUrl?.[rec.mode]) return;
-  await env.ORDER_STORE.put(once, '1', { expirationTtl: rec.mode === 'test' ? 7 * 86400 : 400 * 86400 });
-  const event = buildEvent(type, rec.mode, data);
+  const partner = await loadPartner(env, subject.partnerId);
+  if (!partner?.webhookUrl?.[subject.mode]) return;
+  await env.ORDER_STORE.put(once, '1', { expirationTtl: subject.mode === 'test' ? 7 * 86400 : 400 * 86400 });
+  const event = buildEvent(type, subject.mode, data);
   const attempt = async () => {
-    const out = await deliver(env, partner, rec.mode, event);
-    if (!out.ok) await enqueue(env, { partnerId: partner.id, mode: rec.mode, event, attempt: 1 });
+    const out = await deliver(env, partner, subject.mode, event);
+    if (!out.ok) await enqueue(env, { partnerId: partner.id, mode: subject.mode, event, attempt: 1 });
   };
   if (waitUntil) waitUntil(attempt());
   else await attempt();

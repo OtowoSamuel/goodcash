@@ -41,6 +41,7 @@ export interface Env {
   RATE_LIMIT_WINDOW_SECONDS?: string;
   // Partner API (/v1)
   PARTNER_API_ENABLED?: string;   // "true" turns /v1 on. Anything else: /v1 answers 404 and nothing else changes
+  PARTNER_ONRAMP_ENABLED?: string; // "true" lets partners offer naira-in (top-ups). Anything else: off. Live mode also needs the partner switched on
   PARTNER_SIGNUP_ENABLED?: string; // "true" lets partners get TEST keys themselves (email-confirmed). Anything else: off
   PARTNER_SIGNUP_DAILY_CAP?: string; // New sign-ups per day (default 20); keeps storage writes small
   WIDGET_ORIGINS?: string;        // Comma-separated widget sites allowed for every publishable key (default https://pay.goodcash.xyz)
@@ -2964,6 +2965,39 @@ const v1Deps: V1Deps = {
   verifyAccountName,
   cachedInstitutionList,
   clientIp,
+  async onrampQuote(env: Env, input: { naira: number; asset: 'g' | 'celo'; wallet: string }) {
+    const qs = new URLSearchParams({ naira: String(input.naira), asset: input.asset });
+    if (input.wallet) qs.set('wallet', input.wallet);
+    const res = await handleOnrampQuote(new Request(`https://internal.invalid/onramp/quote?${qs}`), env);
+    const body = (await res.json().catch(() => ({}))) as Record<string, number | string | undefined>;
+    if (!res.ok) return { error: String(body.error ?? 'Adding G$ is not available right now. Please try again later.'), status: res.status };
+    return {
+      amountOut: Number(body.amountOut),
+      amountOutMin: Number(body.amountOutMin),
+      partnerFeeUsd: Number(body.partnerFeeUsd ?? 0),
+      swapFeeUsd: Number(body.swapFeeUsd ?? 0),
+      minNaira: Number(body.minNaira),
+      validForSeconds: Number(body.validForSeconds ?? 30),
+    };
+  },
+  async onrampOrderMeta(env: Env, orderId: string) {
+    if (!/^[0-9a-f-]{36}$/.test(orderId)) return null;
+    const raw = await env.ORDER_STORE.get(`onramp:${orderId}`);
+    if (!raw) return null;
+    try {
+      const m = JSON.parse(raw) as { wallet?: string; naira?: number; asset?: string };
+      if (typeof m.wallet !== 'string' || typeof m.naira !== 'number') return null;
+      return { wallet: m.wallet, naira: m.naira, asset: parseAsset(m.asset) };
+    } catch {
+      return null;
+    }
+  },
+  async onrampOrderStatus(env: Env, orderId: string) {
+    const res = await handleGetOnrampOrder(orderId, env);
+    if (!res.ok) return null;
+    const b = (await res.json().catch(() => null)) as { stage?: string; arrived?: boolean; txHash?: string } | null;
+    return b?.stage ? { stage: b.stage, arrived: b.arrived === true, ...(b.txHash ? { txHash: b.txHash } : {}) } : null;
+  },
 };
 
 export default {

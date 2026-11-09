@@ -9,6 +9,7 @@ import { buildEvent, deliver, processWebhookQueue, setWebhook } from './webhooks
 import { requireSecret } from './auth';
 import type { CashOutRecord } from './types';
 import { handleSignup, isSignupPath, requestLiveAccess } from './signup';
+import { createTopUp, getTopUp, listTopUps, sweepOpenTopUps, topUpQuote } from './topups';
 import { requestId, V1Error, v1ErrorResponse, v1Json, v1Preflight, withV1Headers } from './http';
 import { ethCallVia, feeLines, maxG, minimumG, parseAmountG, priceCashOut } from './pricing';
 import type { AuthContext, Env, V1Deps } from './types';
@@ -76,6 +77,13 @@ async function route(request: Request, env: Env, ctx: AuthContext, deps: V1Deps,
     // allowedOrigins are public web addresses; the widget uses them to decide where it may be shown and talk to
     return v1Json({ id: p.id, name: p.name, mode: ctx.mode, logoUrl: p.logoUrl ?? null, accentColor: p.accentColor ?? null, feePercent: p.feePercent, allowedOrigins: p.allowedOrigins });
   }
+
+  // Naira in (top-ups): off unless PARTNER_ONRAMP_ENABLED. The customer's ID details never come through here.
+  if (m === 'GET' && path === '/v1/topup/quote') return topUpQuote(env, ctx, deps, url);
+  if (m === 'POST' && path === '/v1/topups') return createTopUp(request, env, ctx, deps);
+  if (m === 'GET' && path === '/v1/topups') return listTopUps(env, ctx, url);
+  const topUpMatch = /^\/v1\/topups\/([^/]+)$/.exec(path);
+  if (m === 'GET' && topUpMatch) return getTopUp(env, ctx, deps, topUpMatch[1], waitUntil);
 
   if (m === 'POST' && path === '/v1/live-access') {
     requireSecret(ctx);
@@ -240,6 +248,11 @@ export async function partnerOrderUpdated(env: Env, orderId: string, deps: V1Dep
 export async function runPartnerSchedule(env: Env, deps: V1Deps): Promise<void> {
   if (env.PARTNER_API_ENABLED !== 'true') return;
   const swept = await sweepOpenCashOuts(env, deps);
+  try {
+    await sweepOpenTopUps(env, deps);
+  } catch (e) {
+    console.error('[v1-schedule] top-up sweep failed:', e);
+  }
   const q = await processWebhookQueue(env);
   if (q.delivered + q.retried + q.dropped > 0 || swept.checked > 0) {
     console.log(`[v1-schedule] open checked ${swept.checked}; webhooks delivered ${q.delivered}, retrying ${q.retried}, dropped ${q.dropped}`);

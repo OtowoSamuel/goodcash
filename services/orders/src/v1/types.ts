@@ -29,6 +29,29 @@ export interface Partner {
   contactEmail?: string;
   /** When a self-serve partner last asked for live keys */
   liveRequestedAt?: number;
+  /** GoodCash has switched naira-in (top-ups) on for this partner in LIVE mode (test mode needs no switch) */
+  topupEnabled?: boolean;
+}
+
+export type TopUpAsset = 'g' | 'celo';
+export type TopUpStatus = 'awaiting_payment' | 'paid_in' | 'delivered' | 'failed' | 'expired';
+
+/** A top-up through the partner API, stored at `pt:<id>`. Never holds ID details or bank details. */
+export interface TopUpRecord {
+  id: string;
+  partnerId: string;
+  mode: Mode;
+  wallet: string;
+  naira: number;
+  asset: TopUpAsset;
+  /** Live: the payout partner's order id (the customer's ID details went there directly, never through us) */
+  orderId?: string;
+  status: TopUpStatus;
+  partnerRef?: string;
+  txHash?: string;
+  createdAt: number;
+  updatedAt: number;
+  deliveredAt?: number;
 }
 
 /** What is stored at `key:<sha256 of the key>`. */
@@ -109,6 +132,18 @@ export interface V1Deps {
   ): Promise<{ accountName: string; message: string } | { error: string; status: number; reason: 'not_found' | 'unavailable' }>;
   cachedInstitutionList(env: Env): Promise<PaycrestInstitution[] | null>;
   clientIp(request: Request): string;
+  /** The price of a naira-in top-up (the same one the GoodCash app shows) */
+  onrampQuote(
+    env: Env,
+    input: { naira: number; asset: TopUpAsset; wallet: string }
+  ): Promise<
+    | { amountOut: number; amountOutMin: number; partnerFeeUsd: number; swapFeeUsd: number; minNaira: number; validForSeconds: number }
+    | { error: string; status: number }
+  >;
+  /** What we recorded when the order was created: wallet, naira, asset (never ID details) */
+  onrampOrderMeta(env: Env, orderId: string): Promise<{ wallet: string; naira: number; asset: TopUpAsset } | null>;
+  /** Where the naira-in order is at the payout partner; null when it cannot be reached right now */
+  onrampOrderStatus(env: Env, orderId: string): Promise<{ stage: string; arrived: boolean; txHash?: string } | null>;
 }
 
 export type { Env };

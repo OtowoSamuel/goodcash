@@ -7,7 +7,7 @@
  *                                     [--apps com.acme.game] [--fee 0.5] [--logo https://...] [--accent "#7b39fc"]
  *   node scripts/partners.mjs list
  *   node scripts/partners.mjs show    <partnerId>
- *   node scripts/partners.mjs update  <partnerId> [--name ..] [--origins ..] [--apps ..] [--fee ..] [--logo ..] [--accent ..]
+ *   node scripts/partners.mjs update  <partnerId> [--name ..] [--origins ..] [--apps ..] [--fee ..] [--logo ..] [--accent ..] [--topups on|off]
  *   node scripts/partners.mjs disable <partnerId>        (all its keys stop working at once)
  *   node scripts/partners.mjs enable  <partnerId>
  *   node scripts/partners.mjs rotate  <partnerId> --kind pk|sk --mode live|test   (old key stops working)
@@ -167,7 +167,8 @@ async function main() {
       for (const n of names) {
         const p = get(n);
         if (p) {
-          const tag = p.selfServe ? (index_hasLive(get(`partnerkeys:${p.id}`)) ? '  [self-serve, live]' : p.liveRequestedAt ? '  [self-serve, LIVE REQUESTED]' : '  [self-serve, test]') : '';
+          const topups = p.topupEnabled ? '  [top-ups ON]' : '';
+          const tag = topups + (p.selfServe ? (index_hasLive(get(`partnerkeys:${p.id}`)) ? '  [self-serve, live]' : p.liveRequestedAt ? '  [self-serve, LIVE REQUESTED]' : '  [self-serve, test]') : '');
           console.log(`${p.enabled ? 'ON ' : 'OFF'}  ${p.id}  ${p.name}  fee ${p.feePercent}%  sites: ${p.allowedOrigins.join(', ') || '-'}  apps: ${p.appIds.join(', ') || '-'}${tag}`);
         }
       }
@@ -197,6 +198,10 @@ async function main() {
         if (flag('fee') !== undefined) p.feePercent = checkFee(flag('fee'));
         if (flag('logo')) p.logoUrl = flag('logo');
         if (flag('accent')) p.accentColor = flag('accent');
+        if (flag('topups') !== undefined) {
+          if (!['on', 'off'].includes(flag('topups'))) throw new Error('--topups must be on or off');
+          p.topupEnabled = flag('topups') === 'on';
+        }
       }
       put(`partner:${id}`, p);
       console.log(`${cmd === 'disable' ? 'Switched OFF' : cmd === 'enable' ? 'Switched ON' : 'Updated'}: ${p.name} (${id})`);
