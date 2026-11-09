@@ -3,7 +3,7 @@
  * without wearing out storage, without ever breaking an order, plus the one-time catch-up for earlier orders.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import worker, { backfillOnrampHistory } from './index.js';
+import worker, { backfillOnrampHistory, matchOnrampDeliveries } from './index.js';
 import type { Env } from './index.js';
 
 class MockKV {
@@ -38,6 +38,11 @@ let kv: MockKV;
 let env: Env;
 let partnerStatus = 'pending';
 let partnerCalls = 0;
+let scanItems: unknown[] = [];
+let scanCalls = 0;
+let scanHttp = 200;
+let txSender: Record<string, string> = {};
+const SOLVER = '0xf70da97812cb96acdf810712aa562db8dfa3dbef';
 
 const call = (method: string, path: string, body?: unknown) =>
   worker.fetch(
@@ -59,6 +64,10 @@ beforeEach(() => {
   kv = new MockKV();
   partnerStatus = 'pending';
   partnerCalls = 0;
+  scanItems = [];
+  scanCalls = 0;
+  scanHttp = 200;
+  txSender = {};
   env = {
     PAYCREST_API_KEY: 'k',
     PAYCREST_API_SECRET: 's',
@@ -73,8 +82,13 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       const u = String(url);
       if (u.includes('forno.celo.org')) {
-        const { method } = JSON.parse(String(init?.body)) as { method: string };
+        const { method, params } = JSON.parse(String(init?.body)) as { method: string; params: string[] };
+        if (method === 'eth_getTransactionByHash') return Response.json({ result: { from: txSender[String(params[0]).toLowerCase()] ?? SOLVER } });
         return Response.json({ result: method === 'eth_blockNumber' ? '0x100000' : [] });
+      }
+      if (u.includes('/api/v2/addresses/') && u.includes('/token-transfers')) {
+        scanCalls++;
+        return scanHttp === 200 ? Response.json({ items: scanItems, next_page_params: null }) : new Response('slow down', { status: scanHttp });
       }
       if (u.endsWith('/v2/sender/orders') && init?.method === 'POST') {
         return Response.json(
@@ -206,5 +220,158 @@ describe('catching up orders made before History existed', () => {
     await old(ID, WALLET, 5000, 'g', 1);
     await worker.scheduled({}, env);
     expect(await kv.get(`onramp-wallet:${WALLET.toLowerCase()}:${ID}`)).not.toBeNull();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// The real delivery: amount, receipt and Paid come from the G$ / CELO that actually reached the wallet
+// ---------------------------------------------------------------------------
+const G = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A';
+const CELO = '0x471EcE3750Da237f93B8E339c536989b8978a438';
+const TX1 = `0x${'98d5dd6bce'.padEnd(64, 'a')}`;
+const TX2 = `0x${'4444'.padEnd(64, 'b')}`;
+
+/** One entry of the explorer's transfer list (the shape the real explorer returns). */
+const item = (over: { at: string; value?: string; token?: string; symbol?: string; tx?: string; decimals?: string }) => ({
+  timestamp: over.at,
+  transaction_hash: over.tx ?? TX1,
+  token: { address: over.token ?? G, symbol: over.symbol ?? '$G' },
+  total: { value: over.value ?? '5606336269326258012160', decimals: over.decimals ?? '18' },
+  from: { hash: '0x0729E2a4716d9f7dD17858d5d504426D228697f7' },
+});
+
+const delivery = (over: { txHash?: string; out?: number; at: number; asset?: 'g' | 'celo' }) => ({ txHash: over.txHash ?? TX1.toLowerCase(), out: over.out ?? 5606.336, at: over.at, asset: over.asset ?? ('g' as const) });
+
+describe('matching naira orders to the deliveries that fulfilled them', () => {
+  const T0 = 1_794_223_810; // order created 11:30:10
+
+  it('D1. your case: an order and a delivery a minute and a half later', () => {
+    const m = matchOnrampDeliveries([{ orderId: 'a', asset: 'g', at: T0 }], [delivery({ at: T0 + 93 })]);
+    expect(m.get('a')).toMatchObject({ txHash: TX1.toLowerCase(), out: 5606.336 });
+  });
+
+  it('D2. several orders: oldest first, each delivery used once, and an order with no delivery stays unmatched', () => {
+    const m = matchOnrampDeliveries(
+      [
+        { orderId: 'second', asset: 'g', at: T0 + 1000 },
+        { orderId: 'first', asset: 'g', at: T0 },
+        { orderId: 'third', asset: 'g', at: T0 + 5000 },
+      ],
+      [delivery({ at: T0 + 60, txHash: TX1.toLowerCase() }), delivery({ at: T0 + 1100, txHash: TX2.toLowerCase(), out: 3000 })]
+    );
+    expect(m.get('first')?.txHash).toBe(TX1.toLowerCase());
+    expect(m.get('second')?.txHash).toBe(TX2.toLowerCase());
+    expect(m.has('third')).toBe(false);
+  });
+
+  it('D3. an order that already knows its transaction is matched exactly, even out of order', () => {
+    const m = matchOnrampDeliveries(
+      [{ orderId: 'late', asset: 'g', at: T0 + 10, txHash: TX2 }, { orderId: 'early', asset: 'g', at: T0 }],
+      [delivery({ at: T0 + 60, txHash: TX1.toLowerCase() }), delivery({ at: T0 + 100, txHash: TX2.toLowerCase() })]
+    );
+    expect(m.get('late')?.txHash).toBe(TX2.toLowerCase());
+    expect(m.get('early')?.txHash).toBe(TX1.toLowerCase());
+  });
+
+  it('D4. the right asset, and only deliveries made after the order began', () => {
+    expect(matchOnrampDeliveries([{ orderId: 'c', asset: 'celo', at: T0 }], [delivery({ at: T0 + 60, asset: 'g' })]).size).toBe(0);
+    expect(matchOnrampDeliveries([{ orderId: 'c', asset: 'celo', at: T0 }], [delivery({ at: T0 + 60, asset: 'celo', out: 10.26 })]).get('c')?.out).toBe(10.26);
+    expect(matchOnrampDeliveries([{ orderId: 'g', asset: 'g', at: T0 }], [delivery({ at: T0 - 3600 })]).size).toBe(0);
+  });
+});
+
+describe('History fills in the real delivery', () => {
+  const makeOrder = async () => {
+    await call('POST', '/onramp/orders', ORDER_BODY);
+    partnerStatus = 'settled'; // the payout partner delivered the dollars
+    return JSON.parse((await kv.get(`onramp-wallet:${WALLET.toLowerCase()}:${ID}`))!).at as number;
+  };
+  const iso = (sec: number) => new Date(sec * 1000).toISOString();
+  const rowOf = async () => (await history()).onramps[0] as Record<string, unknown>;
+
+  it('H12. a settled order whose G$ arrived shows the real amount, the receipt and Paid', async () => {
+    const at = await makeOrder();
+    scanItems = [item({ at: iso(at + 93) })];
+    const row = await rowOf();
+    expect(row).toMatchObject({ orderId: ID, naira: 5000, stage: 'done', arrived: true, actual: true, txHash: TX1.toLowerCase() });
+    expect(row.out).toBeCloseTo(5606.336, 3);
+  });
+
+  it('H13. the answer is kept: the explorer is not asked again', async () => {
+    const at = await makeOrder();
+    scanItems = [item({ at: iso(at + 93) })];
+    await history();
+    await history();
+    await history();
+    expect(scanCalls).toBe(1);
+  });
+
+  it('H14. no delivery yet: the order stays "on its way" and is checked at most every 15 minutes', async () => {
+    const at = await makeOrder();
+    expect(await rowOf()).toMatchObject({ stage: 'done', arrived: false });
+    await history();
+    await history();
+    expect(scanCalls).toBe(1);
+    // 16 minutes later it looks again, and now finds it
+    const key = `onramp-wallet:${WALLET.toLowerCase()}:${ID}`;
+    const row = JSON.parse((await kv.get(key))!);
+    await kv.put(key, JSON.stringify({ ...row, arrivalCheckedAt: Date.now() - 16 * 60_000 }));
+    scanItems = [item({ at: iso(at + 120) })];
+    expect(await rowOf()).toMatchObject({ arrived: true, actual: true });
+    expect(scanCalls).toBe(2);
+  });
+
+  it('H15. if the explorer is slow or limits us, nothing breaks and it is not hammered', async () => {
+    await makeOrder();
+    scanHttp = 429;
+    expect(await rowOf()).toMatchObject({ stage: 'done', arrived: false });
+    await history();
+    await history();
+    expect(scanCalls).toBe(1);
+  });
+
+  it('H16. an order still waiting for its naira is never matched to anything', async () => {
+    await call('POST', '/onramp/orders', ORDER_BODY);
+    partnerStatus = 'pending';
+    scanItems = [item({ at: iso(Date.now() / 1000 + 60) })];
+    expect(await rowOf()).toMatchObject({ stage: 'waiting', arrived: false });
+    expect(scanCalls).toBe(0);
+  });
+
+  it('H17. an order the app already marked arrived gets the real amount instead of the quoted minimum', async () => {
+    await call('POST', '/onramp/orders', { ...ORDER_BODY, expectedOut: 5357 });
+    const key = `onramp-wallet:${WALLET.toLowerCase()}:${ID}`;
+    const row = JSON.parse((await kv.get(key))!);
+    await kv.put(key, JSON.stringify({ ...row, stage: 'done', arrived: true, checkedAt: Date.now(), txHash: TX1 }));
+    scanItems = [item({ at: iso(row.at + 90) })];
+    const after = await rowOf();
+    expect(after).toMatchObject({ arrived: true, actual: true });
+    expect(after.out).toBeCloseTo(5606.336, 3);
+  });
+
+  it("H18. only deliveries from the cross-chain relayer count: the customer's own swaps, UBI claims and plain transfers never do", async () => {
+    const at = await makeOrder();
+    // a G$ transfer that the customer's own wallet started (a swap, a claim) arrives in the same minute
+    txSender[TX2.toLowerCase()] = WALLET.toLowerCase();
+    scanItems = [item({ at: iso(at + 30), tx: TX2, value: '15812351197643903852329' })];
+    expect(await rowOf()).toMatchObject({ stage: 'done', arrived: false });
+  });
+
+  it('H19. a delivery for another asset, or from before the order, is ignored; the right one is found among them', async () => {
+    const at = await makeOrder();
+    scanItems = [
+      item({ at: iso(at + 200), token: CELO, symbol: 'CELO', value: '2523296117198132939', tx: TX2 }), // CELO, not G$
+      item({ at: iso(at - 3600), tx: `0x${'7'.repeat(64)}` }), // an hour before the order
+      item({ at: iso(at + 93) }),
+    ];
+    const row = await rowOf();
+    expect(row).toMatchObject({ arrived: true, txHash: TX1.toLowerCase() });
+  });
+
+  it('H20. other tokens in the wallet (USDT and so on) are ignored', async () => {
+    const at = await makeOrder();
+    scanItems = [item({ at: iso(at + 60), token: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e', symbol: 'USDT', value: '4577', decimals: '6' })];
+    expect(await rowOf()).toMatchObject({ arrived: false });
   });
 });

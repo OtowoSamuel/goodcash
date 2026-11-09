@@ -670,7 +670,7 @@ export async function fetchWalletHistoryFull(wallet: string): Promise<{
 }> {
   const data = await apiGet<{
     swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number; orderId?: string; status?: string; naira?: string }>;
-    onramps?: Array<{ orderId: string; naira: number; asset?: 'g' | 'celo'; at: number; stage?: string; arrived?: boolean; out?: number; usd?: number; txHash?: string }>;
+    onramps?: Array<{ orderId: string; naira: number; asset?: 'g' | 'celo'; at: number; stage?: string; arrived?: boolean; out?: number; usd?: number; txHash?: string; actual?: boolean }>;
     complete?: boolean;
   }>(`/history?wallet=${encodeURIComponent(wallet)}`);
   const swaps = (data.swaps ?? []).map((s) => ({
@@ -692,6 +692,7 @@ export async function fetchWalletHistoryFull(wallet: string): Promise<{
     out: o.out != null ? Number(o.out) : undefined,
     usd: o.usd != null ? Number(o.usd) : undefined,
     txHash: o.txHash,
+    actual: o.actual === true,
   }));
   return { swaps, onramps, complete: data.complete !== false };
 }

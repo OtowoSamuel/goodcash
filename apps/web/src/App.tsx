@@ -1,4 +1,5 @@
 import { isPaidOutStatus } from './lib/useOffRamp';
+import { loadSavedAddGs, saveAddGs, findStuckOnramp, savedFromStuckOnramp } from './lib/addGsSaved';
 import { useAddGsWatcher, type AddGsPhase } from './lib/useAddGsWatcher';
 import { gToWei, nairaFromUsdt, GOODCASH_FEE_PERCENT } from './lib/units';
 import { Modal } from './components/Modal';
@@ -34,6 +35,7 @@ import { MiniPayNotice } from './components/MiniPayNotice';
 import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, celoText, SwapUncertainError, type NetworkFeeInfo } from './lib/router';
 import { findOneTapPayment, findRecentCashOut, fetchWalletHistoryFull, createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
+import { disconnectWalletConnect, restoreWalletConnect } from './lib/walletConnect';
 import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
 import { PendingPayoutCard } from './components/PendingPayoutCard';
 import { reportIssue } from './lib/diag';
@@ -387,9 +389,11 @@ export function App({
   useEffect(() => {
     if (isDemoMode || initialWalletAddress) return;
     let alive = true;
-    restoreMagic().then((acct) => {
-      if (alive && acct) setWalletAddress(acct);
-    });
+    restoreMagic()
+      .then((acct) => acct ?? restoreWalletConnect(() => setWalletAddress(null)))
+      .then((acct) => {
+        if (alive && acct) setWalletAddress(acct);
+      });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -563,6 +567,25 @@ export function App({
   });
   const addInProgress = addPhase !== null && addPhase !== 'problem';
 
+  // The last step ("Get my G$") is remembered only on the device that started the order. If the customer paid on
+  // one device and is now on another (or cleared their browser), their money is waiting in the wallet with nothing
+  // to tap. Rebuild the order from History so the same "Your money is here" step appears. Once per order per device.
+  useEffect(() => {
+    if (!walletAddress || !ADDG_ENABLED || isDemoMode) return;
+    if (loadSavedAddGs(walletAddress)) return;
+    const stuck = findStuckOnramp(history);
+    if (!stuck?.orderId) return;
+    try {
+      const key = 'goodcash_addg_resumed';
+      const done: string[] = JSON.parse(localStorage.getItem(key) ?? '[]');
+      if (done.includes(stuck.orderId)) return;
+      localStorage.setItem(key, JSON.stringify([...done, stuck.orderId].slice(-20)));
+    } catch {
+      return;
+    }
+    saveAddGs(savedFromStuckOnramp(stuck, walletAddress));
+  }, [walletAddress, history]);
+
   // The moment the money is here the pop-up opens by itself on "Get my G$": the customer must never have to
   // find out they can collect their G$. Once per arrival, so closing it is respected (the banner stays).
   const autoOpened = useRef(false);
@@ -601,6 +624,7 @@ export function App({
   const handleDisconnectWallet = () => {
     // Sign out of Magic (closes a Magic email wallet or a connected wallet); a browser wallet is also asked to forget this site
     void disconnectMagic();
+    void disconnectWalletConnect();
     if (hasInjectedWallet()) void disconnectInjectedWallet();
     setWalletAddress(null);
     setWalletMessage(null);
@@ -1401,7 +1425,17 @@ export function App({
     <div className="gc min-h-screen flex flex-col">
       {magicOpen && (
         <React.Suspense fallback={null}>
-          <MagicConnect onConnected={onMagicConnected} onError={onMagicError} onClose={() => setMagicOpen(false)} />
+          <MagicConnect
+            onConnected={onMagicConnected}
+            onError={onMagicError}
+            onClose={() => setMagicOpen(false)}
+            onWalletApp={(address) => {
+              setMagicOpen(false);
+              setWalletAddress(address);
+              setWalletMessage(null);
+              emitAnalyticsEvent('wallet_connected', { wallet: address, wallet_type: 'other', referral_tag: 'direct' });
+            }}
+          />
         </React.Suspense>
       )}
 

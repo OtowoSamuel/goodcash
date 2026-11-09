@@ -323,7 +323,14 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
 
   const primary = (label: string, onClick: () => void, enabled: boolean) => (
     <button type="button" onClick={onClick} disabled={!enabled || busy} className={`gc-btn gc-hit ${enabled && !busy ? '' : 'gc-btn--dis'}`} style={{ height: 46, width: '100%' }}>
-      {busy ? 'Please wait…' : label}
+      {busy ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span className="w-4 h-4 rounded-full border-[3px] border-current border-t-transparent animate-spin" aria-hidden="true" />
+          {step === 'swap' ? `Getting your ${what}…` : 'Please wait…'}
+        </span>
+      ) : (
+        label
+      )}
     </button>
   );
   const finish = () => {
@@ -361,6 +368,16 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
         <Field label="How much naira do you want to add?">
           <input className={INPUT} inputMode="numeric" placeholder="₦5,000" value={naira} onChange={(e) => setNaira(e.target.value.replace(/[^\d,]/g, ''))} aria-label="Amount in naira" />
         </Field>
+        {!quote && !quoteError && amount >= 1000 && (
+          <div className="gc-note" style={{ background: '#8cf0c0' }} role="status" aria-live="polite">
+            <div className="gc-lab">You will get about</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="w-6 h-6 shrink-0 rounded-full border-4 border-[#111] border-t-transparent animate-spin" aria-hidden="true" />
+              <b style={{ fontSize: 18 }}>Working out your {what}…</b>
+            </div>
+            <div className="gc-sm">for {formatNaira(amount)}. This only takes a moment.</div>
+          </div>
+        )}
         {quote && (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
             <div className="gc-lab">You will get about</div>
@@ -509,7 +526,10 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
         {stage === 'received' ? (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
             <b>We got your {formatNaira(Number(order.amountToTransfer))}.</b>
-            <div className="gc-sm">Your money is on its way to your wallet. Keep this page open. In a few minutes it will ask you to tap once to get your {what}.</div>
+            <div className="gc-sm" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="w-4 h-4 shrink-0 rounded-full border-[3px] border-[#111] border-t-transparent animate-spin" aria-hidden="true" />
+              <span>Your money is being turned into {what}. Keep this page open. In a few minutes it will ask you to tap once to get your {what}.</span>
+            </div>
           </div>
         ) : stage === 'review' ? (
           <div className="gc-note" style={{ background: '#fff3c4' }}>
@@ -552,7 +572,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
             It is waiting for you. <b>Tap "Get my {what}" below to receive your {what} in your wallet.</b> Your {what} is only added after you tap.
           </div>
         </div>
-        <div className="gc-note">Your wallet may ask you to change network and sign one message. It costs you no fee. Please keep this tab open until it is done.</div>
+        <div className="gc-note">Your wallet will ask you to approve once. It costs you nothing. Please keep this tab open until it is done.</div>
         {error && <div className="gc-note" style={{ background: '#ffd6d6' }}>{error}</div>}
       </>
     );
@@ -560,9 +580,20 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
   } else if (step === 'working') {
     title = `Getting your ${what}`;
     body = (
-      <div className="gc-note" style={{ background: '#fff3c4' }}>
-        <b>Almost there. Please keep this tab open.</b> It takes about a minute. You will see a message here when your {what} arrives.
-      </div>
+      <>
+        <div className="gc-note" style={{ background: '#8cf0c0' }} role="status" aria-live="polite">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span className="w-8 h-8 shrink-0 rounded-full border-4 border-[#111] border-t-transparent animate-spin" aria-hidden="true" />
+            <b style={{ fontSize: 18 }}>
+              {order ? `Turning your ${formatNaira(Number(order.amountToTransfer))} into ${what}…` : `Turning your money into ${what}…`}
+            </b>
+          </div>
+          <div className="gc-sm" style={{ marginTop: 6 }}>Almost there. It takes about a minute.</div>
+        </div>
+        <div className="gc-note" style={{ background: '#fff3c4' }}>
+          <b>Please keep this tab open.</b> You will see a message here when your {what} arrives.
+        </div>
+      </>
     );
     footer = <button type="button" onClick={finish} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%' }}>Hide this (keep the tab open)</button>;
   } else {

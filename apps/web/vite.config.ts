@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        globIgnores: ['404.html'],
         // The About, Privacy and Terms pages are real pages, not part of the app shell
         navigateFallbackDenylist: [/^\/(about|privacy|terms)\/?$/, /^\/\.well-known\//],
         runtimeCaching: [
@@ -67,6 +68,11 @@ export default defineConfig(({ mode }) => ({
     target: 'es2020',
     rollupOptions: {
       output: {
+        // New file locations: a few old script addresses were cached by the network as the home page, which broke the
+        // wallet panel on phones. Fresh addresses have never been cached.
+        entryFileNames: 'assets/b/[name]-[hash].js',
+        chunkFileNames: 'assets/b/[name]-[hash].js',
+        assetFileNames: 'assets/b/[name]-[hash][extname]',
         manualChunks: {
           react: ['react', 'react-dom'],
           web3: ['viem'],

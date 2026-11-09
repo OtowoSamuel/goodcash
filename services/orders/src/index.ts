@@ -2282,6 +2282,10 @@ interface OnrampHistoryEntry {
   /** Celo transaction for the swap into G$ / CELO, once it has landed. */
   txHash?: string;
   checkedAt?: number;
+  /** `out`, `usd` and `txHash` are the real delivery (read from the transfer itself), not what the app quoted. */
+  actual?: boolean;
+  /** When we last tried to find the delivery (so the transfer service is asked rarely). */
+  arrivalCheckedAt?: number;
 }
 
 export interface OnrampHistoryRow {
@@ -2294,6 +2298,8 @@ export interface OnrampHistoryRow {
   out?: number;
   usd?: number;
   txHash?: string;
+  /** `out`, `usd` and `txHash` are the real delivery */
+  actual?: boolean;
 }
 
 function onrampHistoryKey(wallet: string, orderId: string): string {
@@ -2369,6 +2375,99 @@ export async function backfillOnrampHistory(env: Env): Promise<{ scanned: number
   return { scanned: page.keys.length, added, done };
 }
 
+/** One finished delivery of G$ or CELO into a wallet, as far as History needs it. */
+export interface OnrampDelivery {
+  txHash: string;
+  /** Amount received, in G$ or CELO */
+  out: number;
+  /** Unix seconds */
+  at: number;
+  asset: OnrampAsset;
+}
+
+/**
+ * The cross-chain service's relayer. A delivery into the customer's wallet is a transaction SENT by this address, so
+ * a UBI claim, a normal swap or a plain transfer (all started by the customer or someone else) is never mistaken
+ * for a purchase. If this ever changes, orders simply stay "On its way" until it is updated; nothing is mislabelled.
+ */
+const DELIVERY_SENDER = '0xf70da97812cb96acdf810712aa562db8dfa3dbef';
+const CELO_TOKEN = '0x471ece3750da237f93b8e339c536989b8978a438';
+/** The explorer and the chain are asked about a wallet at most this often. */
+const ARRIVAL_CHECK_MS = 15 * 60 * 1000;
+
+/**
+ * Which of a wallet's naira orders did each delivery fulfil?
+ * Orders that already know their transaction are matched exactly. The rest go oldest first, and each delivery is used
+ * once: the first unused delivery made after the order began, of the same asset.
+ */
+export function matchOnrampDeliveries(
+  orders: Array<{ orderId: string; asset: OnrampAsset; at: number; txHash?: string }>,
+  deliveries: OnrampDelivery[]
+): Map<string, OnrampDelivery> {
+  const pool = [...deliveries].sort((a, b) => a.at - b.at).map((d) => ({ d, used: false }));
+  const found = new Map<string, OnrampDelivery>();
+  for (const o of orders) {
+    const known = o.txHash?.toLowerCase();
+    const c = known ? pool.find((x) => !x.used && x.d.txHash.toLowerCase() === known) : undefined;
+    if (c) {
+      c.used = true;
+      found.set(o.orderId, c.d);
+    }
+  }
+  for (const o of [...orders].sort((a, b) => a.at - b.at)) {
+    if (found.has(o.orderId)) continue;
+    const c = pool.find((x) => !x.used && x.d.at >= o.at - 60 && x.d.asset === o.asset);
+    if (c) {
+      c.used = true;
+      found.set(o.orderId, c.d);
+    }
+  }
+  return found;
+}
+
+/**
+ * G$ / CELO that reached this wallet since `sinceSec`, from the explorer's transfer list, keeping only the ones
+ * delivered by the cross-chain relayer (checked on the chain). Null when the explorer could not be reached.
+ */
+async function fetchDeliveries(wallet: string, sinceSec: number, env: Env): Promise<OnrampDelivery[] | null> {
+  let items: Array<Record<string, any>>;
+  try {
+    const base = env.BLOCKSCOUT_URL || 'https://celo.blockscout.com';
+    const res = await fetch(`${base}/api/v2/addresses/${wallet.toLowerCase()}/token-transfers?type=ERC-20&filter=to`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return null;
+    const d = (await res.json()) as { items?: Array<Record<string, any>> };
+    items = Array.isArray(d.items) ? d.items : [];
+  } catch {
+    return null;
+  }
+  const candidates: OnrampDelivery[] = [];
+  for (const it of items) {
+    const token = String(it?.token?.address ?? it?.token?.address_hash ?? '').toLowerCase();
+    const asset: OnrampAsset | null = token === G_DOLLAR_TOKEN ? 'g' : token === CELO_TOKEN ? 'celo' : null;
+    const txHash = String(it?.transaction_hash ?? '');
+    const at = Date.parse(String(it?.timestamp ?? '')) / 1000;
+    const decimals = Number(it?.total?.decimals ?? 18);
+    const out = Number(BigInt(String(it?.total?.value ?? '0'))) / 10 ** decimals;
+    if (!asset || !/^0x[0-9a-fA-F]{64}$/.test(txHash) || !Number.isFinite(at) || at < sinceSec - 60 || !(out > 0)) continue;
+    candidates.push({ txHash: txHash.toLowerCase(), out, at, asset });
+    if (candidates.length >= 8) break; // newest first: more than this many since the oldest open order is not a purchase pattern
+  }
+  const verified = await Promise.all(
+    candidates.map(async (c) => {
+      try {
+        const tx = (await rpcCall(env, 'eth_getTransactionByHash', [c.txHash])) as { from?: string } | null;
+        return tx?.from?.toLowerCase() === DELIVERY_SENDER ? c : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return verified.filter((c): c is OnrampDelivery => c !== null);
+}
+
 /** This wallet's naira-in orders, newest first, refreshed from the partner at most a few at a time. */
 async function listWalletOnramps(wallet: string, env: Env): Promise<OnrampHistoryRow[]> {
   const prefix = `${ONRAMP_HISTORY_PREFIX}${wallet.toLowerCase()}:`;
@@ -2422,6 +2521,34 @@ async function listWalletOnramps(wallet: string, env: Env): Promise<OnrampHistor
     })
   );
 
+  // Orders the payout partner has settled (or that the app marked as arrived) whose real delivery we have not read yet:
+  // find the G$ / CELO that reached the wallet. This gives older orders their real amount, their receipt and their Paid
+  // status, which only the customer's own phone used to know. Asked rarely (see above) and never blocks History.
+  const stamp = Date.now();
+  const waiting = entries.filter(({ entry }) => entry.actual !== true && (entry.arrived === true || entry.stage === 'done') && (!entry.arrivalCheckedAt || stamp - entry.arrivalCheckedAt > ARRIVAL_CHECK_MS));
+  if (waiting.length > 0) {
+    const since = Math.min(...waiting.map(({ entry }) => entry.at));
+    const deliveries = await fetchDeliveries(wallet, since, env);
+    const found = deliveries
+      ? matchOnrampDeliveries(
+          entries.filter(({ entry }) => entry.arrived === true || entry.stage === 'done' || entry.actual === true).map(({ orderId, entry }) => ({ orderId, asset: entry.asset ?? 'g', at: entry.at, txHash: entry.txHash })),
+          deliveries
+        )
+      : new Map<string, OnrampDelivery>();
+    for (const item of waiting) {
+      const hit = found.get(item.orderId);
+      // Not found, or the explorer did not answer: try again later, not on every visit
+      item.entry = hit
+        ? { ...item.entry, arrived: true, stage: 'done', actual: true, txHash: hit.txHash, out: hit.out, arrivalCheckedAt: stamp }
+        : { ...item.entry, arrivalCheckedAt: stamp };
+      try {
+        await saveOnrampHistory(env, wallet, item.orderId, item.entry);
+      } catch {
+        // History is a convenience
+      }
+    }
+  }
+
   const rows: OnrampHistoryRow[] = entries.map(({ orderId, entry }) => {
     const arrived = entry.arrived === true;
     return {
@@ -2434,6 +2561,7 @@ async function listWalletOnramps(wallet: string, env: Env): Promise<OnrampHistor
       ...(entry.out ? { out: entry.out } : {}),
       ...(entry.usd ? { usd: entry.usd } : {}),
       ...(entry.txHash ? { txHash: entry.txHash } : {}),
+      ...(entry.actual ? { actual: true } : {}),
     };
   });
 

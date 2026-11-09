@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { HistoryCard, getOnrampLook, getSavedHistoryStatus, type SwapHistoryItem } from './HistoryCard';
+import { HistoryCard, getSavedHistoryStatus, isListedInHistory, type SwapHistoryItem } from './HistoryCard';
 import { HistoryDetailModal } from './HistoryDetailModal';
 
 const mockHistory: SwapHistoryItem[] = [
@@ -55,45 +55,6 @@ describe('HistoryCard', () => {
     expect(screen.getByText(/No cash outs yet/i)).toBeInTheDocument();
   });
 
-  it('shows naira-in rows with the same statuses as cash outs', () => {
-    const onramps: SwapHistoryItem[] = [
-      {
-        id: 'in-1',
-        txHash: '',
-        timestamp: Date.now(),
-        amountInG: 0,
-        amountOutUsdt: 0,
-        route: 'Naira → G$',
-        orderId: 'order-in-1',
-        kind: 'onramp',
-        asset: 'g',
-        nairaIn: 5000,
-        assetOut: 4420,
-        onrampStage: 'waiting',
-      },
-      {
-        id: 'in-2',
-        txHash: '',
-        timestamp: Date.now() - 86400000,
-        amountInG: 0,
-        amountOutUsdt: 0,
-        route: 'Naira → CELO',
-        orderId: 'order-in-2',
-        kind: 'onramp',
-        asset: 'celo',
-        nairaIn: 2500,
-        assetOut: 1.05,
-        onrampStage: 'done',
-        arrived: true,
-      },
-    ];
-    render(<HistoryCard history={onramps} onCashOutClick={() => {}} language="en" />);
-    expect(screen.getByText(/₦5,000 → 4,420 G\$/)).toBeInTheDocument();
-    expect(screen.getByText(/₦2,500 → 1.05 CELO/)).toBeInTheDocument();
-    expect(screen.getByText('In your wallet')).toBeInTheDocument();
-    expect(screen.getByText('Waiting for your transfer')).toBeInTheDocument();
-  });
-
   const row = (over: Partial<SwapHistoryItem>): SwapHistoryItem => ({
     id: `in-${over.orderId ?? 'x'}`,
     txHash: '',
@@ -108,26 +69,49 @@ describe('HistoryCard', () => {
     ...over,
   });
 
-  it('a naira order that closed, was returned, is under review or is only half done never reads "Checking status"', () => {
+  const NEW_WORDS = /Naira received|In your wallet|Not completed|Returned|Under review|Waiting for your transfer|Receipt pending|Checking status|Status unknown/i;
+
+  it('naira rows read exactly like cash outs: "Paid" when the asset arrived, "On its way" for everything else', () => {
     const items = [
-      row({ orderId: 'a', onrampStage: 'expired', nairaIn: 1100 }),
-      row({ orderId: 'b', onrampStage: 'refund', nairaIn: 1200 }),
-      row({ orderId: 'c', onrampStage: 'review', nairaIn: 1300 }),
-      row({ orderId: 'd', onrampStage: 'done', nairaIn: 1400 }),
-      row({ orderId: 'e', onrampStage: 'received', nairaIn: 1500 }),
+      row({ orderId: 'a', onrampStage: 'done', arrived: true, nairaIn: 1100, assetOut: 900 }),
+      row({ orderId: 'b', onrampStage: 'waiting', nairaIn: 1200 }),
+      row({ orderId: 'c', onrampStage: 'received', nairaIn: 1300 }),
+      row({ orderId: 'd', onrampStage: 'review', nairaIn: 1400 }),
+      row({ orderId: 'e', onrampStage: 'done', nairaIn: 1500 }),
+      row({ orderId: 'f', onrampStage: 'refund', nairaIn: 1600 }),
     ];
     render(<HistoryCard history={items} onCashOutClick={() => {}} language="en" />);
-    for (const label of ['Not completed', 'Returned', 'Under review', 'Naira received', 'On its way']) {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
-    }
-    expect(screen.queryByText(/Checking status|Status unknown/i)).not.toBeInTheDocument();
+    // every row has one of the two tags, and no other words appear
+    const pills = [...document.querySelectorAll('span.gc-pill')].map((p) => p.textContent);
+    expect(pills.filter((t) => t === 'Paid')).toHaveLength(1);
+    expect(pills.filter((t) => t === 'On its way')).toHaveLength(5);
+    expect(pills).toHaveLength(6);
+    expect(document.body.textContent).not.toMatch(NEW_WORDS);
+    // same colours as cash outs: Paid is mint, On its way is yellow
+    expect(document.querySelectorAll('span.gc-pill--mint')).toHaveLength(1);
+    expect(document.querySelectorAll('span.gc-pill--yellow')).toHaveLength(5);
   });
 
-  it('only an order whose asset really arrived is "In your wallet" (and counted as paid), whatever the stage says', () => {
+  it('an order that was never paid (the window closed) is not listed, so there is no third kind of row', () => {
+    render(<HistoryCard history={[row({ orderId: 'gone', onrampStage: 'expired', nairaIn: 7777 }), row({ orderId: 'ok', onrampStage: 'waiting', nairaIn: 2222 })]} onCashOutClick={() => {}} language="en" />);
+    expect(screen.queryByText(/7,777/)).not.toBeInTheDocument();
+    expect(screen.getByText(/2,222/)).toBeInTheDocument();
+    expect(isListedInHistory(row({ onrampStage: 'expired', arrived: true }))).toBe(true);
+  });
+
+  it('only an order whose asset really arrived counts as paid', () => {
     expect(getSavedHistoryStatus(row({ onrampStage: 'done' }))).toBe('onItsWay');
     expect(getSavedHistoryStatus(row({ onrampStage: 'done', arrived: true }))).toBe('paid');
-    expect(getOnrampLook(row({ onrampStage: 'done' })).label).toBe('Naira received');
-    expect(getOnrampLook(row({ onrampStage: 'done', arrived: true })).label).toBe('In your wallet');
+    expect(getSavedHistoryStatus(row({ onrampStage: 'expired' }))).toBe('onItsWay');
+  });
+
+  it('the receipt line is the same as a cash out when there is a transaction, and absent (never an error-looking line) when there is none yet', () => {
+    const tx = `0x${'ab'.repeat(32)}`;
+    render(<HistoryCard history={[row({ orderId: 'has', txHash: tx, arrived: true, onrampStage: 'done', nairaIn: 3100 }), row({ orderId: 'not', nairaIn: 3200 })]} onCashOutClick={() => {}} language="en" />);
+    const link = screen.getByText(/Receipt 0xabab…abab/);
+    expect(link.closest('a')?.getAttribute('href')).toBe(`https://celo.blockscout.com/tx/${tx}`);
+    expect(screen.getAllByText(/Receipt/)).toHaveLength(1);
+    expect(document.body.textContent).not.toMatch(/pending/i);
   });
 
   it('a purchase from before History kept its amounts shows without a made-up G$ figure', () => {
@@ -135,11 +119,12 @@ describe('HistoryCard', () => {
     expect(screen.getByText('₦3,000 → CELO')).toBeInTheDocument();
   });
 
-  it('the details pop-up uses plain words (no "swap") and is honest when the naira arrived but the asset is not marked as received', () => {
+  it('the details pop-up keeps the original words and says nothing about "swap"', () => {
     render(<HistoryDetailModal item={row({ orderId: 'z', onrampStage: 'done', nairaIn: 4000, assetOut: 3000 })} naira={null} savedStage="onItsWay" wallet={null} onClose={() => {}} />);
-    expect(screen.getByText(/If your G\$ is already in your wallet, you are all set/)).toBeInTheDocument();
-    expect(screen.getByText('Adding G$')).toBeInTheDocument();
+    expect(screen.getByText('On its way')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/swap/i);
+    // the status heading is the same two words as everywhere else (the step names below it are the original ones)
+    expect(screen.queryByText(/Checking status|Under review|Not completed|Returned/)).not.toBeInTheDocument();
   });
 
   it('displays all transactions when "All" filter is active', () => {

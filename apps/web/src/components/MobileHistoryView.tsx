@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getHistoryNaira, getHistoryStatusLabel, getHistoryTitle, getOnrampLook, getSavedHistoryStatus, type SwapHistoryItem } from './HistoryCard';
+import { getHistoryNaira, getHistoryStatusLabel, getHistoryTitle, getSavedHistoryStatus, isListedInHistory, type SwapHistoryItem } from './HistoryCard';
 import { formatNaira } from '../lib/rate';
 import { MobileBottomNav, type MobileTab } from './MobileBottomNav';
 import { HistoryDetailModal } from './HistoryDetailModal';
@@ -27,7 +27,7 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
   const [filter, setFilter] = useState<Filter>('all');
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const visible = history.filter((h) =>
+  const visible = history.filter(isListedInHistory).filter((h) =>
     filter === 'all' ? true : filter === 'paid' ? isPaid(h) : !isPaid(h)
   );
   const cashOuts = history.filter((h) => h.kind !== 'onramp');
@@ -98,11 +98,8 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
                   <div className="gc-big" style={{ fontSize: 22 }}>
                     {getHistoryTitle(item, ngnPerUsdt)}
                   </div>
-                  <span
-                    className={`gc-pill ${onramp ? (getOnrampLook(item).tone === 'mint' ? 'gc-pill--mint' : getOnrampLook(item).tone === 'yellow' ? 'gc-pill--yellow' : '') : paid ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : ''}`}
-                    style={{ whiteSpace: 'nowrap', flex: 'none' }}
-                  >
-                    {onramp ? getOnrampLook(item).label : getHistoryStatusLabel(status)}
+                  <span className={`gc-pill ${paid ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : ''}`} style={{ whiteSpace: 'nowrap', flex: 'none' }}>
+                    {getHistoryStatusLabel(status)}
                   </span>
                 </div>
                 <div className="gc-sm" style={{ color: '#444', marginTop: 4 }}>
@@ -120,9 +117,7 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
                   >
                     Receipt {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
                   </a>
-                ) : (
-                  <div className="gc-sm" style={{ display: 'inline-block', marginTop: 6 }}>Receipt pending</div>
-                )}
+                ) : null}
               </div>
             );
           })

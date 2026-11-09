@@ -1,5 +1,5 @@
 import { ORDERS_API_BASE } from './rate';
-import { getWalletProvider } from './router';
+import { getWalletProvider, chainIdNumber } from './router';
 
 /**
  * Add G$ (naira in): the customer pays naira by bank transfer, dollars arrive in their own wallet on Base,
@@ -111,8 +111,8 @@ export const formatNaira = (n: number) => `₦${Math.round(n).toLocaleString('en
 type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
 
 async function switchChain(p: Eip1193, hex: string, add?: Record<string, unknown>): Promise<void> {
-  const current = (await p.request({ method: 'eth_chainId' })) as string;
-  if (current.toLowerCase() === hex) return;
+  const current = await p.request({ method: 'eth_chainId' });
+  if (chainIdNumber(current) === parseInt(hex, 16)) return;
   try {
     await p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] });
   } catch (e) {
@@ -234,7 +234,7 @@ export function friendlyAddError(err: unknown): string {
     return 'Your wallet needs a small top-up to cover the network fee. Add a little more and try again. Your money is safe.';
   }
   if (/chain|network|switch/i.test(raw)) {
-    return 'Your wallet did not switch network. Please switch it when asked, then try again. Nothing was taken.';
+    return 'Your wallet did not approve this step. Please tap Approve when it asks, then try again. Nothing was taken.';
   }
   if (/did not match|not ready|price/i.test(raw)) return 'The price changed. Nothing was taken. Please try again.';
   if (/connect your wallet/i.test(raw)) return 'Connect your wallet first.';
