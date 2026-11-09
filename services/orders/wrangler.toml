@@ -3,6 +3,14 @@ main = "src/index.ts"
 compatibility_date = "2026-11-04"
 compatibility_flags = ["nodejs_compat"]
 
+# Serve the API from our own domain. Wallet safety scanners block every *.workers.dev address
+# (free hosting that drainer kits use), and a site that talks to one gets flagged too.
+# workers.dev stays on only so the payout partner's webhook keeps working until it is moved.
+workers_dev = true
+routes = [
+  { pattern = "api.goodcash.xyz", custom_domain = true }
+]
+
 # KV namespace binding — set up "ORDER_STORE" in CF dashboard
 # or via `wrangler kv:namespace create ORDER_STORE`
 # and replace c7897f6e178b431d99d7fef60dd0c81e with the real ID before deploy
