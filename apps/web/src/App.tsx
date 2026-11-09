@@ -1,4 +1,5 @@
 import { isPaidOutStatus } from './lib/useOffRamp';
+import { loadSavedAddGs, saveAddGs, findStuckOnramp, savedFromStuckOnramp } from './lib/addGsSaved';
 import { useAddGsWatcher, type AddGsPhase } from './lib/useAddGsWatcher';
 import { gToWei, nairaFromUsdt, GOODCASH_FEE_PERCENT } from './lib/units';
 import { Modal } from './components/Modal';
@@ -565,6 +566,25 @@ export function App({
     },
   });
   const addInProgress = addPhase !== null && addPhase !== 'problem';
+
+  // The last step ("Get my G$") is remembered only on the device that started the order. If the customer paid on
+  // one device and is now on another (or cleared their browser), their money is waiting in the wallet with nothing
+  // to tap. Rebuild the order from History so the same "Your money is here" step appears. Once per order per device.
+  useEffect(() => {
+    if (!walletAddress || !ADDG_ENABLED || isDemoMode) return;
+    if (loadSavedAddGs(walletAddress)) return;
+    const stuck = findStuckOnramp(history);
+    if (!stuck?.orderId) return;
+    try {
+      const key = 'goodcash_addg_resumed';
+      const done: string[] = JSON.parse(localStorage.getItem(key) ?? '[]');
+      if (done.includes(stuck.orderId)) return;
+      localStorage.setItem(key, JSON.stringify([...done, stuck.orderId].slice(-20)));
+    } catch {
+      return;
+    }
+    saveAddGs(savedFromStuckOnramp(stuck, walletAddress));
+  }, [walletAddress, history]);
 
   // The moment the money is here the pop-up opens by itself on "Get my G$": the customer must never have to
   // find out they can collect their G$. Once per arrival, so closing it is respected (the banner stays).
