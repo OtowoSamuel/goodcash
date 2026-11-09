@@ -12,11 +12,13 @@
     "build": "npm --workspace apps/web run build",
     "test": "npm --workspace apps/web run test",
     "test:orders": "npm --workspace services/orders run test",
-    "test:all": "npm --workspace apps/web run test && npm --workspace services/orders run test && npm run contracts:test",
+    "test:all": "npm --workspace packages/core run test && npm --workspace packages/sdk run test && npm --workspace apps/web run test && npm --workspace services/orders run test && npm run contracts:test",
     "lint": "npm --workspace apps/web run lint",
     "typecheck": "npm --workspace apps/web run typecheck",
     "contracts:test": "cd packages/contracts && forge test",
-    "contracts:build": "cd packages/contracts && forge build"
+    "contracts:build": "cd packages/contracts && forge build",
+    "test:core": "npm --workspace packages/core run test",
+    "test:sdk": "npm --workspace packages/sdk run test"
   },
   "devDependencies": {
     "@goodsdks/citizen-sdk": "^1.2.7",
