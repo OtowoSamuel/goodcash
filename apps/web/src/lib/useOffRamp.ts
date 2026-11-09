@@ -636,11 +636,41 @@ export async function findOneTapPayment(orderId: string, wallet: string, tries =
   return null;
 }
 
+/**
+ * After an unclear failure on the three-step cash out (no payout order yet), find out whether the swap of `amountG`
+ * actually went through since `sinceSec`. Returns what is needed to finish the payout, or null.
+ */
+export async function findRecentCashOut(
+  wallet: string,
+  amountG: number,
+  sinceSec: number,
+  tries = 8,
+  waitMs = 4000
+): Promise<{ txHash: string; usdtReceived: number; amountG: number } | null> {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const rows = await fetchWalletHistory(wallet);
+      const hit = rows.find((r) => !r.orderId && r.txHash && r.at >= sinceSec && Math.abs(r.amountG - amountG) < 1e-6);
+      if (hit) return { txHash: hit.txHash, usdtReceived: hit.usdtReceived, amountG: hit.amountG };
+    } catch {
+      // try again
+    }
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, waitMs));
+  }
+  return null;
+}
+
 export async function fetchWalletHistory(wallet: string): Promise<import('./historySync').ServerSwap[]> {
+  return (await fetchWalletHistoryFull(wallet)).swaps;
+}
+
+/** The same, plus whether the server has finished reading this wallet's history (a new wallet takes a few calls). */
+export async function fetchWalletHistoryFull(wallet: string): Promise<{ swaps: import('./historySync').ServerSwap[]; complete: boolean }> {
   const data = await apiGet<{
     swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number; orderId?: string; status?: string; naira?: string }>;
+    complete?: boolean;
   }>(`/history?wallet=${encodeURIComponent(wallet)}`);
-  return (data.swaps ?? []).map((s) => ({
+  const swaps = (data.swaps ?? []).map((s) => ({
     txHash: s.txHash,
     amountG: Number(s.amountG),
     usdtReceived: Number(s.usdtReceived),
@@ -649,4 +679,5 @@ export async function fetchWalletHistory(wallet: string): Promise<import('./hist
     status: s.status,
     naira: s.naira ? Number(s.naira) : undefined,
   }));
+  return { swaps, complete: data.complete !== false };
 }

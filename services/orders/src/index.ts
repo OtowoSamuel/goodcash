@@ -253,6 +253,17 @@ function json(data: unknown, status = 200, extraHeaders: Record<string, string> 
   });
 }
 
+/**
+ * A refused request, in words a customer understands. The technical reasons (which field, what was wrong) go to our
+ * log as field names only, never the values.
+ */
+export function invalidRequest(issues: ReadonlyArray<{ path: PropertyKey[]; code?: string }>, where: string): Response {
+  const fields = [...new Set(issues.map((i) => i.path.map(String).join('.') || '(body)'))].slice(0, 6).join(',');
+  console.error(`[${where}] invalid request: ${fields}`);
+  const tooSmall = issues.some((i) => i.path.map(String).join('.') === 'amount' && (i.code === 'custom' || i.code === 'too_small'));
+  return err(tooSmall ? 'That amount is too small to cash out. Please try a larger amount.' : 'Some details were missing or not right. Please check them and try again.');
+}
+
 function err(message: string, status = 400): Response {
   return json({ error: message }, status);
 }
@@ -716,7 +727,8 @@ async function scanWalletSwapsViaRpc(wallet: string, env: Env, target: ScanTarge
       back !== (saved ? (JSON.parse(saved) as ScanState).back : latest) ||
       latest + 1 - (saved ? (JSON.parse(saved) as ScanState).fwd : latest + 1) >= LOG_WINDOW);
   if (!saved || changed) await env.ORDER_STORE.put(stateKey, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 120 });
-  return rows;
+  // Finished when nothing is left to scan in either direction (the backward scan takes a few calls for a new wallet)
+  return Object.assign(rows, { complete: back < target.deployBlock && fwd === latest + 1 });
 }
 
 async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
@@ -727,7 +739,7 @@ async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
     const hit = await edge.match(cacheKey);
     if (hit) {
       try {
-        return (await hit.json()) as SwapRow[];
+        return Object.assign((await hit.json()) as SwapRow[], { complete: true });
       } catch {
         // fall through to a fresh read
       }
@@ -735,6 +747,8 @@ async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
   }
 
   let rows: SwapRow[] | null = null;
+  // False while a new wallet's history is still being read; the app then asks again shortly
+  let complete = false;
   try {
     // The current router must answer. The one-tap router (when switched on) adds to it, and a hiccup there
     // never hides the rest of a customer's history.
@@ -742,6 +756,7 @@ async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
     const settled = await Promise.allSettled(targets.map((t) => scanWalletSwapsViaRpc(w, env, t)));
     if (settled[0].status === 'rejected') throw settled[0].reason;
     rows = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+    complete = settled.every((r) => r.status === 'fulfilled' && (r.value as { complete?: boolean }).complete === true);
     settled.forEach((r, i) => {
       if (i > 0 && r.status === 'rejected') console.error('[orders] one-tap chain scan failed:', r.reason);
     });
@@ -768,10 +783,11 @@ async function getWalletSwapRows(wallet: string, env: Env): Promise<SwapRow[]> {
   }
 
   if (rows) {
-    if (edge) {
+    // Never cache a half-read history: that kept showing customers an incomplete list for minutes
+    if (edge && complete) {
       await edge.put(cacheKey, new Response(JSON.stringify(rows), { headers: { 'Cache-Control': 'public, max-age=180' } }));
     }
-    return rows;
+    return Object.assign(rows, { complete });
   }
 
   const saved: SwapRow[] = [];
@@ -1031,7 +1047,7 @@ async function handleWalletHistory(request: Request, env: Env): Promise<Response
       } else if (liveLookups < 8) {
         liveLookups += 1;
         status = (await lookupOrderStatus(orderId, env)) ?? undefined;
-        if (status === 'settled' || status === 'validated') {
+        if (status && PAID_STATUSES.has(status)) {
           await env.ORDER_STORE.put(`done:${key}`, status, { expirationTtl: 60 * 60 * 24 * 400 });
         }
       }
@@ -1047,7 +1063,7 @@ async function handleWalletHistory(request: Request, env: Env): Promise<Response
       ...(naira ? { naira } : {}),
     });
   }
-  return json({ swaps: out });
+  return json({ swaps: out, complete: (rows as { complete?: boolean }).complete !== false });
 }
 
 // ---------------------------------------------------------------------------
@@ -1229,8 +1245,7 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
 
   const parsed = CreateOrderSchema.safeParse(body);
   if (!parsed.success) {
-    const msgs = parsed.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`);
-    return err(msgs.join('; '));
+    return invalidRequest(parsed.error.issues, 'orders');
   }
 
   const swapCheck = await verifySwapOnChain(
@@ -1615,7 +1630,7 @@ async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Resp
     return err('Invalid JSON body');
   }
   const parsed = OneTapOrderSchema.safeParse(body);
-  if (!parsed.success) return err(parsed.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; '));
+  if (!parsed.success) return invalidRequest(parsed.error.issues, 'orders-v2');
   const input = parsed.data;
 
   // Only people who really hold the G$ can ask for an order (keeps junk orders out)
@@ -1706,7 +1721,7 @@ async function handleLinkOneTapSwap(orderId: string, request: Request, env: Env)
   }
   const txHash = typeof body.txHash === 'string' ? body.txHash : '';
   const wallet = typeof body.wallet === 'string' ? body.wallet.toLowerCase() : '';
-  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash) || !/^0x[0-9a-f]{40}$/.test(wallet)) return err('Invalid request', 400);
+  if (!/^0x[0-9a-fA-F]{64}$/.test(txHash) || !/^0x[0-9a-f]{40}$/.test(wallet)) return err('Some details were missing or not right. Please try again.', 400);
 
   const stateRaw = await env.ORDER_STORE.get(`order:${orderId}`);
   if (!stateRaw) return err('We could not find that order.', 404);
@@ -2008,7 +2023,7 @@ async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
     return err('Invalid JSON body');
   }
   const parsed = RelayQuoteSchema.safeParse(body);
-  if (!parsed.success || BigInt(parsed.data.amount) < 500_000n) return err('Invalid request');
+  if (!parsed.success || BigInt(parsed.data.amount) < 500_000n) return err('Some details were missing or not right. Please try again.');
   try {
     const res = await fetch('https://api.relay.link/quote/v2', {
       method: 'POST',
@@ -2053,7 +2068,7 @@ async function handleRelayExecute(request: Request, env: Env): Promise<Response>
     return err('Invalid JSON body');
   }
   const parsed = RelayExecuteSchema.safeParse(body);
-  if (!parsed.success) return err('Invalid request');
+  if (!parsed.success) return err('Some details were missing or not right. Please try again.');
   const { signature, ...rest } = parsed.data;
   try {
     const res = await fetch(`https://api.relay.link/execute/permits?signature=${signature}`, {
@@ -2074,7 +2089,7 @@ async function handleRelayExecute(request: Request, env: Env): Promise<Response>
 
 async function handleRelayStatus(request: Request, env: Env): Promise<Response> {
   const requestId = new URL(request.url).searchParams.get('requestId') ?? '';
-  if (!/^0x[0-9a-fA-F]{64}$/.test(requestId)) return err('Invalid request');
+  if (!/^0x[0-9a-fA-F]{64}$/.test(requestId)) return err('Some details were missing or not right. Please try again.');
   try {
     const res = await fetch(`https://api.relay.link/intents/status/v3?requestId=${requestId}`, { headers: relayHeaders(env) });
     if (!res.ok) return err('Could not check this right now.', 502);
@@ -2239,7 +2254,7 @@ async function handleOnrampArrived(orderId: string, request: Request, env: Env):
     return err('Invalid JSON body');
   }
   const parsed = OnrampArrivedSchema.safeParse(body);
-  if (!parsed.success) return err('Invalid request');
+  if (!parsed.success) return err('Some details were missing or not right. Please try again.');
   try {
     const res = await fetch(`https://api.relay.link/intents/status/v3?requestId=${parsed.data.requestId}`, { headers: relayHeaders(env) });
     const d = (await res.json()) as { status?: string };

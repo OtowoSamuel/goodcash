@@ -433,14 +433,21 @@ export async function executeRouterSwap(args: ExecuteSwapArgs): Promise<SwapExec
 
   // 2. Call cashOut
   onStep?.({ kind: 'swap', n: totalSteps - 1, total: totalSteps });
-  const txHash = await walletClient.writeContract({
-    chain: celo,
-    address: routerAddress,
-    abi: GOOD_CASH_ROUTER_ABI,
-    functionName: 'cashOut',
-    args: [routeNum, amountInWei, minAmountOut, deadline, walletAddress as Address, refBytes],
-    account: walletClient.account ?? (walletAddress as Address),
-  });
+  let txHash: `0x${string}`;
+  try {
+    txHash = await walletClient.writeContract({
+      chain: celo,
+      address: routerAddress,
+      abi: GOOD_CASH_ROUTER_ABI,
+      functionName: 'cashOut',
+      args: [routeNum, amountInWei, minAmountOut, deadline, walletAddress as Address, refBytes],
+      account: walletClient.account ?? (walletAddress as Address),
+    });
+  } catch (e) {
+    // Same rule as one tap: only call it "not sent" when the error proves it
+    if (provesNothingWasSent(e)) throw e;
+    throw new SwapUncertainError(e);
+  }
 
   // 3. Wait for swap receipt
   let receipt;

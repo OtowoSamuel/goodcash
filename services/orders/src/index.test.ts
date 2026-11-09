@@ -159,7 +159,7 @@ describe('POST /orders', () => {
     expect(res.status).toBe(400);
     const data = await res.json() as { error: string };
     // Error message should mention the minimum constraint
-    expect(data.error).toMatch(/at least|minimum/i);
+    expect(data.error).toMatch(/too small/i);
     // Paycrest should NOT have been called
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -1724,5 +1724,17 @@ describe('partner errors in our logs', () => {
     expect(out).toContain('field=Recipient');
     expect(out).not.toMatch(/0123456789|22212345678|ada@example.com/);
     expect(safePartnerError('plain 1234567 text')).toBe('plain [number] text');
+  });
+});
+
+
+describe('refused requests read as plain words', () => {
+  it('never shows the validation library\'s technical text to a customer', async () => {
+    const kv = new MockKV();
+    const res = await worker.fetch(makeRequest('POST', '/orders/v2', { minUsdt: 'abc' }), makeEnv(kv, { ROUTER_V2_ADDRESS: '0x2222222222222222222222222222222222222222' } as never));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('Some details were missing or not right. Please check them and try again.');
+    expect(body.error).not.toMatch(/expected|received|undefined|Invalid input/i);
   });
 });

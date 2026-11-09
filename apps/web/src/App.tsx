@@ -32,7 +32,7 @@ import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
 import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, celoText, SwapUncertainError, type NetworkFeeInfo } from './lib/router';
-import { findOneTapPayment, createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
+import { findOneTapPayment, findRecentCashOut, fetchWalletHistoryFull, createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
 import { PendingPayoutCard } from './components/PendingPayoutCard';
@@ -741,6 +741,8 @@ export function App({
   };
 
   const handleConfirmSwap = async () => {
+    // When this attempt started, so a lost wallet reply can be matched to the swap it made
+    const swapStartedAt = Math.floor(Date.now() / 1000) - 60;
     if (!pendingQuote) return;
     if (!walletAddress) {
       setSwapError('Connect your wallet before cashing out.');
@@ -880,6 +882,18 @@ export function App({
       });
       setConfirmStage(null);
     } catch (err: unknown) {
+      if (err instanceof SwapUncertainError && walletAddress && pendingQuote) {
+        // The wallet's reply was lost. Look for the swap before saying anything; if it went through, offer to finish.
+        reportIssue('swap_uncertain', err.cause);
+        const found = await findRecentCashOut(walletAddress, pendingQuote.amountG, swapStartedAt);
+        if (found) {
+          savePendingPayout(found);
+          setPendingSwapResult(found);
+          setSwapError('Your cash out went through. Tap "Try the payout again" to finish getting your naira.');
+          setConfirmStage(null);
+          return;
+        }
+      }
       if (err instanceof SwapPendingError && walletAddress) {
         // The swap was sent but not confirmed yet. Keep watching for it, then offer to finish the payout.
         const hash = err.hash;
@@ -1048,10 +1062,18 @@ export function App({
   useEffect(() => {
     if (isDemoMode || !walletAddress) return;
     let alive = true;
+    let quickTries = 0;
+    let quick: ReturnType<typeof setTimeout> | undefined;
     const sync = () =>
-      fetchWalletHistory(walletAddress)
-        .then((server) => {
-          if (alive) setHistory((prev) => mergeServerHistory(prev, server));
+      fetchWalletHistoryFull(walletAddress)
+        .then(({ swaps, complete }) => {
+          if (!alive) return;
+          setHistory((prev) => mergeServerHistory(prev, swaps));
+          // A new wallet's history is read in a few steps: ask again soon instead of waiting minutes
+          if (!complete && quickTries < 12) {
+            quickTries += 1;
+            quick = setTimeout(() => void sync(), 5000);
+          }
         })
         .catch(() => {});
     void sync();
@@ -1059,6 +1081,7 @@ export function App({
     return () => {
       alive = false;
       clearInterval(iv);
+      if (quick) clearTimeout(quick);
     };
   }, [walletAddress, isDemoMode]);
 

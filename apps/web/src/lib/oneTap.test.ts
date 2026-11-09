@@ -253,3 +253,35 @@ describe('messages from our own server', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('three-step cash out after a lost wallet reply', () => {
+  it('finds the swap that went through (same amount, after the attempt started) so the payout can be finished', async () => {
+    const { findRecentCashOut } = await import('./useOffRamp');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            swaps: [
+              { txHash: '0xold', amountG: '5000', usdtReceived: '0.57', at: 100 },
+              { txHash: '0xpaid', amountG: '5000', usdtReceived: '0.57', at: 2000, orderId: 'o1' },
+              { txHash: '0xnew', amountG: '5000', usdtReceived: '0.58', at: 2000 },
+            ],
+            complete: true,
+          }),
+          { status: 200 }
+        )
+      )
+    );
+    expect(await findRecentCashOut('0x1111111111111111111111111111111111111111', 5000, 1500, 1, 1)).toEqual({ txHash: '0xnew', usdtReceived: 0.58, amountG: 5000 });
+    expect(await findRecentCashOut('0x1111111111111111111111111111111111111111', 4700, 1500, 1, 1)).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('the history call says when the server is still reading older cash outs', async () => {
+    const { fetchWalletHistoryFull } = await import('./useOffRamp');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ swaps: [], complete: false }), { status: 200 })));
+    expect((await fetchWalletHistoryFull('0x1111111111111111111111111111111111111111')).complete).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
