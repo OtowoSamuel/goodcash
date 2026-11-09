@@ -62,8 +62,8 @@ RESEND_FROM = "GoodCash <hello@goodcash.xyz>"
 PARTNER_API_ENABLED = "true"
 # Partners getting TEST keys themselves (email-confirmed, capped per day). Off until you switch it on.
 # Naira in for partners (top-ups). Off until you switch it on; live mode also needs each partner switched on.
-PARTNER_ONRAMP_ENABLED = "false"
-PARTNER_SIGNUP_ENABLED = "false"
+PARTNER_ONRAMP_ENABLED = "true"
+PARTNER_SIGNUP_ENABLED = "true"
 PARTNER_SIGNUP_DAILY_CAP = "20"
 WIDGET_ORIGINS = "https://pay.goodcash.xyz"
 PARTNER_MAX_G = "1000000"
@@ -72,7 +72,7 @@ CELO_RPC_URL = "https://forno.celo.org"
 VERIFY_SWAP_ONCHAIN = "true"
 RATE_LIMIT_MAX = "30"
 RATE_LIMIT_WINDOW_SECONDS = "60"
-ALLOWED_ORIGINS = "https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://onetap-test.goodcash-1e6.pages.dev,https://magic-test.goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"
+ALLOWED_ORIGINS = "https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://onetap-test.goodcash-1e6.pages.dev,https://magic-test.goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz,https://pay.goodcash.xyz"
 # One-tap router (owned by the GoodCash Safe). The app only uses it on builds that also set VITE_ROUTER_V2_ADDRESS.
 ROUTER_V2_ADDRESS = "0x546698368a246539Df5e641EdC2b79c5782ea359"
 ROUTER_V2_DEPLOY_BLOCK = "82237765"
@@ -83,4 +83,4 @@ SENDER_FEE_PERCENT = "1"
 SENDER_FEE_ADDRESS = "0x735Ef948F746bc141D04042d2A18aA7f967bce2f"
 
 [env.development.vars]
-ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz"
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://goodcash.pages.dev,https://goodcash-1e6.pages.dev,https://goodcash.xyz,https://www.goodcash.xyz,https://pay.goodcash.xyz"
