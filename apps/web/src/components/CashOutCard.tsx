@@ -167,6 +167,8 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
   const isBelowMinimum =
     !IS_DEMO_MODE && (!rate.minimumReached || (quote !== null && Number(quote.usdtOut) / 1e6 < MIN_NET_USDT_REQUIRED));
   const isRateUnavailable = rate.rateUnavailable || Boolean(rateError);
+  // Still working out the naira amount: the rate or the live price has not come back yet
+  const isCalculating = amountNumber > 0 && !rateError && (ngnPerUsdt === null || (LIVE_QUOTES && quote === null));
   const isValidAmount = amountNumber > 0 && !isOverBalance && !isHighImpact && !isBelowMinimum && !isRateUnavailable;
 
   const isBankValid = institutionCode.trim().length > 0;
@@ -235,8 +237,17 @@ export const CashOutCard: React.FC<CashOutCardProps> = ({
       <div className="gc-card gc-card--mint">
         <span className="gc-lab">{t.youReceiveAbout}</span>
         <div className="gc-row">
-          <div className="gc-big">
-            {Number.isFinite(rate.netNaira) ? formatNaira(rate.netNaira) : t.nairaUnavailable}
+          <div className="gc-big" role="status" aria-live="polite">
+            {isCalculating ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 18 }}>
+                <span className="w-5 h-5 shrink-0 rounded-full border-4 border-[#111] border-t-transparent animate-spin" aria-hidden="true" />
+                Working it out…
+              </span>
+            ) : Number.isFinite(rate.netNaira) ? (
+              formatNaira(rate.netNaira)
+            ) : (
+              t.nairaUnavailable
+            )}
           </div>
           <span className="gc-pill gc-pill--white">NGN</span>
         </div>

@@ -368,6 +368,16 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
         <Field label="How much naira do you want to add?">
           <input className={INPUT} inputMode="numeric" placeholder="₦5,000" value={naira} onChange={(e) => setNaira(e.target.value.replace(/[^\d,]/g, ''))} aria-label="Amount in naira" />
         </Field>
+        {!quote && !quoteError && amount >= 1000 && (
+          <div className="gc-note" style={{ background: '#8cf0c0' }} role="status" aria-live="polite">
+            <div className="gc-lab">You will get about</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="w-6 h-6 shrink-0 rounded-full border-4 border-[#111] border-t-transparent animate-spin" aria-hidden="true" />
+              <b style={{ fontSize: 18 }}>Working out your {what}…</b>
+            </div>
+            <div className="gc-sm">for {formatNaira(amount)}. This only takes a moment.</div>
+          </div>
+        )}
         {quote && (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
             <div className="gc-lab">You will get about</div>
