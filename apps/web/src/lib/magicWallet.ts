@@ -20,8 +20,37 @@ const REOWN_PROJECT_ID = (env.VITE_WALLETCONNECT_PROJECT_ID ?? '').trim();
 
 export const MAGIC_ENABLED = KEY.length > 0;
 
-/** Wallets the panel offers. */
+/** Wallets the panel offers when this browser already has a wallet in it (an extension, or a wallet app's own browser). */
 export const MAGIC_WALLETS = ['metamask', 'walletconnect', 'coinbase', 'phantom', 'rabby'] as const;
+
+/**
+ * Wallets that work with no wallet inside the browser: WalletConnect opens the customer's wallet app (MetaMask,
+ * Trust, Valora...) from their phone, and Coinbase has its own app link. MetaMask, Phantom and Rabby on their own
+ * are browser extensions, so offering them in a plain phone browser ends in "metamask connector not found".
+ */
+export const WALLETS_WITHOUT_EXTENSION = ['walletconnect', 'coinbase'] as const;
+
+/** True when this browser already has a wallet in it: window.ethereum, or a wallet announcing itself (EIP-6963). */
+export function browserHasWallet(win: Window = window): boolean {
+  if ((win as unknown as { ethereum?: unknown }).ethereum) return true;
+  let found = false;
+  const onAnnounce = () => {
+    found = true;
+  };
+  win.addEventListener('eip6963:announceProvider', onAnnounce);
+  try {
+    // Wallets answer straight away, inside this call
+    win.dispatchEvent(new Event('eip6963:requestProvider'));
+  } finally {
+    win.removeEventListener('eip6963:announceProvider', onAnnounce);
+  }
+  return found;
+}
+
+/** The wallets to list in the connect panel for this browser. */
+export function walletsForBrowser(hasWallet: boolean = browserHasWallet()): readonly (typeof MAGIC_WALLETS)[number][] {
+  return hasWallet ? MAGIC_WALLETS : WALLETS_WITHOUT_EXTENSION;
+}
 
 interface Eip1193 {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;

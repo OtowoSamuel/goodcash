@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { MagicWidget } from '@magic-ext/wallet-kit';
-import { getMagic, MAGIC_WALLETS, type MagicLoginResult } from '../lib/magicWallet';
+import { getMagic, walletsForBrowser, type MagicLoginResult } from '../lib/magicWallet';
 
 interface Props {
   onConnected: (result: MagicLoginResult) => void;
@@ -40,7 +40,7 @@ export default function MagicConnect({ onConnected, onError, onClose }: Props) {
     <MagicWidget
       displayMode="modal"
       isOpen
-      wallets={[...MAGIC_WALLETS]}
+      wallets={[...walletsForBrowser()]}
       closeOnSuccess
       closeOnClickOutside
       onClose={onClose}
