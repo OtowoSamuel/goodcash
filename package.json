@@ -15,7 +15,7 @@
     "test:all": "npm --workspace packages/core run test && npm --workspace packages/sdk run test && npm --workspace packages/react run test && npm --workspace apps/widget run test && npm --workspace apps/web run test && npm --workspace services/orders run test && npm run contracts:test",
     "lint": "npm --workspace apps/web run lint",
     "typecheck": "npm --workspace apps/web run typecheck",
-    "contracts:test": "cd packages/contracts && forge test",
+    "contracts:test": "cd packages/contracts && CELO_RPC_URL=${CELO_RPC_URL:-https://forno.celo.org} forge test",
     "contracts:build": "cd packages/contracts && forge build",
     "test:core": "npm --workspace packages/core run test",
     "test:sdk": "npm --workspace packages/sdk run test",

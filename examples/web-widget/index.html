@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GoodCash widget example</title>
+    <script src="https://pay.goodcash.xyz/widget.js"></script>
+  </head>
+  <body style="font-family: system-ui; padding: 24px">
+    <h1>My game</h1>
+    <p>Balance: 5,000 G$</p>
+    <button id="popup">Cash out (popup)</button>
+    <button id="embed">Cash out (on this page)</button>
+    <pre id="log"></pre>
+    <script>
+      const KEY = 'gc_pk_test_REPLACE_ME'; // this page's site must be on your key's allowed list
+      const log = (e) => (document.getElementById('log').textContent += e.type + (e.cashOut ? ' ' + e.cashOut.status : '') + '\n');
+      document.getElementById('popup').onclick = () => GoodCash.open({ publishableKey: KEY, mode: 'popup', amountG: 5000, partnerRef: 'player-1', onEvent: log });
+      document.getElementById('embed').onclick = () => GoodCash.open({ publishableKey: KEY, mode: 'embed', amountG: 5000, partnerRef: 'player-1', onEvent: log });
+    </script>
+  </body>
+</html>

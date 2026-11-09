@@ -1,0 +1,21 @@
+# GoodCash Partner API
+
+> Let users cash out GoodDollar (G$) on Celo to a Nigerian bank account (naira), from inside any app or game. Non-custodial: the user's wallet (or the app's own server wallet) signs ONE transaction. GoodCash never holds money or keys.
+
+Rules an AI coding tool MUST follow:
+- Use `gc_pk_...` (publishable) keys in browsers/apps. NEVER put a `gc_sk_...` (secret) key in frontend code, a mobile app, a game client, or a public repo. Secret keys belong on a server only.
+- Start with a test key (`gc_pk_test_...`). Test keys never move money. Switch to live keys only when the user says so.
+- Easiest integration: load `https://pay.goodcash.xyz/widget.js` and call `GoodCash.open({ publishableKey, mode: 'popup' })`. No other code is needed.
+- React: `npm i @goodcash/react @goodcash/sdk`, wrap in `<GoodCashProvider publishableKey>`, render `<CashOutButton />`.
+- Custom UI: `npm i @goodcash/sdk`. Always show `quote.fees` (each line) and `quote.receive.naira` before confirming, and pass that same `quote` to `cashOut()`. Never compute fees yourself.
+- Amounts are G$ as decimal strings or numbers (e.g. "5000"), never wei.
+- Show the account name from `verifyAccount()` to the user before they confirm.
+- If an error has code `uncertain` or `pending_confirmation`, do NOT retry: tell the user to check their history first.
+- Credit users from webhooks (server, verified with `verifyWebhook` from `@goodcash/sdk/server` using the RAW body), not from browser events.
+- Show `error.message` to users (plain words). Log `error.detail` for developers.
+- Keep "Powered by GoodCash" visible.
+
+## Docs
+- [Full reference for AI tools](https://goodcash.xyz/partners/llms-full.txt)
+- [OpenAPI](https://goodcash.xyz/partners/openapi.yaml)
+- [Quickstarts](https://goodcash.xyz/partners)

@@ -11,6 +11,7 @@
  *   node scripts/partners.mjs disable <partnerId>        (all its keys stop working at once)
  *   node scripts/partners.mjs enable  <partnerId>
  *   node scripts/partners.mjs rotate  <partnerId> --kind pk|sk --mode live|test   (old key stops working)
+ *   node scripts/partners.mjs ledger  <partnerId> <YYYY-MM>   (fees earned that month, for the monthly payout)
  *   node scripts/partners.mjs secrets-key                (how to set PARTNER_SECRETS_KEY without seeing it)
  *
  * Add --dry-run to print what would be written instead of writing (keys are then shown masked).
@@ -208,6 +209,27 @@ async function main() {
       console.log(`\nNew ${mode} ${kind === 'pk' ? 'publishable' : 'secret'} key (shown once): ${show(key)}\nThe old one has stopped working.\n`);
       break;
     }
+    case 'ledger': {
+      const [id, month] = positional;
+      if (!id || !/^\d{4}-\d{2}$/.test(month ?? '')) throw new Error('Usage: ledger <partnerId> <YYYY-MM>');
+      if (DRY) return console.log(`[dry-run] would total ledger:${id}:${month}:*`);
+      const names = JSON.parse(kv(['key', 'list', '--prefix', `ledger:${id}:${month}:`])).map((k) => k.name);
+      let partner = 0;
+      let goodcash = 0;
+      let notCharged = 0;
+      for (const n of names) {
+        const e = get(n);
+        if (!e) continue;
+        partner += e.partnerFeeUsdt;
+        goodcash += e.goodcashFeeUsdt;
+        if (!e.feeCharged) notCharged++;
+      }
+      console.log(`${id} ${month}: ${names.length} paid cash outs`);
+      console.log(`  Partner's share to pay out:  $${partner.toFixed(4)} (USDT, from the GoodCash Safe)`);
+      console.log(`  GoodCash's share:            $${goodcash.toFixed(4)}`);
+      if (notCharged) console.log(`  ${notCharged} cash out(s) went through without the fee (the payout partner refused it): nothing owed on those.`);
+      break;
+    }
     case 'secrets-key': {
       console.log('Run this yourself in services/orders. It makes a random key and stores it as a secret without showing it:\n');
       console.log('  openssl rand -base64 32 | npx wrangler secret put PARTNER_SECRETS_KEY\n');
@@ -216,7 +238,7 @@ async function main() {
     }
     default:
       console.log(fileURLToPath(import.meta.url));
-      console.log('Commands: create, list, show, update, disable, enable, rotate, secrets-key (add --dry-run to try safely)');
+      console.log('Commands: create, list, show, update, disable, enable, rotate, ledger, secrets-key (add --dry-run to try safely)');
   }
 }
 

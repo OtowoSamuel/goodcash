@@ -1,0 +1,492 @@
+# GoodCash Partner API: full reference for AI coding tools
+(Generated from docs/partners by scripts/build-llms.mjs. The API reference is openapi.yaml.)
+
+<!-- llms.txt -->
+
+# GoodCash Partner API
+
+> Let users cash out GoodDollar (G$) on Celo to a Nigerian bank account (naira), from inside any app or game. Non-custodial: the user's wallet (or the app's own server wallet) signs ONE transaction. GoodCash never holds money or keys.
+
+Rules an AI coding tool MUST follow:
+- Use `gc_pk_...` (publishable) keys in browsers/apps. NEVER put a `gc_sk_...` (secret) key in frontend code, a mobile app, a game client, or a public repo. Secret keys belong on a server only.
+- Start with a test key (`gc_pk_test_...`). Test keys never move money. Switch to live keys only when the user says so.
+- Easiest integration: load `https://pay.goodcash.xyz/widget.js` and call `GoodCash.open({ publishableKey, mode: 'popup' })`. No other code is needed.
+- React: `npm i @goodcash/react @goodcash/sdk`, wrap in `<GoodCashProvider publishableKey>`, render `<CashOutButton />`.
+- Custom UI: `npm i @goodcash/sdk`. Always show `quote.fees` (each line) and `quote.receive.naira` before confirming, and pass that same `quote` to `cashOut()`. Never compute fees yourself.
+- Amounts are G$ as decimal strings or numbers (e.g. "5000"), never wei.
+- Show the account name from `verifyAccount()` to the user before they confirm.
+- If an error has code `uncertain` or `pending_confirmation`, do NOT retry: tell the user to check their history first.
+- Credit users from webhooks (server, verified with `verifyWebhook` from `@goodcash/sdk/server` using the RAW body), not from browser events.
+- Show `error.message` to users (plain words). Log `error.detail` for developers.
+- Keep "Powered by GoodCash" visible.
+
+## Docs
+- [Full reference for AI tools](https://goodcash.xyz/partners/llms-full.txt)
+- [OpenAPI](https://goodcash.xyz/partners/openapi.yaml)
+- [Quickstarts](https://goodcash.xyz/partners)
+
+<!-- README.md -->
+
+# GoodCash for Partners
+
+Let your users turn **GoodDollar (G$)** into **naira in their own Nigerian bank account**, without leaving your app or game.
+One wallet confirmation; paid in minutes. GoodCash never holds your users' money or keys.
+
+| You are | Start here | Time |
+| --- | --- | --- |
+| A game (web, WebGL, Unity, mobile) | [Game quickstart](quickstarts/game.md) | 10 min |
+| A React / Next.js app | [React quickstart](quickstarts/react.md) | 15 min |
+| A React Native app | [React Native quickstart](quickstarts/react-native.md) | 30 min |
+| A fintech / server (airtime, bills, your own UI) | [Server quickstart](quickstarts/fintech-server.md) | 1 day |
+| An AI app builder | [AI builder quickstart](quickstarts/ai-builder.md) + [llms.txt](llms.txt) | 5 min |
+
+Reference: [OpenAPI](openapi.yaml) · [Errors](errors.md) · [Webhooks](webhooks.md) · [Test mode](test-mode.md) ·
+[Fees](FEES.md) · [Go-live checklist](go-live.md) · [Changelog](CHANGELOG.md)
+
+## How it works
+
+1. Your app asks GoodCash for a **quote**: what the user gets in naira, with every fee on its own line.
+2. The user picks their bank; GoodCash shows the **account holder's name** to confirm.
+3. GoodCash prepares **one transaction**. The SDK checks it, then the user's wallet (or your server wallet) signs it.
+4. The GoodCash router swaps the G$ and pays the payout partner exactly; any surplus goes straight back to the user.
+5. The bank is paid, usually within minutes. You get a signed **webhook** (`cashout.paid`).
+
+## Keys
+
+| Key | Where | Can |
+| --- | --- | --- |
+| `gc_pk_test_...` / `gc_pk_live_...` (publishable) | Browsers, apps, the widget. Only from your allowed sites or app ids. | Everything a user's own cash out needs |
+| `gc_sk_test_...` / `gc_sk_live_...` (secret) | Your server only. Refused from browsers. | Plus: list all cash outs, webhook settings |
+
+Test keys never move money (see [test mode](test-mode.md)). Ask GoodCash for keys; we add your sites and app ids.
+
+## Packages
+
+- `https://pay.goodcash.xyz/widget.js`: the whole flow, one script tag.
+- [`@goodcash/react`](../../packages/react/README.md): `<CashOutButton />` and hooks.
+- [`@goodcash/sdk`](../../packages/sdk/README.md): client for browsers, React Native, Node, edge; `@goodcash/sdk/server` for webhooks.
+- Examples: [`examples/`](../../examples)
+
+<!-- quickstarts/ai-builder.md -->
+
+# AI app builder quickstart
+
+Point your AI at [`llms.txt`](../llms.txt) (short rules) or [`llms-full.txt`](../llms-full.txt) (everything).
+
+The smallest working integration, safe to paste into any generated page:
+
+```html
+<script src="https://pay.goodcash.xyz/widget.js"></script>
+<button onclick="GoodCash.open({ publishableKey: 'gc_pk_test_REPLACE_ME', mode: 'popup' })">
+  Cash out G$ to my bank
+</button>
+```
+
+For a React app the AI generates:
+
+```tsx
+import { GoodCashProvider, CashOutButton } from '@goodcash/react';
+<GoodCashProvider publishableKey="gc_pk_test_REPLACE_ME"><CashOutButton /></GoodCashProvider>
+```
+
+Rules your AI must keep:
+- Only a publishable key (`gc_pk_...`) in generated frontend code. Never a secret key.
+- Start with a test key; the user switches to live.
+- Don't compute fees or prices: show what the quote returns.
+- The site the generated app runs on must be on the partner's allowed list. Today each site is listed exactly
+  (for example `https://shop.example.com`); wildcard sub-domains (`https://*.yourbuilder.app`) are not supported yet.
+  Builders that publish every app on its own sub-domain should talk to GoodCash first.
+
+<!-- quickstarts/game.md -->
+
+# Game quickstart (web, WebGL, Unity, mobile)
+
+## A. Players use their own wallet (MetaMask, MiniPay, Valora...)
+
+Web or WebGL build: add two lines to your page.
+
+```html
+<script src="https://pay.goodcash.xyz/widget.js"></script>
+<script>
+  function cashOut(playerId, gBalance) {
+    GoodCash.open({
+      publishableKey: 'gc_pk_test_...',   // test first
+      mode: 'popup',                      // or 'embed' (overlay on your page)
+      amountG: gBalance,
+      partnerRef: playerId,
+      onEvent: (e) => { if (e.type === 'cashout.paid') showToast('Paid to your bank!'); },
+    });
+  }
+</script>
+```
+
+From Unity WebGL, call it with a `.jslib` plugin:
+
+```js
+mergeInto(LibraryManager.library, {
+  GoodCashOpen: function (playerIdPtr, amount) {
+    GoodCash.open({ publishableKey: 'gc_pk_test_...', mode: 'embed', amountG: amount, partnerRef: UTF8ToString(playerIdPtr) });
+  },
+});
+```
+
+## B. Unity / native mobile (no web page)
+
+Open the hosted flow in a WebView and come back by deep link:
+
+```
+https://pay.goodcash.xyz/?key=gc_pk_test_...&mode=redirect&amountG=5000&ref=player-42&returnUrl=mygame://cashout
+```
+
+Your app receives `mygame://cashout?goodcash_cashout=<id>&status=sent`. Register your app id with GoodCash.
+Note: inside a WebView the player needs a wallet the WebView can reach (an in-app browser wallet such as MiniPay).
+For players without one, use option C or the widget's host signing (D).
+
+## C. Your game pays out from its own wallet (players earned G$ inside the game)
+
+Run it on your server with the secret key. See the [server quickstart](fintech-server.md). Keep the payout wallet's
+key in a key manager with limits; GoodCash never sees it.
+
+## D. Your game has an embedded wallet (Privy, Thirdweb, your own)
+
+The widget asks your page to send the one transaction; it never sees keys:
+
+```js
+GoodCash.open({
+  publishableKey: 'gc_pk_test_...',
+  mode: 'embed',
+  wallet: player.address,
+  signer: player.walletProvider,          // EIP-1193 provider, or async (tx) => txHash
+  partnerRef: player.id,
+});
+```
+
+Then credit or notify players from your **server webhook** (`cashout.paid`), not from browser events alone.
+
+<!-- quickstarts/react.md -->
+
+# React / Next.js quickstart
+
+```bash
+npm install @goodcash/react @goodcash/sdk
+```
+
+```tsx
+'use client';
+import { GoodCashProvider, CashOutButton } from '@goodcash/react';
+
+export default function CashOut({ user, provider }) {
+  return (
+    <GoodCashProvider publishableKey={process.env.NEXT_PUBLIC_GOODCASH_KEY!} theme={{ accent: '#7b39fc', mode: 'auto' }}>
+      <CashOutButton
+        signer={provider}                 // window.ethereum, wagmi/WalletConnect/Magic EIP-1193 provider
+        partnerRef={user.id}
+        onEvent={(e) => {
+          if (e.type === 'cashout.paid') console.log('paid', e.cashOut.id);
+        }}
+      />
+    </GoodCashProvider>
+  );
+}
+```
+
+Only the **publishable** key goes in `NEXT_PUBLIC_...`. Never expose the secret key.
+
+## Your own screens
+
+```tsx
+import { useQuote, useBanks, useVerifyAccount, useCashOut } from '@goodcash/react';
+
+const { quote } = useQuote(amount);                         // show quote.fees and quote.receive.naira
+const { banks } = useBanks();
+const { accountName } = useVerifyAccount(bankCode, account); // show it before confirming
+const { start, step, error } = useCashOut();
+
+await start({ signer, amountG: amount, recipient: { bankCode, accountNumber: account, accountName: accountName! }, quote: quote!, partnerRef: user.id });
+```
+
+Show `error.message` to users. If `error.code` is `uncertain` or `pending_confirmation`, do not offer a retry: tell
+the user to check their history.
+
+Theme tokens: `background`, `surface`, `ink`, `accent`, `accentInk`, `highlight`, `success`, `radius`, `font`, `mode`.
+
+<!-- quickstarts/react-native.md -->
+
+# React Native quickstart
+
+The SDK has no DOM or Node dependencies, so it runs in React Native as is.
+
+```bash
+npm install @goodcash/sdk
+```
+
+```ts
+import { GoodCash } from '@goodcash/sdk';
+
+const gc = new GoodCash({ publishableKey: 'gc_pk_test_...', appId: 'com.yourcompany.app' }); // app id registered with GoodCash
+
+const quote = await gc.quote({ amountG: 5000 });
+const banks = await gc.banks();
+const { accountName } = await gc.verifyAccount({ bankCode, accountNumber });
+
+const { cashOut } = await gc.cashOut({
+  signer: walletConnectProvider,   // any EIP-1193 provider (WalletConnect, Privy, Thirdweb, Magic...)
+  amountG: 5000,
+  recipient: { bankCode, accountNumber, accountName },
+  quote,
+  partnerRef: user.id,
+});
+await gc.watchCashOut(cashOut.id, (c) => setStatus(c.status));
+```
+
+React Native needs `crypto.getRandomValues` (for idempotency keys): add `react-native-get-random-values` and import it
+first in your entry file.
+
+## Or: the hosted flow in a WebView
+
+```tsx
+<WebView
+  source={{ uri: `https://pay.goodcash.xyz/?key=${PK}&mode=redirect&amountG=5000&ref=${user.id}&returnUrl=myapp://cashout` }}
+  onShouldStartLoadWithRequest={(r) => {
+    if (r.url.startsWith('myapp://cashout')) { handleReturn(r.url); return false; }
+    return true;
+  }}
+/>
+```
+
+<!-- quickstarts/fintech-server.md -->
+
+# Server quickstart (fintechs, games paying from their own wallet)
+
+Your server holds the **secret key** and, if you pay out from your own wallet, that wallet's key. GoodCash holds neither.
+
+```bash
+npm install @goodcash/sdk viem
+```
+
+```ts
+import { GoodCash } from '@goodcash/sdk';
+import { createWalletClient, http } from 'viem';
+import { celo } from 'viem/chains';
+import { privateKeyToAccount } from 'viem/accounts';
+
+const gc = new GoodCash({ secretKey: process.env.GOODCASH_SECRET_KEY! });
+const payoutWallet = createWalletClient({ account: privateKeyToAccount(process.env.PAYOUT_WALLET_KEY as `0x${string}`), chain: celo, transport: http() });
+
+export async function payUser(userId: string, amountG: string, bank: { bankCode: string; accountNumber: string }) {
+  const quote = await gc.quote({ amountG });                       // show or store these fee lines for your user
+  const { accountName } = await gc.verifyAccount(bank);
+  const { cashOut } = await gc.cashOut({
+    signer: payoutWallet,                                          // your server wallet signs the one transaction
+    amountG,
+    recipient: { ...bank, accountName },
+    quote,
+    partnerRef: userId,
+    idempotencyKey: `payout-${userId}-${Date.now()}`,              // reuse it if you retry the same attempt
+  });
+  return cashOut.id;                                               // "paid" arrives by webhook
+}
+```
+
+Without the SDK, call the API directly (see [OpenAPI](../openapi.yaml)): `GET /v1/quote`, `POST /v1/banks/verify`,
+`POST /v1/cashouts` (with `Idempotency-Key`), sign `transaction` after checking it, then
+`POST /v1/cashouts/{id}/transaction`.
+
+## Webhooks
+
+```ts
+import { verifyWebhook } from '@goodcash/sdk/server';
+
+app.post('/goodcash', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const event = await verifyWebhook(req.body.toString('utf8'), req.header('goodcash-signature'), process.env.GOODCASH_WEBHOOK_SECRET!);
+    if (await alreadyHandled(event.id)) return res.sendStatus(200);
+    if (event.type === 'cashout.paid') await markPaid(event.data.partnerRef, event.data.id);
+    res.sendStatus(200);
+  } catch {
+    res.sendStatus(400);
+  }
+});
+```
+
+## Airtime, data and bills
+
+To turn G$ into naira you then spend (airtime, MTN data, bills), cash out to **your own collection account** and
+credit the user in your system when `cashout.paid` arrives. Your agreement with GoodCash covers who does user checks.
+
+## Safety for server wallets
+
+- Keep the key in a secret manager; give the wallet only what it needs each day.
+- Set your own per-user and per-day limits before calling `cashOut`.
+- Treat `uncertain` and `pending_confirmation` as "do not retry": check `getCashOut` first.
+
+<!-- FEES.md -->
+
+# Fees for partners
+
+What the customer sees, each on its own line:
+
+| Line | Who | How much |
+| --- | --- | --- |
+| GoodDollar contribution | GoodDollar protocol (not GoodCash) | 10% of the G$ (exit contribution) |
+| GoodCash fee | GoodCash | 1% of the payout |
+| *Your app* fee | You (optional) | 0 to 3% of the payout, set in your agreement |
+| Bank payout fee | Payout partner | about $0.02 per payout |
+| Network fee | Celo network | paid in CELO from the wallet (not G$) |
+
+How it is collected: the GoodCash fee and your fee are added together and collected in the same transaction by the
+payout partner's sender fee, into the GoodCash Safe. GoodCash records your share of every paid cash out and pays
+you monthly. You may also charge your users separately in your own app.
+
+The fee the customer saw must equal the fee charged: the API refuses a cash out (`fee_mismatch`) otherwise.
+Total fees (GoodCash + yours) are capped at 5%.
+
+<!-- test-mode.md -->
+
+# Test mode
+
+Test keys (`gc_pk_test_...`, `gc_sk_test_...`) never touch real money, the payout partner, or the chain.
+
+- **Banks:** `Test Bank A` (`TESTBANKA`) and `Test Bank B` (`TESTBANKB`). Any 10-digit number verifies as `TEST ACCOUNT`.
+- **Prices:** fixed, so your tests are repeatable. Naira rate 1,500 per dollar.
+- **Transactions:** `POST /v1/cashouts` returns a real-looking transaction with a 1970 deadline and a burn address,
+  so it can never succeed even if sent. Don't send it: call `POST /v1/test/cashouts/{id}/simulate` (the SDK does this
+  for you, and never asks the wallet to sign with a test key).
+- **Timeline after simulate:** `sent` → `processing` after 5 s → outcome after 30 s, with webhooks.
+- **No wallet needed:** the SDK uses a stand-in address when no wallet is connected.
+
+| Account number | Outcome |
+| --- | --- |
+| any other 10 digits | `paid` |
+| `0000000001` | `failed` |
+| `0000000002` | `refunded` |
+| `0000000003` | stays `processing`, sends `cashout.delayed` |
+| `0000000009` | name check fails (`bank_account_not_found`) |
+
+Test data is deleted after 7 days.
+
+<!-- webhooks.md -->
+
+# Webhooks
+
+Set your endpoint once per mode with your **secret key**:
+
+```bash
+curl -X PUT https://api.goodcash.xyz/v1/webhooks \
+  -H "Authorization: Bearer $GOODCASH_SECRET_KEY" -H "Content-Type: application/json" \
+  -d '{"url":"https://your-server.example/goodcash"}'
+```
+
+The response contains `secret` (`whsec_...`) **once**. Store it. Lost it? Send `"rotateSecret": true`.
+`POST /v1/webhooks/test` sends a signed `cashout.test` event.
+
+## Events
+
+`cashout.paid`, `cashout.failed`, `cashout.refunded`, `cashout.expired` (never signed), `cashout.delayed`
+(not paid 25 minutes after sending), `cashout.test`. `data` is the cash out (same as `GET /v1/cashouts/{id}`).
+
+Each event is sent once per change, at once; failures are retried after about 10 min, 30 min, 2 h and 12 h.
+Answer 2xx within 5 seconds. The same event may arrive twice: ignore an `id` you have already handled.
+
+## Verify every webhook
+
+Header: `GoodCash-Signature: t=<unix seconds>,v1=<hex>` where `v1 = HMAC-SHA256(secret, "<t>.<raw body>")`.
+Use the **raw** body (before JSON parsing). Reject if `t` is more than 5 minutes from now.
+
+### Node (with the SDK)
+```js
+import { verifyWebhook } from '@goodcash/sdk/server';
+const event = await verifyWebhook(rawBody, req.headers['goodcash-signature'], process.env.GOODCASH_WEBHOOK_SECRET);
+```
+
+### Node (no dependencies)
+```js
+import crypto from 'node:crypto';
+function verify(raw, header, secret) {
+  const m = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(header || '');
+  if (!m || Math.abs(Date.now() / 1000 - Number(m[1])) > 300) return false;
+  const want = crypto.createHmac('sha256', secret).update(`${m[1]}.${raw}`).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(want), Buffer.from(m[2]));
+}
+```
+
+### Python
+```python
+import hmac, hashlib, re, time
+def verify(raw: bytes, header: str, secret: str) -> bool:
+    m = re.fullmatch(r"t=(\d+),v1=([0-9a-f]{64})", header or "")
+    if not m or abs(time.time() - int(m.group(1))) > 300:
+        return False
+    want = hmac.new(secret.encode(), m.group(1).encode() + b"." + raw, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(want, m.group(2))
+```
+
+### Go
+```go
+func Verify(raw []byte, header, secret string) bool {
+	var t int64; var sig string
+	if _, err := fmt.Sscanf(header, "t=%d,v1=%s", &t, &sig); err != nil { return false }
+	if d := time.Now().Unix() - t; d > 300 || d < -300 { return false }
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(fmt.Sprintf("%d.", t))); mac.Write(raw)
+	return hmac.Equal([]byte(hex.EncodeToString(mac.Sum(nil))), []byte(sig))
+}
+```
+
+<!-- errors.md -->
+
+# Error codes
+
+Every error has a stable `code`, a plain `message` you can show customers, and sometimes a `detail` for you.
+API errors look like `{ "error": { "code": "...", "message": "...", "detail": "..." } }`; the SDK throws `GoodCashError`
+with the same fields plus `status` and `requestId`.
+
+| Code | HTTP | What it means | What to do |
+| --- | --- | --- | --- |
+| `invalid_request` | 400 | A field is missing or malformed (`detail` names it) | Fix the request |
+| `amount_too_small` | 400 | Below the minimum after fees | Show `quote.minimumG` |
+| `amount_too_large` | 400 | Above the per-cash-out maximum | Use `/v1/limits` |
+| `insufficient_balance` | 400 | The wallet holds less G$ than asked | Lower the amount |
+| `fee_mismatch` | 409 | Fee changed since the quote you showed | Get and show a new quote |
+| `price_unavailable` | 503 | Prices could not be read | Retry shortly |
+| `cashout_paused` | 503 | GoodCash paused cash outs | Nothing was sent; retry later |
+| `bank_account_not_found` | 400 | Name check failed | Ask the user to check bank and number |
+| `needs_network_fee` (SDK) | - | Wallet lacks CELO for the network fee; `data` has `needCelo`, `haveCelo` | Ask the user to top up CELO |
+| `wallet_rejected` (SDK) | - | The user cancelled in their wallet | Nothing was sent |
+| `wrong_network` (SDK) | - | Wallet would not switch to Celo | Ask the user to switch |
+| `no_wallet` (SDK) | - | No signer for a live cash out | Connect a wallet |
+| `unsafe_transaction` (SDK) | - | The transaction failed the check before signing | Nothing was sent; retry; contact GoodCash if repeated |
+| `order_expired` (SDK) | - | The payout window was about to close | Retry |
+| `price_moved` (SDK) | - | The network refused before signing | Nothing was sent; retry |
+| `uncertain` (SDK) | - | Wallet lost its reply and no payment was found yet; `data.cashOutId` | **Do not retry.** Tell the user to check history; poll `getCashOut` |
+| `pending_confirmation` (SDK) | - | Sent, not confirmed yet | **Do not retry.** Keep watching |
+| `transaction_mismatch` | 400 | Reported transaction is not this cash out | Report the right hash |
+| `idempotency_conflict` | 409 | Same Idempotency-Key, different body | Use a new key per attempt |
+| `rate_limited` | 429 | Too many requests | Back off |
+| `unauthorized` | 401 | Missing/unknown key | Check the key |
+| `partner_disabled` | 403 | Your account is switched off | Contact GoodCash |
+| `forbidden_origin` | 403 | Publishable key used from a site/app not on your list | Ask GoodCash to add it |
+| `secret_key_in_browser` | 403 | Secret key sent from a browser | Use the publishable key there |
+| `secret_key_required` | 403 | Endpoint needs the secret key | Call it from your server |
+| `test_mode_only` | 400 | Simulation with a live key | Use a test key |
+| `not_found` | 404 | No such cash out (for this key and mode) | Check the id and mode |
+| `webhook_not_configured` | 400 | Test send without a URL | `PUT /v1/webhooks` first |
+| `invalid_signature` (server helper) | - | Webhook failed verification | Reject it (400) |
+| `unavailable` / `network_error` | 503 / - | Temporary problem | Retry with back-off |
+
+<!-- go-live.md -->
+
+# Go-live checklist
+
+- [ ] Agreement with GoodCash signed (fees, acceptable use, user checks for server-wallet payouts).
+- [ ] Every site that loads the widget or uses the publishable key is on your allowed list (exact origins).
+      Native apps: your app id is registered and sent as `X-GoodCash-App` (SDK option `appId`).
+- [ ] The secret key is only on your server (environment variable / secret manager), never in an app or repo.
+- [ ] Fees: you show every line from the quote, and pass the same quote to `cashOut()` (`feePercentShown`).
+- [ ] You show the verified account name before the user confirms.
+- [ ] `uncertain` and `pending_confirmation` are handled as "check history, don't retry".
+- [ ] Webhook endpoint set for **live**, verifies signatures on the raw body, ignores repeated event ids, answers in < 5 s.
+- [ ] You credit or notify users from webhooks (or `GET /v1/cashouts/{id}`), not from browser events alone.
+- [ ] Server wallets (if any): key in a key manager, spending limits, alerting; it holds only what it needs.
+- [ ] One small live cash out end to end with a real bank account, before announcing.
+- [ ] Switch keys from `_test_` to `_live_`.

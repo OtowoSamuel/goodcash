@@ -1,0 +1,312 @@
+openapi: 3.1.0
+info:
+  title: GoodCash Partner API
+  version: 1.0.0
+  summary: Let your users cash out GoodDollar (G$) to a Nigerian bank account.
+  description: |
+    Non-custodial: the customer's own wallet (or your server wallet) signs ONE transaction,
+    `G$.transferAndCall(GoodCashRouterV2, amount, data)`. GoodCash never holds money or keys.
+
+    Keys: `gc_pk_{live|test}_...` (publishable: browsers and apps, only from your allowed sites or app ids) and
+    `gc_sk_{live|test}_...` (secret: servers only, refused when a browser Origin header is present).
+    Send as `Authorization: Bearer <key>`. Test keys never move money.
+
+    Errors: `{ "error": { "code", "message", "detail"? } }`. `message` is plain and safe to show customers;
+    `detail` is for developers. Every response has a `GoodCash-Request-Id` header.
+  contact: { name: GoodCash, url: https://goodcash.xyz }
+servers:
+  - url: https://api.goodcash.xyz
+security:
+  - bearer: []
+paths:
+  /v1/partner:
+    get:
+      summary: Your partner profile (name, allowed sites, fee)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Partner' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/limits:
+    get:
+      summary: Minimum and maximum G$ per cash out, and the total fee percent
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Limits' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/banks:
+    get:
+      summary: Banks that can be paid (most used marked popular)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { const: list }
+                  data: { type: array, items: { $ref: '#/components/schemas/Bank' } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/banks/verify:
+    post:
+      summary: The account holder's name. Show it before the customer confirms.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bankCode, accountNumber]
+              properties:
+                bankCode: { type: string, minLength: 2, maxLength: 20 }
+                accountNumber: { type: string, pattern: '^\d{10,20}$' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { accountName: { type: string } } } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/quote:
+    get:
+      summary: What the customer receives, with every fee as its own line (valid about 30 seconds)
+      parameters:
+        - { name: amountG, in: query, required: true, schema: { type: string, pattern: '^\d+(\.\d{1,6})?$' }, example: '5000' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Quote' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/network-fee:
+    get:
+      summary: Whether the wallet holds enough CELO for the network fee (paid in CELO, never G$)
+      parameters:
+        - { name: wallet, in: query, required: true, schema: { $ref: '#/components/schemas/Address' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NetworkFee' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/cashouts:
+    post:
+      summary: Create a cash out. Returns the exact transaction to sign.
+      description: |
+        Checks the wallet's G$ balance and that the router is open, prices the cash out from the chain, creates the
+        payout order and returns `transaction`. Check it before signing (the SDK does): `to` is the G$ token,
+        `value` is 0, and the call is `transferAndCall(order.router, order.amountWei, ...)` paying `order.payTo`
+        exactly `order.payAmount` (at most `order.minOut`) before `order.validUntil`.
+        Test keys: do NOT send the transaction (it has a 1970 deadline and can never succeed); call
+        `/v1/test/cashouts/{id}/simulate` instead.
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{8,64}$' }, description: Unique per attempt. Repeating it returns the first result, never a second cash out. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet, amountG, recipient, feePercentShown]
+              properties:
+                wallet: { $ref: '#/components/schemas/Address' }
+                amountG: { type: string, example: '5000' }
+                recipient:
+                  type: object
+                  required: [bankCode, accountNumber, accountName]
+                  properties:
+                    bankCode: { type: string }
+                    accountNumber: { type: string, pattern: '^\d{10,20}$' }
+                    accountName: { type: string, description: From /v1/banks/verify }
+                partnerRef: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$', description: Your own id, returned everywhere }
+                feePercentShown: { type: number, description: The quote's feePercent you showed. Must match or the request is refused (fee_mismatch). }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/CreatedCashOut' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    get:
+      summary: List cash outs (publishable key needs ?wallet=; secret key can list all)
+      parameters:
+        - { name: wallet, in: query, schema: { $ref: '#/components/schemas/Address' } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { const: list }
+                  data: { type: array, items: { $ref: '#/components/schemas/CashOut' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/cashouts/{id}:
+    get:
+      summary: A cash out's current status
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CashOut' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/cashouts/{id}/transaction:
+    post:
+      summary: Report the transaction hash (checked on chain)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [txHash], properties: { txHash: { type: string, pattern: '^0x[0-9a-fA-F]{64}$' } } } } }
+      responses:
+        '200': { description: Linked, content: { application/json: { schema: { $ref: '#/components/schemas/CashOut' } } } }
+        '202': { description: Not mined yet; report again in a few seconds, content: { application/json: { schema: { $ref: '#/components/schemas/CashOut' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/test/cashouts/{id}/simulate:
+    post:
+      summary: Test keys only. Pretend the transaction was sent (processing after 5 s, outcome after 30 s).
+      description: 'Magic account numbers: 0000000001 fails, 0000000002 is refunded, 0000000003 stays processing (sends cashout.delayed). 0000000009 fails the name check.'
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CashOut' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/webhooks:
+    get:
+      summary: Secret key. Your webhook URL for this key's mode.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: [string, 'null'] }, mode: { type: string }, hasSecret: { type: boolean } } } } } }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      summary: Secret key. Set the webhook URL. The signing secret is returned ONCE (first time, or with rotateSecret).
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [url], properties: { url: { type: string, format: uri, description: Public https only }, rotateSecret: { type: boolean } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { url: { type: string }, mode: { type: string }, secret: { type: string, description: whsec_..., shown once } } } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/webhooks/test:
+    post:
+      summary: Secret key. Send a signed cashout.test event now.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { delivered: { type: boolean }, status: { type: [integer, 'null'] }, eventId: { type: string } } } } } }
+        default: { $ref: '#/components/responses/Error' }
+webhooks:
+  cashoutEvent:
+    post:
+      summary: cashout.paid | cashout.failed | cashout.refunded | cashout.expired | cashout.delayed | cashout.test
+      description: |
+        Header `GoodCash-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>`. Reject if older than 5 minutes.
+        `GoodCash-Event-Id` repeats `id`: ignore ids you have handled. Answer 2xx within 5 seconds.
+        Retries: about 10 min, 30 min, 2 h, 12 h.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: string }
+                object: { const: event }
+                type: { type: string, enum: [cashout.paid, cashout.failed, cashout.refunded, cashout.expired, cashout.delayed, cashout.test] }
+                mode: { type: string, enum: [live, test] }
+                createdAt: { type: string, format: date-time }
+                data: { $ref: '#/components/schemas/CashOut' }
+      responses: { '200': { description: Received } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, description: 'gc_pk_... or gc_sk_...' }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { $ref: '#/components/schemas/ErrorCode' }
+                  message: { type: string, description: Plain, safe to show customers }
+                  detail: { type: string, description: For developers }
+  schemas:
+    Address: { type: string, pattern: '^0x[0-9a-fA-F]{40}$' }
+    ErrorCode:
+      type: string
+      enum: [invalid_request, amount_too_small, amount_too_large, insufficient_balance, fee_mismatch, price_unavailable, cashout_paused, bank_account_not_found, unavailable, rate_limited, unauthorized, partner_disabled, forbidden_origin, secret_key_in_browser, secret_key_required, test_mode_only, not_found, idempotency_conflict, transaction_mismatch, webhook_not_configured]
+    Partner:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        mode: { type: string, enum: [live, test] }
+        logoUrl: { type: [string, 'null'] }
+        accentColor: { type: [string, 'null'] }
+        feePercent: { type: number, description: Your own fee on top of GoodCash's }
+        allowedOrigins: { type: array, items: { type: string } }
+    Limits:
+      type: object
+      properties:
+        currency: { const: NGN }
+        country: { const: NG }
+        chainId: { const: 42220 }
+        minimumG: { type: number }
+        maximumG: { type: number }
+        feePercent: { type: number }
+    Bank:
+      type: object
+      properties: { code: { type: string }, name: { type: string }, popular: { type: boolean } }
+    FeeLine:
+      type: object
+      properties:
+        type: { type: string, enum: [gooddollar_contribution, goodcash_fee, partner_fee, payout_fee] }
+        label: { type: string, description: Plain words, ready to show }
+        percent: { type: number }
+        amountG: { type: string }
+        naira: { type: number }
+    Quote:
+      type: object
+      properties:
+        object: { const: quote }
+        mode: { type: string }
+        amountG: { type: string }
+        receive: { type: object, properties: { naira: { type: number }, minimumNaira: { type: number } } }
+        feePercent: { type: number, description: Send back as feePercentShown }
+        fees: { type: array, items: { $ref: '#/components/schemas/FeeLine' } }
+        minimumG: { type: number }
+        enough: { type: boolean }
+        nairaPerDollar: { type: number }
+        expiresAt: { type: string, format: date-time }
+    NetworkFee:
+      type: object
+      properties:
+        feeCelo: { type: number }
+        needCelo: { type: number, description: What the wallet must hold before it will send }
+        haveCelo: { type: number }
+        enough: { type: boolean }
+        celoUsd: { type: [number, 'null'] }
+    CashOut:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        object: { const: cashout }
+        mode: { type: string, enum: [live, test] }
+        status: { type: string, enum: [awaiting_signature, sent, processing, paid, failed, refunded, expired] }
+        wallet: { $ref: '#/components/schemas/Address' }
+        amountG: { type: string }
+        receive: { type: object, properties: { naira: { type: number }, minimumNaira: { type: number } } }
+        feePercent: { type: number }
+        partnerRef: { type: [string, 'null'] }
+        txHash: { type: [string, 'null'] }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        paidAt: { type: [string, 'null'], format: date-time }
+    CreatedCashOut:
+      allOf:
+        - { $ref: '#/components/schemas/CashOut' }
+        - type: object
+          properties:
+            fees: { type: array, items: { $ref: '#/components/schemas/FeeLine' } }
+            transaction:
+              type: object
+              properties:
+                chainId: { const: 42220 }
+                to: { type: string, description: Always the G$ token 0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A }
+                data: { type: string }
+                value: { const: '0x0' }
+            order:
+              type: object
+              properties:
+                router: { type: string, description: Always GoodCashRouterV2 0x546698368a246539Df5e641EdC2b79c5782ea359 }
+                payTo: { $ref: '#/components/schemas/Address' }
+                payAmount: { type: string }
+                amountWei: { type: string }
+                minOut: { type: string }
+                validUntil: { type: string, format: date-time }

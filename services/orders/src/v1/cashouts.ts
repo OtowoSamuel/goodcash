@@ -145,6 +145,8 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
   let validUntilMs: number;
   let deadline: bigint;
   let naira = priced.naira;
+  let orderAmountUsdt: string | undefined;
+  let feeCharged = priced.feePercent === 0;
 
   if (ctx.mode === 'test') {
     id = crypto.randomUUID();
@@ -181,6 +183,9 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
     payAmount = created.payAmountAtomic;
     validUntilMs = new Date(created.order.providerAccount.validUntil).getTime();
     deadline = BigInt(Math.floor(Math.min(now + 20 * 60_000, validUntilMs - 60_000) / 1000));
+    orderAmountUsdt = created.order.amount;
+    // If the payout partner refused our fee setting, the order went through without it: nobody is credited a fee
+    feeCharged = priced.feePercent === 0 || Number(created.order.senderFee ?? 0) > 0;
     const exact = Number(created.order.amount) * Number(created.order.rate);
     if (Number.isFinite(exact) && exact > 0) naira = Math.floor(exact * 100) / 100;
   }
@@ -222,6 +227,7 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
     goodcashFeePercent: priced.goodcashFeePercent,
     partnerFeePercent: priced.partnerFeePercent,
     partnerRef: input.partnerRef,
+    ...(orderAmountUsdt ? { orderAmountUsdt, feeCharged } : {}),
     status: 'awaiting_signature',
     ...(ctx.mode === 'test' ? { testOutcome: testOutcome(input.recipient.accountNumber) } : {}),
     createdAt: now,
@@ -284,6 +290,7 @@ export async function refreshCashOut(env: Env, rec: CashOutRecord, deps: V1Deps)
   if (changed) {
     rec.updatedAt = Date.now();
     await saveCashOut(env, rec);
+    if (rec.status === 'paid') await recordLedger(env, rec);
   }
   return { rec, changed, delayed };
 }
@@ -384,4 +391,33 @@ export async function sweepOpenCashOuts(env: Env, deps: V1Deps): Promise<{ check
     await notifyChange(env, rec, changed, !!delayed);
   }
   return { checked };
+}
+
+/**
+ * Partner fee ledger (fee option A): one entry per paid live cash out, `ledger:<partner>:<YYYY-MM>:<id>`, so monthly
+ * partner payouts can be totalled (scripts/partners.mjs ledger). Written once; never overwritten.
+ */
+export async function recordLedger(env: Env, rec: CashOutRecord): Promise<void> {
+  if (rec.mode !== 'live' || !rec.orderAmountUsdt) return;
+  const month = new Date(rec.paidAt ?? Date.now()).toISOString().slice(0, 7);
+  const key = `ledger:${rec.partnerId}:${month}:${rec.id}`;
+  if (await env.ORDER_STORE.get(key)) return;
+  const payout = Number(rec.orderAmountUsdt);
+  const charged = rec.feeCharged === true;
+  const share = (pct: number) => (charged && Number.isFinite(payout) ? Math.round(payout * (pct / 100) * 1e6) / 1e6 : 0);
+  await env.ORDER_STORE.put(
+    key,
+    JSON.stringify({
+      cashOutId: rec.id,
+      paidAt: new Date(rec.paidAt ?? Date.now()).toISOString(),
+      payoutUsdt: rec.orderAmountUsdt,
+      naira: rec.naira,
+      feeCharged: charged,
+      goodcashFeePercent: rec.goodcashFeePercent,
+      partnerFeePercent: rec.partnerFeePercent,
+      goodcashFeeUsdt: share(rec.goodcashFeePercent),
+      partnerFeeUsdt: share(rec.partnerFeePercent),
+    }),
+    { expirationTtl: 3 * 365 * 86400 }
+  );
 }

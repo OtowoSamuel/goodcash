@@ -62,6 +62,9 @@ export interface CashOutRecord {
   goodcashFeePercent: number;
   partnerFeePercent: number;
   partnerRef?: string;
+  /** Live: dollars (USDT) paid out to the bank for this order, and whether the payout partner accepted our fee setting */
+  orderAmountUsdt?: string;
+  feeCharged?: boolean;
   txHash?: string;
   sentAt?: number;
   /** Last status we saw, ours (plain) */
@@ -90,7 +93,7 @@ export interface V1Deps {
       feePercentOverride?: number;
     }
   ): Promise<
-    | { order: { id: string; amount?: string; rate?: string; providerAccount: { receiveAddress: string; amountToTransfer: string; validUntil: string } }; receive: string; payAmountAtomic: bigint }
+    | { order: { id: string; amount?: string; rate?: string; senderFee?: string; providerAccount: { receiveAddress: string; amountToTransfer: string; validUntil: string } }; receive: string; payAmountAtomic: bigint }
     | { response: Response; reason?: 'amount_too_small' }
   >;
   linkOneTapSwap(orderId: string, txHash: string, wallet: string, env: Env): Promise<{ ok: true } | { pending: true } | { error: string; status: number; reason: string }>;

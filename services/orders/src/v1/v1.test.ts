@@ -328,6 +328,7 @@ function liveChain(opts: { paused?: boolean; balance?: bigint; orderBody?: (b: R
           status: 'initiated',
           amount: '0.52',
           rate: '1500',
+          senderFee: '0.0078',
           providerAccount: { network: 'celo', receiveAddress: RECEIVE, validUntil: new Date(Date.now() + 30 * 60_000).toISOString(), amountToTransfer: '0.55', currency: 'USDT' },
         },
       });
@@ -375,6 +376,11 @@ describe('live cash out', () => {
     const body = (await res.json()) as { status: string; txHash: string; paidAt: string | null };
     expect(body.status).toBe('paid');
     expect(body.paidAt).not.toBeNull();
+    // the partner's share is recorded for the monthly payout
+    const ledgerKey = [...kv.store.keys()].find((k) => k.startsWith(`ledger:p_1:`));
+    expect(ledgerKey).toBeTruthy();
+    const entry = JSON.parse(kv.store.get(ledgerKey!)!) as { partnerFeeUsdt: number; goodcashFeeUsdt: number; feeCharged: boolean };
+    expect(entry).toMatchObject({ feeCharged: true, partnerFeeUsdt: 0.0026, goodcashFeeUsdt: 0.0052 });
   });
 
   it('refuses more G$ than the wallet holds, and a paused router, before any order exists', async () => {

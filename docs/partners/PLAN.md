@@ -1,6 +1,6 @@
 # GoodCash for Partners: plan
 
-Status: **plan only, nothing built yet.** Branch `partner-sdk`. Approve or change the decisions in section 9, then I build Phase 1.
+Status: **Phase 1 built** on branch `partner-sdk` (approved 9 Nov 2026). See PHASE1_REPORT.md for what changed from this plan.
 
 ## 1. What partners get
 
