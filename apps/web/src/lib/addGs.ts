@@ -136,7 +136,8 @@ export async function readDollarsOnBase(wallet: string): Promise<bigint> {
   await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
   const data = `0x70a08231${'0'.repeat(24)}${wallet.slice(2).toLowerCase()}`;
   const raw = (await p.request({ method: 'eth_call', params: [{ to: BASE_USDC, data }, 'latest'] })) as string;
-  return BigInt(raw);
+  // some wallets answer an empty balance read with "0x", which BigInt rejects
+  return !raw || raw === '0x' ? 0n : BigInt(raw);
 }
 
 interface RelayStep {

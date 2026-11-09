@@ -35,6 +35,14 @@ describe('wallets that answer the chain id in different shapes', () => {
     setActiveProvider(null);
   });
 
+  it('an empty balance answer ("0x") reads as zero instead of crashing', async () => {
+    const p = wallet(8453);
+    p.request.mockImplementation(async ({ method }: { method: string }) => (method === 'eth_chainId' ? 8453 : '0x'));
+    setActiveProvider(p);
+    expect(await readDollarsOnBase(WALLET)).toBe(0n);
+    setActiveProvider(null);
+  });
+
   it('a number chain id of Celo is recognised, so no switch is asked for', async () => {
     const p = wallet(42220);
     await ensureCeloChain(p);
