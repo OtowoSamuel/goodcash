@@ -12,3 +12,6 @@ broadcast
 .vite
 .wrangler
 .DS_Store
+
+# widget end-to-end screenshots
+apps/widget/e2e/*.png

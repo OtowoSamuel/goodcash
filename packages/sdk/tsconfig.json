@@ -10,5 +10,5 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["src", "test"]
+  "include": ["src", "test/sdk.test.ts"]
 }

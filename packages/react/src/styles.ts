@@ -25,8 +25,9 @@ export const CSS = `
 .gcw-bank{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;font-weight:700;color:var(--gcw-ink);background:var(--gcw-surface);border:2.5px solid var(--gcw-ink);border-radius:calc(var(--gcw-radius) - 6px);padding:10px 12px;cursor:pointer}
 .gcw-bank[aria-selected=true]{background:var(--gcw-success)}
 .gcw-chip{display:inline-block;font-size:12px;font-weight:800;background:var(--gcw-highlight);color:#111;border:2px solid var(--gcw-ink);border-radius:99px;padding:2px 8px}
-.gcw-top{display:flex;justify-content:space-between;align-items:center;margin:0 0 10px}
-.gcw-x{font:inherit;font-size:18px;font-weight:800;width:40px;height:40px;border-radius:99px;border:2.5px solid var(--gcw-ink);background:var(--gcw-surface);color:var(--gcw-ink);cursor:pointer}
+.gcw-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px}
+.gcw-top .gcw-h{flex:1;min-width:0;margin:0}
+.gcw-x{flex:none;font:inherit;font-size:18px;font-weight:800;width:40px;height:40px;border-radius:99px;border:2.5px solid var(--gcw-ink);background:var(--gcw-surface);color:var(--gcw-ink);cursor:pointer}
 .gcw-foot{font-size:12px;text-align:center;opacity:.75;margin-top:10px}
 .gcw-spin{width:40px;height:40px;border-radius:99px;border:4px solid var(--gcw-ink);border-top-color:transparent;margin:10px auto;animation:gcw-spin 1s linear infinite}
 @keyframes gcw-spin{to{transform:rotate(360deg)}}

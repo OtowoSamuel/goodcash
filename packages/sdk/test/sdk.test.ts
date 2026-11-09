@@ -265,6 +265,19 @@ describe('cashOut', () => {
   });
 });
 
+describe('wallets', () => {
+  it('test keys work without any wallet; live keys say "Connect a wallet first"', async () => {
+    const { f, calls } = api((method, url) => {
+      if (method === 'POST' && url.endsWith('/v1/cashouts')) return ok({ ...created({ mode: 'test', deadlineSec: 1 }) }, 201);
+      if (url.includes('/simulate')) return ok({ ...created({ mode: 'test' }), status: 'sent' });
+      throw new Error(url);
+    });
+    await new GoodCash({ publishableKey: PK_TEST, fetch: f }).cashOut({ amountG: '5000', recipient: RECIPIENT, quote: { feePercent: 1 } });
+    expect((calls[0].body as { wallet: string }).wallet).toBe('0x0000000000000000000000000000000000007e57');
+    await expect(new GoodCash({ publishableKey: PK_LIVE, fetch: f }).cashOut({ amountG: '5000', recipient: RECIPIENT, quote: { feePercent: 1 } })).rejects.toMatchObject({ code: 'no_wallet', message: 'Connect a wallet first.' });
+  });
+});
+
 describe('watchCashOut', () => {
   afterEach(() => vi.useRealTimers());
   it('reports each change once, slows down, and stops when paid', async () => {

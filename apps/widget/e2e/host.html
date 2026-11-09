@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Partner game (e2e)</title></head>
+  <body>
+    <h1>Acme Game</h1>
+    <button id="cash">Cash out</button>
+    <script src="http://localhost:5199/widget.js"></script>
+    <script>
+      window.__events = [];
+      document.getElementById('cash').addEventListener('click', function () {
+        window.__w = GoodCash.open({
+          publishableKey: new URLSearchParams(location.search).get('key'),
+          mode: 'embed',
+          amountG: 5000,
+          partnerRef: 'player-e2e',
+          onEvent: function (e) { window.__events.push(e); },
+        });
+      });
+      // A spoofed message from the page itself must never reach onEvent
+      window.addEventListener('load', function () {
+        window.postMessage({ source: 'goodcash', type: 'cashout.paid', cashOut: { id: 'fake' } }, '*');
+      });
+    </script>
+  </body>
+</html>

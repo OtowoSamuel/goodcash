@@ -61,7 +61,8 @@ async function route(request: Request, env: Env, ctx: AuthContext, deps: V1Deps,
 
   if (m === 'GET' && path === '/v1/partner') {
     const p = ctx.partner;
-    return v1Json({ id: p.id, name: p.name, mode: ctx.mode, logoUrl: p.logoUrl ?? null, accentColor: p.accentColor ?? null, feePercent: p.feePercent });
+    // allowedOrigins are public web addresses; the widget uses them to decide where it may be shown and talk to
+    return v1Json({ id: p.id, name: p.name, mode: ctx.mode, logoUrl: p.logoUrl ?? null, accentColor: p.accentColor ?? null, feePercent: p.feePercent, allowedOrigins: p.allowedOrigins });
   }
 
   if (m === 'GET' && path === '/v1/limits') {

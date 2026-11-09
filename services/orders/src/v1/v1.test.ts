@@ -166,6 +166,12 @@ describe('switch and keys', () => {
     expect(res.status).toBe(429);
   });
 
+  it('tells the widget the partner name and allowed sites', async () => {
+    const p = (await (await browser('GET', '/v1/partner')).json()) as { name: string; allowedOrigins: string[]; mode: string };
+    expect(p).toMatchObject({ name: 'Test Game', mode: 'test', allowedOrigins: [SITE] });
+    expect(JSON.stringify(p)).not.toMatch(/webhook|secret/i);
+  });
+
   it('leaves the app endpoints alone', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
     const res = await call(new Request('https://api.goodcash.xyz/health'));

@@ -96,7 +96,7 @@ export function CashOutFlow({ signer, wallet, defaultAmountG, partnerRef, onEven
     const s = signer ?? defaultSigner();
     setStage('working');
     const out = await run.start(
-      { signer: s as Signer, wallet, amountG: amount, recipient: { bankCode: bank.code, accountNumber: account, accountName }, quote, partnerRef },
+      { signer: s, wallet, amountG: amount, recipient: { bankCode: bank.code, accountNumber: account, accountName }, quote, partnerRef },
       (step, c) => {
         if (step === 'confirm_in_wallet' && c) onEvent?.({ type: 'cashout.created', cashOut: c });
       }

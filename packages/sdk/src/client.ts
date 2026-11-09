@@ -6,6 +6,8 @@ import { findPaymentOnChain, sendTransaction, signerAddress, sleep, type Signer 
 export const DEFAULT_BASE_URL = 'https://api.goodcash.xyz';
 export const SDK_VERSION = '0.1.0';
 const FINAL: CashOut['status'][] = ['paid', 'failed', 'refunded', 'expired'];
+/** Used in test mode when no wallet is connected (test cash outs never touch a wallet). */
+export const TEST_WALLET = '0x0000000000000000000000000000000000007e57' as const;
 
 export interface GoodCashOptions {
   /** gc_pk_live_... / gc_pk_test_...: safe in browsers and apps (only works from your allowed sites/apps) */
@@ -25,8 +27,8 @@ export interface GoodCashOptions {
 export type CashOutStep = 'checking' | 'creating' | 'confirm_in_wallet' | 'confirming' | 'reporting' | 'done';
 
 export interface CashOutArgs {
-  /** The wallet that holds the G$ and signs. See Signer. */
-  signer: Signer;
+  /** The wallet that holds the G$ and signs. See Signer. Optional with test keys. */
+  signer?: Signer;
   /** The wallet address. Optional for browser wallets (read from the wallet); required for a send function. */
   wallet?: `0x${string}`;
   amountG: string | number;
@@ -180,8 +182,9 @@ export class GoodCash {
    */
   async cashOut(args: CashOutArgs): Promise<{ cashOut: CashOut; txHash: string }> {
     const step = args.onStep ?? (() => undefined);
-    const wallet = args.wallet ?? (await signerAddress(args.signer));
-    if (!wallet) throw new GoodCashError('no_wallet', { detail: 'Pass `wallet` when the signer is a send function.' });
+    // Test keys never sign, so a wallet is optional there (a stand-in test address is used)
+    const wallet = args.wallet ?? (args.signer ? await signerAddress(args.signer) : null) ?? (this.mode === 'test' ? TEST_WALLET : null);
+    if (!wallet) throw new GoodCashError('no_wallet', { detail: args.signer ? 'Pass `wallet` when the signer is a send function.' : 'Pass a signer (the customer\'s wallet).' });
 
     step('checking');
     if (this.mode === 'live' && !args.skipNetworkFeeCheck) {
@@ -210,6 +213,7 @@ export class GoodCash {
     step('confirm_in_wallet', created);
     let txHash: Hex;
     try {
+      if (!args.signer) throw new GoodCashError('no_wallet');
       txHash = await sendTransaction(args.signer, created.transaction, wallet as `0x${string}`, this.rpcUrl);
     } catch (e) {
       if (!(e instanceof GoodCashError) || e.code !== 'uncertain') throw e;
