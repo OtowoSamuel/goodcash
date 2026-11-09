@@ -1,6 +1,6 @@
 {
   "name": "@goodcash/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Let your users cash out GoodDollar (G$) to a Nigerian bank account, from your own app or game.",
   "license": "MIT",
   "homepage": "https://goodcash.xyz",

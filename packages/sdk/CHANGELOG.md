@@ -2,6 +2,15 @@
 
 All notable changes to `@goodcash/sdk`. This package follows [semantic versioning](https://semver.org).
 
+## 0.2.0
+
+Naira in (top-ups). Cash out is unchanged.
+
+- `topUpQuote`, `createTopUp`, `getTopUp`, `listTopUps`, `watchTopUp`. Top-ups run on the hosted page; the customer's ID
+  details are typed only there and never pass through your app or this package.
+- Top-up webhook events `topup.paid_in`, `topup.delivered`, `topup.failed` (same signature check as cash outs).
+- Live top-ups are switched on per partner by GoodCash; test mode needs no switch.
+
 ## 0.1.0 (unreleased)
 
 First release.

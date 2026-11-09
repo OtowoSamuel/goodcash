@@ -4,7 +4,7 @@ import type { Bank, CashOut, CreatedCashOut, Limits, Mode, NetworkFeeInfo, Page,
 import { findPaymentOnChain, sendTransaction, signerAddress, sleep, type Signer } from './wallet';
 
 export const DEFAULT_BASE_URL = 'https://api.goodcash.xyz';
-export const SDK_VERSION = '0.1.0';
+export const SDK_VERSION = '0.2.0';
 const FINAL: CashOut['status'][] = ['paid', 'failed', 'refunded', 'expired'];
 const TOPUP_FINAL: TopUp['status'][] = ['delivered', 'failed', 'expired'];
 /** Used in test mode when no wallet is connected (test cash outs never touch a wallet). */

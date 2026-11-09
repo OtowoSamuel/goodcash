@@ -12,4 +12,4 @@ error codes); we never remove or rename them. Ignore fields you don't know. Brea
   `topup.delivered`, `topup.failed`; error code `topups_not_enabled`; `widget.js` option `flow: 'topup'`; SDK `topUpQuote`,
   `createTopUp`, `getTopUp`, `listTopUps`, `watchTopUp`; React `<TopUpButton />`. Customers' ID details never pass through
   partners or `/v1`.
-- Packages: `@goodcash/sdk` 0.1.0, `@goodcash/react` 0.1.0, `widget.js` 0.1.0.
+- Packages: `@goodcash/sdk` 0.2.0, `@goodcash/react` 0.2.0, `widget.js` 0.2.0.

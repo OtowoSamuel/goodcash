@@ -1,6 +1,6 @@
 {
   "name": "@goodcash/react",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A ready-made 'Cash out to bank' button and hooks for GoodDollar (G$) to naira, for React apps.",
   "license": "MIT",
   "homepage": "https://goodcash.xyz",
@@ -23,12 +23,12 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "peerDependencies": {
-    "@goodcash/sdk": "^0.1.0",
+    "@goodcash/sdk": "^0.2.0",
     "react": ">=18",
     "react-dom": ">=18"
   },
   "devDependencies": {
-    "@goodcash/sdk": "0.1.0",
+    "@goodcash/sdk": "0.2.0",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
     "@types/react": "^18.3.12",

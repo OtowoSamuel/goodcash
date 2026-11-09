@@ -14,7 +14,7 @@ naira from their bank and receives G$ (or CELO) in their wallet.
 
 ## The design: hosted only, so partners never touch ID details
 
-The ID details (BVN/NIN) are the sensitive part and plan question 4 is still open. So:
+The ID details (BVN/NIN) are the sensitive part and plan question 4 was answered on 9 Nov 2026 (Paycrest and the lawyer side are fine with this hosted-only design). So:
 
 - **The partner never sees or sends ID details.** The whole flow runs on `pay.goodcash.xyz` (the same widget, a new "add" mode:
   `GoodCash.open({ mode: 'popup' | 'embed' | 'redirect', flow: 'topup', ... })`). The customer types their details on GoodCash's
