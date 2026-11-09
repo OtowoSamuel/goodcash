@@ -54,6 +54,47 @@ describe('HistoryCard', () => {
     expect(screen.getByText(/No cash outs yet/i)).toBeInTheDocument();
   });
 
+  it('shows naira-in rows with the same statuses as cash outs', () => {
+    const onramps: SwapHistoryItem[] = [
+      {
+        id: 'in-1',
+        txHash: '',
+        timestamp: Date.now(),
+        amountInG: 0,
+        amountOutUsdt: 0,
+        route: 'Naira → G$',
+        orderId: 'order-in-1',
+        kind: 'onramp',
+        asset: 'g',
+        nairaIn: 5000,
+        assetOut: 4420,
+        onrampStage: 'waiting',
+      },
+      {
+        id: 'in-2',
+        txHash: '',
+        timestamp: Date.now() - 86400000,
+        amountInG: 0,
+        amountOutUsdt: 0,
+        route: 'Naira → CELO',
+        orderId: 'order-in-2',
+        kind: 'onramp',
+        asset: 'celo',
+        nairaIn: 2500,
+        assetOut: 1.05,
+        onrampStage: 'done',
+        arrived: true,
+      },
+    ];
+    render(<HistoryCard history={onramps} onCashOutClick={() => {}} language="en" />);
+    expect(screen.getByText(/₦5,000 → 4,420 G\$/)).toBeInTheDocument();
+    expect(screen.getByText(/₦2,500 → 1.05 CELO/)).toBeInTheDocument();
+    expect(screen.getAllByText('Paid').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('On its way').length).toBeGreaterThan(1);
+    expect(screen.queryByText(/Money arrived/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Waiting for payment/i)).not.toBeInTheDocument();
+  });
+
   it('displays all transactions when "All" filter is active', () => {
     render(<HistoryCard history={mockHistory} onCashOutClick={() => {}} language="en" ngnPerUsdt={1500} />);
     expect(screen.getByText(/1,000 G\$/)).toBeInTheDocument();

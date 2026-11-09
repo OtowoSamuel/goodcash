@@ -1,6 +1,7 @@
 import { isPaidOutStatus } from '../lib/useOffRamp';
 import React, { useEffect, useState } from 'react';
 import { fetchOrderStatus, type OffRampStatus } from '../lib/useOffRamp';
+import { fetchOnrampStatus } from '../lib/addGs';
 import { formatNaira, ORDERS_API_BASE } from '../lib/rate';
 import { SupportModal } from './SupportModal';
 import { Modal } from './Modal';
@@ -12,6 +13,12 @@ export interface HistoryDetailItem {
   amountInG: number;
   orderId?: string;
   bankReference?: string;
+  kind?: 'cashout' | 'onramp';
+  asset?: 'g' | 'celo';
+  nairaIn?: number;
+  assetOut?: number;
+  onrampStage?: 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review';
+  arrived?: boolean;
 }
 
 type Stage = 'paid' | 'onItsWay' | 'unknown';
@@ -58,6 +65,27 @@ function describe(live: OffRampStatus | null, stage: Stage): { title: string; te
   return { title: 'Checking status', text: 'We are checking this cash out. Tap Refresh in a moment.', tone: 'white' };
 }
 
+/** Same status words as a cash out; only the amounts point the other way. */
+function describeOnramp(
+  stage: NonNullable<HistoryDetailItem['onrampStage']>,
+  arrived: boolean,
+  what: string
+): { title: string; text: string; tone: 'mint' | 'yellow' | 'red' | 'white' } {
+  if (stage === 'refund') {
+    return { title: 'Refunded', text: 'This order was cancelled and your money is being returned to your account.', tone: 'red' };
+  }
+  if (stage === 'expired') {
+    return { title: 'Not completed', text: 'The payment window closed before the payment arrived. Nothing was taken from you.', tone: 'red' };
+  }
+  if (arrived) {
+    return { title: 'Paid', text: `Your ${what} is in your wallet.`, tone: 'mint' };
+  }
+  if (stage === 'waiting') {
+    return { title: 'On its way', text: `We have not seen your bank transfer yet. Open Add ${what} to see the bank details again.`, tone: 'yellow' };
+  }
+  return { title: 'On its way', text: `We have your naira and your ${what} is being added to your wallet. This usually takes a few minutes.`, tone: 'yellow' };
+}
+
 const Dot: React.FC<{ state: 'done' | 'current' | 'wait'; label: string; sub: string }> = ({ state, label, sub }) => (
   <div style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>
     <i
@@ -72,14 +100,26 @@ const Dot: React.FC<{ state: 'done' | 'current' | 'wait'; label: string; sub: st
 export const HistoryDetailModal: React.FC<HistoryDetailModalProps> = ({ item, naira, savedStage, wallet, onClose }) => {
   const [supportOpen, setSupportOpen] = useState(false);
   const [live, setLive] = useState<OffRampStatus | null>(null);
+  const [onrampStage, setOnrampStage] = useState<NonNullable<HistoryDetailItem['onrampStage']>>(item.onrampStage ?? 'waiting');
+  const [arrived, setArrived] = useState(item.arrived === true);
+  const [txHash, setTxHash] = useState(item.txHash);
   const [reference, setReference] = useState<string | null>(item.bankReference ?? null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const isOnramp = item.kind === 'onramp';
 
   const refresh = async () => {
     setLoading(true);
     setFailed(false);
     try {
+      if (isOnramp) {
+        if (!item.orderId) throw new Error('no order');
+        const s = await fetchOnrampStatus(item.orderId);
+        setOnrampStage(s.stage);
+        if (s.arrived) setArrived(true);
+        if (s.txHash) setTxHash(s.txHash);
+        return;
+      }
       // Prefer the order that actually belongs to this swap: a customer may have retried, which creates new orders
       let status: OffRampStatus | null = null;
       try {
@@ -108,17 +148,24 @@ export const HistoryDetailModal: React.FC<HistoryDetailModalProps> = ({ item, na
   }, [item.orderId, item.txHash]);
 
 
-  const info = describe(live, savedStage);
+  const what = item.asset === 'celo' ? 'CELO' : 'G$';
+  const info = isOnramp ? describeOnramp(onrampStage, arrived, what) : describe(live, savedStage);
   const paid = info.title === 'Paid';
   const failedFinal = info.tone === 'red';
   const step2Done = paid || info.title === 'On its way';
   const bg = { mint: '#8cf0c0', yellow: '#ffd23f', red: '#ff9b9b', white: '#fff' }[info.tone];
+  const nairaIn = item.nairaIn ?? naira;
+  const assetOutText = item.assetOut != null && Number.isFinite(item.assetOut)
+    ? item.asset === 'celo'
+      ? `${(Math.floor(item.assetOut * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CELO`
+      : `${Math.floor(item.assetOut).toLocaleString('en-US')} G$`
+    : what;
 
   return (
     <>
       <Modal
-        label="Cash out details"
-        title="Cash out details"
+        label={isOnramp ? `Add ${what} details` : 'Cash out details'}
+        title={isOnramp ? `Add ${what} details` : 'Cash out details'}
         closeLabel="Close details"
         onClose={onClose}
         z={60}
@@ -136,31 +183,62 @@ export const HistoryDetailModal: React.FC<HistoryDetailModalProps> = ({ item, na
         <div className="gc-card" style={{ background: bg, padding: '10px 14px' }}>
           <div className="gc-lab">{info.title}</div>
           <div className="gc-big" style={{ fontSize: 26 }}>
-            {item.amountInG.toLocaleString()} G$ → {naira != null ? formatNaira(naira) : '—'}
+            {isOnramp
+              ? `${nairaIn != null ? formatNaira(nairaIn) : '—'} → ${assetOutText}`
+              : `${item.amountInG.toLocaleString()} G$ → ${naira != null ? formatNaira(naira) : '—'}`}
           </div>
           <p className="gc-sm" style={{ margin: '4px 0 0' }}>{info.text}</p>
         </div>
 
         {!failedFinal && (
           <div className="gc-card" style={{ display: 'flex', gap: 6, padding: '10px 8px' }}>
-            <Dot state="done" label="G$ converted" sub="Done" />
-            <Dot state={step2Done ? 'done' : 'current'} label="Payment sent" sub={step2Done ? 'Done' : 'Waiting'} />
-            <Dot state={paid ? 'done' : step2Done ? 'current' : 'wait'} label="In your bank" sub={paid ? 'Done' : step2Done ? 'In progress' : 'Waiting'} />
+            {isOnramp ? (
+              <>
+                <Dot
+                  state={onrampStage === 'waiting' ? 'current' : 'done'}
+                  label="Naira received"
+                  sub={onrampStage === 'waiting' ? 'Waiting' : 'Done'}
+                />
+                <Dot
+                  state={onrampStage === 'done' || arrived ? 'done' : onrampStage === 'received' || onrampStage === 'review' ? 'current' : 'wait'}
+                  label={`Swap to ${what}`}
+                  sub={onrampStage === 'done' || arrived ? 'Done' : onrampStage === 'received' || onrampStage === 'review' ? 'In progress' : 'Waiting'}
+                />
+                <Dot state={arrived ? 'done' : onrampStage === 'done' ? 'current' : 'wait'} label="In your wallet" sub={arrived ? 'Done' : onrampStage === 'done' ? 'In progress' : 'Waiting'} />
+              </>
+            ) : (
+              <>
+                <Dot state="done" label="G$ converted" sub="Done" />
+                <Dot state={step2Done ? 'done' : 'current'} label="Payment sent" sub={step2Done ? 'Done' : 'Waiting'} />
+                <Dot state={paid ? 'done' : step2Done ? 'current' : 'wait'} label="In your bank" sub={paid ? 'Done' : step2Done ? 'In progress' : 'Waiting'} />
+              </>
+            )}
           </div>
         )}
 
         <div className="gc-card gc-cost" style={{ padding: '4px 14px' }}>
           <div className="gc-row"><span>Date</span><span>{formatWhen(item.timestamp)}</span></div>
-          <div className="gc-row"><span>You gave</span><span>{item.amountInG.toLocaleString()} G$</span></div>
-          <div className="gc-row"><span>{paid ? 'You received' : 'You get about'}</span><span>{naira != null ? formatNaira(naira) : '—'}</span></div>
+          {isOnramp ? (
+            <>
+              <div className="gc-row"><span>You gave</span><span>{nairaIn != null ? formatNaira(nairaIn) : '—'}</span></div>
+              <div className="gc-row"><span>{arrived ? 'You received' : 'You get about'}</span><span>{assetOutText}</span></div>
+            </>
+          ) : (
+            <>
+              <div className="gc-row"><span>You gave</span><span>{item.amountInG.toLocaleString()} G$</span></div>
+              <div className="gc-row"><span>{paid ? 'You received' : 'You get about'}</span><span>{naira != null ? formatNaira(naira) : '—'}</span></div>
+            </>
+          )}
           {reference && <div className="gc-row"><span>Bank reference</span><span className="font-mono" style={{ fontSize: 12 }}>{reference}</span></div>}
           {item.orderId && <div className="gc-row"><span>Order reference</span><span className="font-mono select-all" style={{ fontSize: 12 }}>{item.orderId.slice(0, 8)}…{item.orderId.slice(-4)}</span></div>}
-          <div className="gc-row">
-            <span>Transaction</span>
-            <a href={`https://celo.blockscout.com/tx/${item.txHash}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>
-              View on explorer ↗
-            </a>
-          </div>
+          {txHash && (
+            <div className="gc-row">
+              <span>Transaction</span>
+              <a href={`https://celo.blockscout.com/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>
+                View on explorer ↗
+              </a>
+            </div>
+          )}
         </div>
 
         {failed && !paid && <div className="gc-note" role="alert">We couldn't refresh just now. Please try again in a moment.</div>}
@@ -184,8 +262,8 @@ export const HistoryDetailModal: React.FC<HistoryDetailModalProps> = ({ item, na
             txHash: item.txHash,
             wallet: wallet ?? undefined,
             status: info.title,
-            amountG: item.amountInG.toLocaleString(),
-            naira: naira != null ? formatNaira(naira) : undefined,
+            amountG: isOnramp ? undefined : item.amountInG.toLocaleString(),
+            naira: nairaIn != null ? formatNaira(nairaIn) : undefined,
             createdAt: new Date(item.timestamp).toISOString(),
           }}
         />

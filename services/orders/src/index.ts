@@ -1070,7 +1070,7 @@ async function handleWalletHistory(request: Request, env: Env): Promise<Response
       ...(naira ? { naira } : {}),
     });
   }
-  return json({ swaps: out, complete: (rows as { complete?: boolean }).complete !== false });
+  return json({ swaps: out, onramps: await listWalletOnramps(wallet, env), complete: (rows as { complete?: boolean }).complete !== false });
 }
 
 // ---------------------------------------------------------------------------
@@ -1434,6 +1434,7 @@ async function handleWebhook(request: Request, env: Env, waitUntil?: (p: Promise
 
   // Naira-in order delivered: tell the customer even if the app is closed
   if (status === 'settled' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
+    await updateOnrampHistory(env, id, { stage: 'done' });
     await maybeSendOnrampReady(id, env);
     return new Response('OK', { status: 200 });
   }
@@ -1441,6 +1442,7 @@ async function handleWebhook(request: Request, env: Env, waitUntil?: (p: Promise
   // Naira-in order held for a compliance review: the status stays "pending", so remember it separately
   if (event.event === 'payment_order.compliance_hold' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
     await env.ORDER_STORE.put(`onramphold:${id}`, '1', { expirationTtl: 14 * 24 * 3600 });
+    await updateOnrampHistory(env, id, { stage: 'review' });
     return new Response('OK', { status: 200 });
   }
 
@@ -2008,6 +2010,10 @@ const OnrampOrderSchema = z.object({
   idType: z.enum(['BVN', 'NIN']),
   idNumber: z.string().regex(/^\d{11}$/),
   asset: z.enum(['g', 'celo']).optional(),
+  /** What the app told the customer they would get. Only used to label their History; never affects the order. */
+  expectedOut: z.number().positive().max(1_000_000_000_000).optional(),
+  /** Dollars the app said would reach the wallet. Only used to label History. */
+  expectedUsd: z.number().positive().max(1_000_000_000).optional(),
   refundAccount: z.object({
     institution: z.string().regex(/^[A-Za-z0-9]{4,16}$/),
     accountIdentifier: z.string().regex(/^\d{10}$/),
@@ -2088,11 +2094,21 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
     console.error('[onramp] unexpected partner response shape');
     return err('We could not start this order. Please try again.', 502);
   }
+  const asset = parseAsset(input.asset);
+  const createdAt = Date.now();
   await env.ORDER_STORE.put(
     `onramp:${order.id}`,
-    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, asset: parseAsset(input.asset), createdAt: Date.now() }),
+    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, asset, createdAt }),
     { expirationTtl: 14 * 24 * 3600 }
   );
+  await saveOnrampHistory(env, input.wallet, order.id, {
+    naira: input.naira,
+    asset,
+    at: Math.floor(createdAt / 1000),
+    stage: 'waiting',
+    ...(input.expectedOut ? { out: input.expectedOut } : {}),
+    ...(input.expectedUsd ? { usd: input.expectedUsd } : {}),
+  });
   return json(
     {
       orderId: order.id,
@@ -2233,6 +2249,137 @@ export function onrampStage(status: string, held = false): 'waiting' | 'received
 }
 
 // ---------------------------------------------------------------------------
+// Naira-in History
+//
+// A naira order is stored by its partner id (used to follow it and to email the customer). History needs
+// the same order to be found from the customer's wallet, so a small row per order is kept under a
+// wallet-scoped key. It carries no personal details: just the naira paid, the asset bought and the stage.
+// ---------------------------------------------------------------------------
+
+const ONRAMP_HISTORY_TTL = 60 * 60 * 24 * 400; // 400 days, the same window as cash-out history
+const ONRAMP_HISTORY_PREFIX = 'onramp-wallet:';
+const ONRAMP_HISTORY_REFRESH_MS = 10 * 60 * 1000;
+
+export type OnrampStage = 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review';
+
+interface OnrampHistoryEntry {
+  naira: number;
+  asset: OnrampAsset;
+  at: number;
+  stage?: OnrampStage;
+  /** The G$ / CELO swap finished and landed in the wallet. */
+  arrived?: boolean;
+  /** What the app said the customer would get (label only). */
+  out?: number;
+  /** Dollars delivered to the wallet (label only, same as a cash out's USDT line). */
+  usd?: number;
+  /** Celo transaction for the swap into G$ / CELO, once it has landed. */
+  txHash?: string;
+  checkedAt?: number;
+}
+
+export interface OnrampHistoryRow {
+  orderId: string;
+  naira: number;
+  asset: OnrampAsset;
+  at: number;
+  stage: OnrampStage;
+  arrived: boolean;
+  out?: number;
+  usd?: number;
+  txHash?: string;
+}
+
+function onrampHistoryKey(wallet: string, orderId: string): string {
+  return `${ONRAMP_HISTORY_PREFIX}${wallet.toLowerCase()}:${orderId}`;
+}
+
+async function saveOnrampHistory(env: Env, wallet: string, orderId: string, entry: OnrampHistoryEntry): Promise<void> {
+  await env.ORDER_STORE.put(onrampHistoryKey(wallet, orderId), JSON.stringify(entry), { expirationTtl: ONRAMP_HISTORY_TTL });
+}
+
+/** Keep a wallet's history row in step with its order. History must never break the order flow. */
+async function updateOnrampHistory(env: Env, orderId: string, patch: Partial<OnrampHistoryEntry>): Promise<void> {
+  try {
+    const raw = await env.ORDER_STORE.get(`onramp:${orderId}`);
+    if (!raw) return;
+    const meta = JSON.parse(raw) as { wallet?: string };
+    if (!meta.wallet) return;
+    const key = onrampHistoryKey(meta.wallet, orderId);
+    const stored = await env.ORDER_STORE.get(key);
+    if (!stored) return;
+    const entry = JSON.parse(stored) as OnrampHistoryEntry;
+    await saveOnrampHistory(env, meta.wallet, orderId, { ...entry, ...patch, at: entry.at });
+  } catch {
+    // Convenience only.
+  }
+}
+
+/** This wallet's naira-in orders, newest first, refreshed from the partner at most a few at a time. */
+async function listWalletOnramps(wallet: string, env: Env): Promise<OnrampHistoryRow[]> {
+  const prefix = `${ONRAMP_HISTORY_PREFIX}${wallet.toLowerCase()}:`;
+  let listed: { keys: Array<{ name: string }> };
+  try {
+    listed = await env.ORDER_STORE.list({ prefix, limit: 100 });
+  } catch {
+    return [];
+  }
+
+  let live = 0;
+  const rows: OnrampHistoryRow[] = [];
+  for (const key of listed.keys) {
+    const orderId = key.name.slice(prefix.length);
+    const raw = await env.ORDER_STORE.get(key.name);
+    if (!raw) continue;
+    let entry: OnrampHistoryEntry;
+    try {
+      entry = JSON.parse(raw) as OnrampHistoryEntry;
+    } catch {
+      continue;
+    }
+
+    let stage = entry.stage;
+    const arrived = entry.arrived === true;
+    const needsCheck =
+      !arrived &&
+      stage !== 'done' &&
+      stage !== 'expired' &&
+      stage !== 'refund' &&
+      (!entry.checkedAt || Date.now() - entry.checkedAt > ONRAMP_HISTORY_REFRESH_MS);
+    if (needsCheck && live < 6) {
+      live += 1;
+      try {
+        const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${orderId}`, {
+          headers: { 'API-Key': env.PAYCREST_API_KEY },
+        });
+        if (res.ok) {
+          const o = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
+          const held = (await env.ORDER_STORE.get(`onramphold:${orderId}`)) !== null;
+          stage = onrampStage(String(o?.status ?? 'initiated'), held);
+        }
+        await saveOnrampHistory(env, wallet, orderId, { ...entry, stage, arrived: entry.arrived, checkedAt: Date.now() });
+      } catch {
+        // Keep the last known stage.
+      }
+    }
+
+    rows.push({
+      orderId,
+      naira: entry.naira,
+      asset: entry.asset ?? 'g',
+      at: entry.at,
+      stage: arrived ? 'done' : stage ?? 'waiting',
+      arrived,
+      ...(entry.out ? { out: entry.out } : {}),
+      ...(entry.usd ? { usd: entry.usd } : {}),
+      ...(entry.txHash ? { txHash: entry.txHash } : {}),
+    });
+  }
+
+  return rows.sort((a, b) => b.at - a.at).slice(0, 25);
+}
+
+// ---------------------------------------------------------------------------
 // Add G$ emails: "your money is ready" (naira arrived, tap to get G$) and "your G$ is in your wallet".
 // Kept apart from the cash-out email on purpose (different keys, different words).
 // ---------------------------------------------------------------------------
@@ -2349,8 +2496,7 @@ async function handleOnrampArrived(orderId: string, request: Request, env: Env):
   const limited = await checkRateLimit(request, env, 'onramp-notify', 'strict');
   if (limited) return limited;
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return err('Invalid order', 400);
-  const raw = await env.ORDER_STORE.get(`onrampnotify:${orderId}`);
-  if (!raw) return new Response(null, { status: 204 });
+  if (!(await env.ORDER_STORE.get(`onramp:${orderId}`))) return new Response(null, { status: 204 });
   let body: unknown;
   try {
     body = await request.json();
@@ -2361,11 +2507,15 @@ async function handleOnrampArrived(orderId: string, request: Request, env: Env):
   if (!parsed.success) return err('Some details were missing or not right. Please try again.');
   try {
     const res = await fetch(`https://api.relay.link/intents/status/v3?requestId=${parsed.data.requestId}`, { headers: relayHeaders(env) });
-    const d = (await res.json()) as { status?: string };
+    const d = (await res.json()) as { status?: string; txHashes?: string[] };
     if (!res.ok || d.status !== 'success') return err('Not finished yet', 409);
+    const txHash = (d.txHashes ?? []).find((h) => /^0x[0-9a-fA-F]{64}$/.test(h));
+    await updateOnrampHistory(env, orderId, { arrived: true, stage: 'done', ...(txHash ? { txHash } : {}) });
   } catch {
     return err('Could not check this right now.', 503);
   }
+  const raw = await env.ORDER_STORE.get(`onrampnotify:${orderId}`);
+  if (!raw) return new Response(null, { status: 204 });
   const n = JSON.parse(raw) as OnrampNotify;
   await env.ORDER_STORE.delete(`onrampnotify:${orderId}`); // forget first: one email only
   await sendOnrampEmail('arrived', orderId, n, env);
@@ -2383,8 +2533,24 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
     const status = String(o?.status ?? 'initiated');
     const held = (await env.ORDER_STORE.get(`onramphold:${orderId}`)) !== null;
     const stage = onrampStage(status, held);
+    await updateOnrampHistory(env, orderId, { stage, checkedAt: Date.now() });
+    let arrived = false;
+    let txHash: string | undefined;
+    try {
+      const meta = JSON.parse(known) as { wallet?: string };
+      if (meta.wallet) {
+        const row = await env.ORDER_STORE.get(onrampHistoryKey(meta.wallet, orderId));
+        if (row) {
+          const entry = JSON.parse(row) as OnrampHistoryEntry;
+          arrived = entry.arrived === true;
+          txHash = entry.txHash;
+        }
+      }
+    } catch {
+      // History is optional; the order itself is still followed.
+    }
     if (stage === 'done') await maybeSendOnrampReady(orderId, env);
-    return json({ orderId, status, stage });
+    return json({ orderId, status, stage, arrived, ...(txHash ? { txHash } : {}) });
   } catch {
     return err('Could not check this order right now.', 502);
   }

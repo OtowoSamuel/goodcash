@@ -47,6 +47,10 @@ export interface OnrampInput {
   birthDate: string;
   idType: 'BVN' | 'NIN';
   idNumber: string;
+  /** What the app showed the customer. Used only to label History. */
+  expectedOut?: number;
+  /** Dollars the app said would reach the wallet. Used only to label History. */
+  expectedUsd?: number;
   refundAccount: { institution: string; accountIdentifier: string; accountName: string };
 }
 
@@ -81,7 +85,7 @@ export const reportOnrampArrived = (orderId: string, requestId: string) =>
   api<unknown>(`/onramp/orders/${orderId}/arrived`, { method: 'POST', body: JSON.stringify({ requestId }) });
 
 export const fetchOnrampStatus = (orderId: string) =>
-  api<{ orderId: string; status: string; stage: OnrampStage }>(`/onramp/orders/${orderId}`);
+  api<{ orderId: string; status: string; stage: OnrampStage; arrived?: boolean; txHash?: string }>(`/onramp/orders/${orderId}`);
 
 /** Whole-day check used by the form (the server checks again). */
 export function isAdultDate(birthDate: string, now = new Date()): boolean {

@@ -42,7 +42,9 @@ interface Props {
   wallet: string;
   onClose: () => void;
   /** Called when G$ has arrived, so the app can refresh the balance. */
-  onArrived: () => void;
+  onArrived: (orderId?: string) => void;
+  /** Called once the bank details exist, so the order can appear in History straight away. */
+  onOrderCreated?: (order: { orderId: string; naira: number; asset: AddAsset; expectedOut?: number; expectedUsd?: number }) => void;
   /** Which one is chosen when the pop-up opens (an open order keeps its own choice) */
   initialAsset?: AddAsset;
 }
@@ -85,7 +87,7 @@ function timeLeft(validUntil: string, now: number): string | null {
 
 const INPUT = 'w-full rounded-xl border-[2.5px] border-[#111] bg-white px-4 py-3 text-base font-bold text-[#111] outline-none';
 
-export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, initialAsset = 'g' }) => {
+export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrderCreated, initialAsset = 'g' }) => {
   const saved = useRef(loadSaved(wallet));
   const [step, setStep] = useState<Step>(
     saved.current ? (saved.current.swapRequestId ? 'working' : saved.current.sent ? 'waiting' : 'pay') : 'amount'
@@ -183,7 +185,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, initia
           save(null);
           await returnToCelo();
           setStep('done');
-          onArrived();
+          onArrived(o?.orderId);
           return;
         }
         if (s === 'failure' || s === 'refund') {
@@ -227,9 +229,12 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, initia
         birthDate,
         idType,
         idNumber,
+        expectedOut: quote?.amountOutMin ?? quote?.gOutMin,
+        expectedUsd: quote?.usdtDelivered,
         refundAccount: { institution: bank.institutionCode, accountIdentifier: bank.accountIdentifier, accountName: bank.accountName },
       });
       setOrder(o);
+      onOrderCreated?.({ orderId: o.orderId, naira: amount, asset, expectedOut: quote?.amountOutMin ?? quote?.gOutMin, expectedUsd: quote?.usdtDelivered });
       save({ order: o, wallet, asset });
       setIdNumber('');
       setStage('waiting');

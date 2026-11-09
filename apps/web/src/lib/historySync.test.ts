@@ -49,6 +49,34 @@ describe('mergeServerHistory', () => {
     const merged = mergeServerHistory([], [server({ txHash: H3, amountG: 1000, usdtReceived: 0.114 })]);
     expect(merged).toHaveLength(0);
   });
+
+  it('adds naira-in orders with their asset and stage, newest first', () => {
+    const merged = mergeServerHistory([], [], [
+      { orderId: 'in-1', naira: 5000, asset: 'g', at: 1_800_000_000, stage: 'received', out: 4420 },
+      { orderId: 'in-2', naira: 2000, asset: 'celo', at: 1_800_000_100, stage: 'done', arrived: true, out: 10.26 },
+    ]);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].id).toBe('in-in-2');
+    expect(merged[0].kind).toBe('onramp');
+    expect(merged[0].asset).toBe('celo');
+    expect(merged[0].nairaIn).toBe(2000);
+    expect(merged[0].arrived).toBe(true);
+    expect(merged[1].onrampStage).toBe('received');
+    expect(merged[1].assetOut).toBe(4420);
+  });
+
+  it('never moves a finished naira order back to waiting', () => {
+    const local: SwapHistoryItem[] = [{
+      id: 'in-in-1', txHash: '', timestamp: 1, amountInG: 0, amountOutUsdt: 0, route: 'Naira → G$',
+      kind: 'onramp', asset: 'g', nairaIn: 5000, onrampStage: 'done', arrived: true,
+    }];
+    const merged = mergeServerHistory(local, [], [
+      { orderId: 'in-1', naira: 5000, asset: 'g', at: 1, stage: 'waiting' },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].onrampStage).toBe('done');
+    expect(merged[0].arrived).toBe(true);
+  });
 });
 
 import { isHiddenSwap } from './historySync';

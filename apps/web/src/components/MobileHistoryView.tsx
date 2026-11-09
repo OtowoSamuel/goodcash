@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getHistoryNaira, getSavedHistoryStatus, type SwapHistoryItem } from './HistoryCard';
+import { getHistoryNaira, getHistoryStatusLabel, getHistoryTitle, getSavedHistoryStatus, type SwapHistoryItem } from './HistoryCard';
 import { formatNaira } from '../lib/rate';
 import { MobileBottomNav, type MobileTab } from './MobileBottomNav';
 import { HistoryDetailModal } from './HistoryDetailModal';
@@ -30,8 +30,9 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
   const visible = history.filter((h) =>
     filter === 'all' ? true : filter === 'paid' ? isPaid(h) : !isPaid(h)
   );
-  const totalG = history.reduce((sum, h) => sum + h.amountInG, 0);
-  const totalNaira = history.reduce((sum, h) => sum + (h.nairaAmount ?? (isPaid(h) ? getHistoryNaira(h, ngnPerUsdt) ?? 0 : 0)), 0);
+  const cashOuts = history.filter((h) => h.kind !== 'onramp');
+  const totalG = cashOuts.reduce((sum, h) => sum + h.amountInG, 0);
+  const totalNaira = cashOuts.reduce((sum, h) => sum + (h.nairaAmount ?? (isPaid(h) ? getHistoryNaira(h, ngnPerUsdt) ?? 0 : 0)), 0);
 
   const pill = (id: Filter, label: string) => (
     <button
@@ -76,14 +77,14 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
           visible.map((item) => {
             const status = getSavedHistoryStatus(item);
             const paid = status === 'paid';
-            const naira = getHistoryNaira(item, ngnPerUsdt);
+            const onramp = item.kind === 'onramp';
             return (
               <div
                 key={item.id}
                 className="gc-card"
                 role="button"
                 tabIndex={0}
-                aria-label={`Open details for ${item.amountInG.toLocaleString()} G$ cash out`}
+                aria-label={onramp ? `Open details for ${getHistoryTitle(item, ngnPerUsdt)}` : `Open details for ${item.amountInG.toLocaleString()} G$ cash out`}
                 style={{ cursor: 'pointer' }}
                 onClick={() => setOpenId(item.id)}
                 onKeyDown={(e) => {
@@ -95,25 +96,30 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
               >
                 <div className="gc-row" style={{ alignItems: 'flex-start' }}>
                   <div className="gc-big" style={{ fontSize: 22 }}>
-                    {item.amountInG.toLocaleString()} G$ → {naira != null ? formatNaira(naira) : '—'}
+                    {getHistoryTitle(item, ngnPerUsdt)}
                   </div>
                   <span className={`gc-pill ${paid ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : ''}`} style={{ whiteSpace: 'nowrap', flex: 'none' }}>
-                    {paid ? 'Paid' : status === 'onItsWay' ? 'On its way' : 'Checking status'}
+                    {getHistoryStatusLabel(status)}
                   </span>
                 </div>
                 <div className="gc-sm" style={{ color: '#444', marginTop: 4 }}>
-                  {formatDisplayDate(item.timestamp)} · ${item.amountOutUsdt.toFixed(2)}
+                  {formatDisplayDate(item.timestamp)}
+                  {(!onramp || item.amountOutUsdt > 0) && ` · $${item.amountOutUsdt.toFixed(2)}`}
                 </div>
-                <a
-                  href={`https://celo.blockscout.com/tx/${item.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="gc-sm"
-                  style={{ display: 'inline-block', marginTop: 6, textDecoration: 'underline' }}
-                >
-                  Receipt {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
-                </a>
+                {item.txHash ? (
+                  <a
+                    href={`https://celo.blockscout.com/tx/${item.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="gc-sm"
+                    style={{ display: 'inline-block', marginTop: 6, textDecoration: 'underline' }}
+                  >
+                    Receipt {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
+                  </a>
+                ) : (
+                  <div className="gc-sm" style={{ display: 'inline-block', marginTop: 6 }}>Receipt pending</div>
+                )}
               </div>
             );
           })
@@ -121,7 +127,7 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
 
         <div className="gc-card gc-cost">
           <div className="gc-lab" style={{ marginBottom: 2 }}>Your totals</div>
-          <div className="gc-row"><span>Cash outs</span><span>{history.length}</span></div>
+          <div className="gc-row"><span>Cash outs</span><span>{cashOuts.length}</span></div>
           <div className="gc-row"><span>G$ cashed out</span><span>{totalG.toLocaleString()} G$</span></div>
           <div className="gc-row">
             <span>Naira received so far</span>
