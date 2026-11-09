@@ -78,20 +78,10 @@ function describeOnramp(
     return { title: 'Not completed', text: 'The payment window closed before the payment arrived. Nothing was taken from you.', tone: 'red' };
   }
   if (arrived) {
-    return { title: 'In your wallet', text: `Your ${what} is in your wallet.`, tone: 'mint' };
+    return { title: 'Paid', text: `Your ${what} is in your wallet.`, tone: 'mint' };
   }
   if (stage === 'waiting') {
-    return { title: 'Waiting for your transfer', text: `We have not seen your bank transfer yet. Open Add ${what} to see the bank details again.`, tone: 'yellow' };
-  }
-  if (stage === 'review') {
-    return { title: 'Under review', text: 'Your payment is being checked by our payment partner. This can take a little longer. Your money is safe.', tone: 'yellow' };
-  }
-  if (stage === 'done') {
-    return {
-      title: 'Naira received',
-      text: `Your naira arrived. If your ${what} is already in your wallet, you are all set. If not, open Add ${what} and finish it there.`,
-      tone: 'yellow',
-    };
+    return { title: 'On its way', text: `We have not seen your bank transfer yet. Open Add ${what} to see the bank details again.`, tone: 'yellow' };
   }
   return { title: 'On its way', text: `We have your naira and your ${what} is being added to your wallet. This usually takes a few minutes.`, tone: 'yellow' };
 }
@@ -160,7 +150,7 @@ export const HistoryDetailModal: React.FC<HistoryDetailModalProps> = ({ item, na
 
   const what = item.asset === 'celo' ? 'CELO' : 'G$';
   const info = isOnramp ? describeOnramp(onrampStage, arrived, what) : describe(live, savedStage);
-  const paid = isOnramp ? arrived : info.title === 'Paid';
+  const paid = info.title === 'Paid';
   const failedFinal = info.tone === 'red';
   const step2Done = paid || info.title === 'On its way';
   const bg = { mint: '#8cf0c0', yellow: '#ffd23f', red: '#ff9b9b', white: '#fff' }[info.tone];

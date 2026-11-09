@@ -40,11 +40,7 @@ export type HistoryStatus = 'paid' | 'onItsWay' | 'unknown';
 
 /** Status from what we have saved locally (no live lookup). Shared by desktop and mobile History. */
 export function getSavedHistoryStatus(item: SwapHistoryItem): HistoryStatus {
-  if (item.kind === 'onramp') {
-    if (item.arrived) return 'paid';
-    if (item.onrampStage === 'waiting' || item.onrampStage === 'received' || item.onrampStage === 'review' || item.onrampStage === 'done') return 'onItsWay';
-    return 'unknown';
-  }
+  if (item.kind === 'onramp') return item.arrived ? 'paid' : 'onItsWay';
   if (item.steps?.paidInNaira === 'completed') return 'paid';
   if (item.steps?.paidInNaira === 'processing' || item.steps?.sentToPartner === 'completed' || item.steps?.swapped === 'completed') return 'onItsWay';
   return 'unknown';
@@ -89,29 +85,12 @@ export function getHistoryStatusLabel(
 }
 
 /**
- * How a naira-in row (Naira -> G$ / CELO) reads in the list. Words are plain and each says what is really true:
- * "In your wallet" only once the asset arrived; an order that closed without payment, or was returned, is not left
- * saying "Checking status" forever.
+ * Naira orders that were never paid (the payment window closed) are not a transaction, so they are not listed:
+ * History only shows real ones, each either Paid or On its way, exactly like a cash out.
  */
-export function getOnrampLook(item: SwapHistoryItem): { label: string; tone: 'mint' | 'yellow' | 'plain' } {
-  if (item.arrived) return { label: 'In your wallet', tone: 'mint' };
-  switch (item.onrampStage) {
-    case 'refund':
-      return { label: 'Returned', tone: 'plain' };
-    case 'expired':
-      return { label: 'Not completed', tone: 'plain' };
-    case 'review':
-      return { label: 'Under review', tone: 'yellow' };
-    case 'done':
-      return { label: 'Naira received', tone: 'yellow' };
-    case 'received':
-      return { label: 'On its way', tone: 'yellow' };
-    default:
-      return { label: 'Waiting for your transfer', tone: 'yellow' };
-  }
+export function isListedInHistory(item: SwapHistoryItem): boolean {
+  return !(item.kind === 'onramp' && item.onrampStage === 'expired' && item.arrived !== true);
 }
-
-const pillTone = (tone: 'mint' | 'yellow' | 'plain') => (tone === 'mint' ? 'gc-pill--mint' : tone === 'yellow' ? 'gc-pill--yellow' : '');
 
 interface HistoryCardProps {
   history: SwapHistoryItem[];
@@ -185,7 +164,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
   };
 
   // Filter history
-  const filteredHistory = history.filter((item) => {
+  const filteredHistory = history.filter(isListedInHistory).filter((item) => {
     if (currentFilter === 'all') return true;
     const status = getItemStatus(item);
     if (currentFilter === 'paid') return status === 'paid';
@@ -264,9 +243,9 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                     </div>
                   </div>
                   <span
-                    className={`gc-pill gc-hit ${onramp ? pillTone(getOnrampLook(item).tone) : status === 'paid' ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : 'gc-pill'} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
+                    className={`gc-pill gc-hit ${status === 'paid' ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : 'gc-pill'} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
                   >
-                    {onramp ? getOnrampLook(item).label : getHistoryStatusLabel(status, { paid: t.statusPaid, onItsWay: t.statusOnItsWay, unknown: t.statusUnknown })}
+                    {getHistoryStatusLabel(status, { paid: t.statusPaid, onItsWay: t.statusOnItsWay, unknown: t.statusUnknown })}
                   </span>
                 </div>
 
@@ -281,9 +260,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                   >
                     {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
                   </a>
-                ) : (
-                  <div className="text-xs font-mono text-[#111] mt-8">{t.receipt || 'Receipt'} pending</div>
-                )}
+                ) : null}
               </div>
             );
           })}
