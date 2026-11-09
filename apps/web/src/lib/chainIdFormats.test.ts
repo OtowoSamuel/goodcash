@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest';
-import { chainIdNumber, ensureCeloChain, setActiveProvider } from './router';
+import { chainIdNumber, ensureCeloChain, setActiveProvider, activeProviderKind } from './router';
 import { readDollarsOnBase } from './addGs';
 
 const WALLET = '0xb4932bf6e653b98d88f9e520b4d6b5a567dbf61b';
@@ -26,21 +26,43 @@ describe('wallets that answer the chain id in different shapes', () => {
     expect(chainIdNumber(undefined)).toBeNaN();
   });
 
-  it('a WalletConnect wallet (chain id as a number) can be read on Base without crashing', async () => {
-    // this crashed with "toLowerCase is not a function" and showed customers "Something went wrong"
+  const baseNode = (result: unknown) =>
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(result), { status: 200 }));
+
+  it('reads the Base balance from a Base node, never asking the wallet (so no network switch prompt)', async () => {
     const p = wallet(8453);
     setActiveProvider(p);
+    const f = baseNode({ jsonrpc: '2.0', id: 1, result: '0x' + (1_000_000).toString(16).padStart(64, '0') });
     expect(await readDollarsOnBase(WALLET)).toBe(1_000_000n);
-    expect(p.calls).toEqual(['eth_chainId', 'eth_call']);
+    expect(p.calls).toEqual([]);
+    expect(String(f.mock.calls[0][0])).toContain('base');
     setActiveProvider(null);
+    f.mockRestore();
   });
 
   it('an empty balance answer ("0x") reads as zero instead of crashing', async () => {
-    const p = wallet(8453);
-    p.request.mockImplementation(async ({ method }: { method: string }) => (method === 'eth_chainId' ? 8453 : '0x'));
-    setActiveProvider(p);
+    const f = baseNode({ jsonrpc: '2.0', id: 1, result: '0x' });
     expect(await readDollarsOnBase(WALLET)).toBe(0n);
+    f.mockRestore();
+  });
+
+  it('falls back to the second Base node when the first fails', async () => {
+    const f = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new Error('down'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ result: '0x' + (5).toString(16).padStart(64, '0') }), { status: 200 }));
+    expect(await readDollarsOnBase(WALLET)).toBe(5n);
+    expect(f).toHaveBeenCalledTimes(2);
+    f.mockRestore();
+  });
+
+  it('an email wallet is marked, a brought wallet is not', () => {
+    setActiveProvider(wallet(42220), 'magic');
+    expect(activeProviderKind()).toBe('magic');
+    setActiveProvider(wallet(42220));
+    expect(activeProviderKind()).toBe('wallet');
     setActiveProvider(null);
+    expect(activeProviderKind()).toBe('wallet');
   });
 
   it('a number chain id of Celo is recognised, so no switch is asked for', async () => {

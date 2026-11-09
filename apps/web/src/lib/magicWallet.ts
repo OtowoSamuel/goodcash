@@ -87,8 +87,9 @@ export function getMagic(): Promise<MagicLike> {
     magicPromise = (async () => {
       const [{ Magic }, { WalletKitExtension }] = await Promise.all([import('magic-sdk'), import('@magic-ext/wallet-kit')]);
       return new Magic(KEY, {
-        // EXPERIMENT: pointing Magic at our own Celo node may be what its servers choke on. Off unless asked for.
-        ...(env.VITE_MAGIC_CELO_NETWORK === 'true' ? magicOptions(CELO_RPC_URL) : {}),
+        // Email and passkey wallets must live on Celo: Magic starts on Ethereum and cannot switch network afterwards.
+        // (Magic dashboard: the node address must be allowed there. Set VITE_MAGIC_CELO_NETWORK=false to turn this off.)
+        ...(env.VITE_MAGIC_CELO_NETWORK === 'false' ? {} : magicOptions(CELO_RPC_URL)),
         extensions: [new WalletKitExtension(REOWN_PROJECT_ID ? { projectId: REOWN_PROJECT_ID } : undefined)],
       } as never) as unknown as MagicLike;
     })();
@@ -153,7 +154,7 @@ export async function finishLoginWith(magic: MagicLike, result: MagicLoginResult
   // Email, text message or social login: a Magic wallet
   const address = addressFromMagicInfo(await magic.user.getInfo());
   if (!address) throw new Error('Your wallet was created, but we could not read its address. Please try again.');
-  setActiveProvider(magic.rpcProvider);
+  setActiveProvider(magic.rpcProvider, 'magic');
   return address;
 }
 
@@ -183,7 +184,7 @@ export async function restoreWith(magic: MagicLike): Promise<string | null> {
     if (await magic.user.isLoggedIn()) {
       const address = addressFromMagicInfo(await magic.user.getInfo());
       if (address) {
-        setActiveProvider(magic.rpcProvider);
+        setActiveProvider(magic.rpcProvider, 'magic');
         return address;
       }
     }

@@ -70,7 +70,7 @@ describe('after a successful login', () => {
     const m = makeMagic();
     const address = await mod.finishLoginWith(m as never, { method: 'email', didToken: 'x' });
     expect(address).toBe(ADDR);
-    expect(setActive).toHaveBeenCalledWith(m.rpcProvider);
+    expect(setActive).toHaveBeenCalledWith(m.rpcProvider, 'magic');
   });
 
   it('an email login whose address cannot be read is an error', async () => {
@@ -85,7 +85,7 @@ describe('after a successful login', () => {
   it('restores a Magic email wallet when no external wallet is connected', async () => {
     const m = makeMagic({ walletProvider: null, loggedIn: true });
     expect(await mod.restoreWith(m as never)).toBe(ADDR);
-    expect(setActive).toHaveBeenCalledWith(m.rpcProvider);
+    expect(setActive).toHaveBeenCalledWith(m.rpcProvider, 'magic');
   });
 
   it('restores nothing when nobody is signed in', async () => {

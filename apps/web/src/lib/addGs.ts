@@ -1,5 +1,5 @@
 import { ORDERS_API_BASE } from './rate';
-import { getWalletProvider, chainIdNumber } from './router';
+import { getWalletProvider, chainIdNumber, activeProviderKind } from './router';
 
 /**
  * Add G$ (naira in): the customer pays naira by bank transfer, dollars arrive in their own wallet on Base,
@@ -129,15 +129,32 @@ const BASE_ADD = {
   blockExplorerUrls: ['https://basescan.org'],
 };
 
-/** How many dollars (6 decimals, as a whole number of millionths) are waiting in the wallet on Base. */
+const BASE_RPCS = ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'];
+
+/**
+ * How many dollars (6 decimals, as a whole number of millionths) are waiting in the wallet on Base.
+ * Read straight from a Base node, not through the wallet: an email wallet lives on one network and cannot see Base,
+ * and a wallet app should not be asked to change network just so we can look at a balance.
+ */
 export async function readDollarsOnBase(wallet: string): Promise<bigint> {
-  const p = getWalletProvider();
-  if (!p) throw new Error('Connect your wallet first.');
-  await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
   const data = `0x70a08231${'0'.repeat(24)}${wallet.slice(2).toLowerCase()}`;
-  const raw = (await p.request({ method: 'eth_call', params: [{ to: BASE_USDC, data }, 'latest'] })) as string;
-  // some wallets answer an empty balance read with "0x", which BigInt rejects
-  return !raw || raw === '0x' ? 0n : BigInt(raw);
+  let lastError: unknown = new Error('Base is not reachable.');
+  for (const url of BASE_RPCS) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: BASE_USDC, data }, 'latest'] }),
+      });
+      const body = (await res.json()) as { result?: string; error?: { message?: string } };
+      if (body.error || typeof body.result !== 'string') throw new Error(body.error?.message ?? 'No answer from Base.');
+      // some nodes answer an empty balance read with "0x", which BigInt rejects
+      return body.result === '0x' ? 0n : BigInt(body.result);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
 }
 
 interface RelayStep {
@@ -180,7 +197,12 @@ export async function startGasFreeSwap(wallet: string, amount: bigint, asset: Ad
   if (!p) throw new Error('Connect your wallet first.');
   const quote = await api<RelayQuoteResponse>('/relay/quote', { method: 'POST', body: JSON.stringify({ wallet, amount: amount.toString(), asset }) });
   const { sign, api: apiKind } = checkRelaySigning(quote, wallet, amount);
-  await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
+  // A wallet the customer brought must be on Base to sign for Base. An email wallet signs for any network.
+  try {
+    await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
+  } catch (e) {
+    if (activeProviderKind() !== 'magic') throw e;
+  }
   const typed = {
     types: { EIP712Domain: eip712DomainType(sign.domain), ...sign.types },
     primaryType: sign.primaryType,
