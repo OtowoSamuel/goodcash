@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { addressFromMagicInfo, magicOptions, finishMagicLogin, restoreMagic, MAGIC_WALLETS } from './magicWallet';
+import { addressFromMagicInfo, magicOptions, finishMagicLogin, restoreMagic, MAGIC_WALLETS, WALLETS_WITHOUT_EXTENSION, browserHasWallet, walletsForBrowser } from './magicWallet';
 
 const ADDR = '0x1111111111111111111111111111111111111111';
 
@@ -91,5 +91,33 @@ describe('after a successful login', () => {
   it('restores nothing when nobody is signed in', async () => {
     expect(await mod.restoreWith(makeMagic({ walletProvider: null, loggedIn: false }) as never)).toBeNull();
     expect(setActive).not.toHaveBeenCalled();
+  });
+});
+
+describe('which wallets the connect panel offers', () => {
+  const win = (setup: (w: EventTarget & { ethereum?: unknown }) => void) => {
+    const w = new EventTarget() as EventTarget & { ethereum?: unknown };
+    setup(w);
+    return w as unknown as Window;
+  };
+
+  it('a plain phone browser (no wallet inside it) is not offered the extension-only wallets', () => {
+    expect(browserHasWallet(win(() => undefined))).toBe(false);
+    expect(walletsForBrowser(false)).toEqual(['walletconnect', 'coinbase']);
+    for (const w of ['metamask', 'phantom', 'rabby']) expect(WALLETS_WITHOUT_EXTENSION).not.toContain(w);
+  });
+
+  it('a browser with a wallet in it (window.ethereum, such as MetaMask own browser) gets the full list', () => {
+    expect(browserHasWallet(win((w) => (w.ethereum = {})))).toBe(true);
+    expect(walletsForBrowser(true)).toEqual([...MAGIC_WALLETS]);
+  });
+
+  it('a wallet that only announces itself (EIP-6963) counts too', () => {
+    const w = win((t) => t.addEventListener('eip6963:requestProvider', () => t.dispatchEvent(new Event('eip6963:announceProvider'))));
+    expect(browserHasWallet(w)).toBe(true);
+  });
+
+  it('phone browsers always keep WalletConnect, so every wallet app can still be reached', () => {
+    expect(WALLETS_WITHOUT_EXTENSION).toContain('walletconnect');
   });
 });
