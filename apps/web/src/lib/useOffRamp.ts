@@ -665,9 +665,14 @@ export async function fetchWalletHistory(wallet: string): Promise<import('./hist
 }
 
 /** The same, plus whether the server has finished reading this wallet's history (a new wallet takes a few calls). */
-export async function fetchWalletHistoryFull(wallet: string): Promise<{ swaps: import('./historySync').ServerSwap[]; complete: boolean }> {
+export async function fetchWalletHistoryFull(wallet: string): Promise<{
+  swaps: import('./historySync').ServerSwap[];
+  onramps: import('./historySync').ServerOnramp[];
+  complete: boolean;
+}> {
   const data = await apiGet<{
     swaps: Array<{ txHash: string; amountG: string; usdtReceived: string; at: number; orderId?: string; status?: string; naira?: string }>;
+    onramps?: Array<{ orderId: string; naira: number; asset?: 'g' | 'celo'; at: number; stage?: string; arrived?: boolean; out?: number; usd?: number; txHash?: string }>;
     complete?: boolean;
   }>(`/history?wallet=${encodeURIComponent(wallet)}`);
   const swaps = (data.swaps ?? []).map((s) => ({
@@ -679,5 +684,16 @@ export async function fetchWalletHistoryFull(wallet: string): Promise<{ swaps: i
     status: s.status,
     naira: s.naira ? Number(s.naira) : undefined,
   }));
-  return { swaps, complete: data.complete !== false };
+  const onramps = (data.onramps ?? []).map((o) => ({
+    orderId: o.orderId,
+    naira: Number(o.naira),
+    asset: o.asset === 'celo' ? ('celo' as const) : ('g' as const),
+    at: o.at,
+    stage: o.stage,
+    arrived: o.arrived === true,
+    out: o.out != null ? Number(o.out) : undefined,
+    usd: o.usd != null ? Number(o.usd) : undefined,
+    txHash: o.txHash,
+  }));
+  return { swaps, onramps, complete: data.complete !== false };
 }

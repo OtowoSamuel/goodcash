@@ -6,6 +6,8 @@ import { getTranslations } from '../lib/i18n';
 import { ORDERS_API_BASE, formatNaira } from '../lib/rate';
 import { HistoryDetailModal } from './HistoryDetailModal';
 
+export type OnrampStage = 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review';
+
 export interface SwapHistoryItem {
   id: string;
   txHash: string;
@@ -15,6 +17,17 @@ export interface SwapHistoryItem {
   route: string;
   orderId?: string;
   nairaAmount?: number;
+  /** Defaults to a cash out. `onramp` is Naira → G$ / CELO. */
+  kind?: 'cashout' | 'onramp';
+  /** What an onramp bought. */
+  asset?: 'g' | 'celo';
+  /** Naira paid in an onramp. */
+  nairaIn?: number;
+  /** G$ or CELO received in an onramp (what the app quoted). */
+  assetOut?: number;
+  onrampStage?: OnrampStage;
+  /** The bought asset actually landed in the wallet. */
+  arrived?: boolean;
   steps?: {
     swapped: 'completed' | 'pending' | 'failed' | 'unknown';
     sentToPartner: 'completed' | 'pending' | 'waiting' | 'failed' | 'unknown';
@@ -27,6 +40,11 @@ export type HistoryStatus = 'paid' | 'onItsWay' | 'unknown';
 
 /** Status from what we have saved locally (no live lookup). Shared by desktop and mobile History. */
 export function getSavedHistoryStatus(item: SwapHistoryItem): HistoryStatus {
+  if (item.kind === 'onramp') {
+    if (item.arrived) return 'paid';
+    if (item.onrampStage === 'waiting' || item.onrampStage === 'received' || item.onrampStage === 'review' || item.onrampStage === 'done') return 'onItsWay';
+    return 'unknown';
+  }
   if (item.steps?.paidInNaira === 'completed') return 'paid';
   if (item.steps?.paidInNaira === 'processing' || item.steps?.sentToPartner === 'completed' || item.steps?.swapped === 'completed') return 'onItsWay';
   return 'unknown';
@@ -34,9 +52,40 @@ export function getSavedHistoryStatus(item: SwapHistoryItem): HistoryStatus {
 
 /** Naira for a history row: the recorded amount, else USDT received at the current rate. */
 export function getHistoryNaira(item: SwapHistoryItem, ngnPerUsdt?: number | null): number | null {
+  if (item.kind === 'onramp') return item.nairaIn ?? null;
   if (item.nairaAmount != null) return item.nairaAmount;
   if (ngnPerUsdt && ngnPerUsdt > 0 && item.amountOutUsdt > 0) return nairaFromUsdt(item.amountOutUsdt, ngnPerUsdt);
   return null;
+}
+
+const ASSET_LABEL: Record<'g' | 'celo', string> = { g: 'G$', celo: 'CELO' };
+
+/** The main line of a row: "1,000 G$ → ₦1,500" or "₦5,000 → 4,000 G$". */
+export function getHistoryTitle(item: SwapHistoryItem, ngnPerUsdt?: number | null): string {
+  if (item.kind === 'onramp') {
+    const naira = item.nairaIn != null ? formatNaira(item.nairaIn) : '—';
+    const label = ASSET_LABEL[item.asset ?? 'g'];
+    const out = item.assetOut;
+    if (out != null && Number.isFinite(out) && out > 0) {
+      const amount = item.asset === 'celo'
+        ? (Math.floor(out * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : Math.floor(out).toLocaleString('en-US');
+      return `${naira} → ${amount} ${label}`;
+    }
+    return `${naira} → ${label}`;
+  }
+  const naira = getHistoryNaira(item, ngnPerUsdt);
+  return `${item.amountInG.toLocaleString()} G$ → ${naira != null ? formatNaira(naira) : '—'}`;
+}
+
+/** The pill text for a row. On-ramps use the same words as cash outs. */
+export function getHistoryStatusLabel(
+  status: HistoryStatus,
+  labels?: { paid?: string; onItsWay?: string; unknown?: string }
+): string {
+  if (status === 'paid') return labels?.paid || 'Paid';
+  if (status === 'onItsWay') return labels?.onItsWay || 'On its way';
+  return labels?.unknown || 'Checking status';
 }
 
 interface HistoryCardProps {
@@ -68,7 +117,10 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
 
   // Fetch live order status
   React.useEffect(() => {
-    const orderIds = history.map((h) => h.orderId).filter((id): id is string => Boolean(id));
+    const orderIds = history
+      .filter((h) => h.kind !== 'onramp')
+      .map((h) => h.orderId)
+      .filter((id): id is string => Boolean(id));
     if (orderIds.length === 0) return;
 
     let cancelled = false;
@@ -91,6 +143,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
 
   // Derive overall status for each item
   const getItemStatus = (item: SwapHistoryItem): 'paid' | 'onItsWay' | 'unknown' => {
+    if (item.kind === 'onramp') return getSavedHistoryStatus(item);
     const liveOrder = item.orderId ? orderStatuses[item.orderId] : undefined;
     const liveStatus = liveOrder?.status;
 
@@ -155,8 +208,8 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
       ) : (
         <div className="space-y-3">
           {filteredHistory.map((item) => {
-            const estimatedNaira = getHistoryNaira(item, ngnPerUsdt);
             const status = getItemStatus(item);
+            const onramp = item.kind === 'onramp';
 
             return (
               <div
@@ -164,7 +217,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                 className="gc-card"
                 role="button"
                 tabIndex={0}
-                aria-label={`Open details for ${item.amountInG.toLocaleString()} G$ cash out`}
+                aria-label={onramp ? `Open details for ${getHistoryTitle(item, ngnPerUsdt)}` : `Open details for ${item.amountInG.toLocaleString()} G$ cash out`}
                 style={{ cursor: 'pointer' }}
                 onClick={() => setOpenId(item.id)}
                 onKeyDown={(e) => {
@@ -178,32 +231,34 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
                 <div className="flex justify-between items-start gap-2">
                   <div>
                     <div className="gc-big gc-big--history text-[#111]">
-                      {item.amountInG.toLocaleString()} G$ →{' '}
-                      {Number.isFinite(estimatedNaira) && estimatedNaira !== null
-                        ? formatNaira(estimatedNaira)
-                        : '—'}
+                      {getHistoryTitle(item, ngnPerUsdt)}
                     </div>
                     <div className="text-xs font-semibold text-[#666] mt-2">
-                      {formatDisplayDate(item.timestamp)} · ${item.amountOutUsdt.toFixed(2)}
+                      {formatDisplayDate(item.timestamp)}
+                      {(!onramp || item.amountOutUsdt > 0) && ` · $${item.amountOutUsdt.toFixed(2)}`}
                     </div>
                   </div>
                   <span
                     className={`gc-pill gc-hit ${status === 'paid' ? 'gc-pill--mint' : status === 'onItsWay' ? 'gc-pill--yellow' : 'gc-pill'} focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2`}
                   >
-                    {status === 'paid' ? t.statusPaid || 'Paid' : status === 'onItsWay' ? t.statusOnItsWay || 'On its way' : t.statusUnknown || 'Status unknown'}
+                    {getHistoryStatusLabel(status, { paid: t.statusPaid, onItsWay: t.statusOnItsWay, unknown: t.statusUnknown })}
                   </span>
                 </div>
 
                 {/* Bottom: Receipt link under conversion text — black text */}
-                <a
-                  href={`https://celo.blockscout.com/tx/${item.txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs font-mono text-[#111] mt-8 gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
-                >
-                  {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
-                </a>
+                {item.txHash ? (
+                  <a
+                    href={`https://celo.blockscout.com/tx/${item.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs font-mono text-[#111] mt-8 gc-hit focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2"
+                  >
+                    {t.receipt || 'Receipt'} {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)} ↗
+                  </a>
+                ) : (
+                  <div className="text-xs font-mono text-[#111] mt-8">{t.receipt || 'Receipt'} pending</div>
+                )}
               </div>
             );
           })}

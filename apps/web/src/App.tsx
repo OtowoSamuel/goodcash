@@ -292,7 +292,7 @@ export function App({
       const naira = trackerData?.ngnPerUsdt ? nairaFromUsdt(trackerData.usdtReceived, trackerData.ngnPerUsdt) : null;
       setHistory((prev) =>
         prev.map((h) =>
-          h.orderId === orderId
+          h.kind !== 'onramp' && h.orderId === orderId
             ? {
                 ...h,
                 ...(naira !== null ? { nairaAmount: naira } : {}),
@@ -523,6 +523,32 @@ export function App({
   const refreshGBalance = () => {
     if (!walletAddress) return;
     void fetchGBalance(walletAddress).then((b) => setBalanceG(Math.floor(b * 100) / 100)).catch(() => undefined);
+  };
+  // A naira order belongs in History the moment it starts, even before the next server sync.
+  const recordOnrampOrder = (o: { orderId: string; naira: number; asset: 'g' | 'celo'; expectedOut?: number; expectedUsd?: number }) => {
+    setHistory((prev) =>
+      mergeServerHistory(prev, [], [
+        {
+          orderId: o.orderId,
+          naira: o.naira,
+          asset: o.asset,
+          at: Math.floor(Date.now() / 1000),
+          stage: 'waiting',
+          out: o.expectedOut,
+          usd: o.expectedUsd,
+        },
+      ])
+    );
+  };
+  const markOnrampArrived = (orderId?: string) => {
+    if (!orderId) return;
+    setHistory((prev) =>
+      prev.map((h) =>
+        h.kind === 'onramp' && h.orderId === orderId
+          ? { ...h, arrived: true, onrampStage: 'done' as const }
+          : h
+      )
+    );
   };
   const addPhase = useAddGsWatcher({
     wallet: ADDG_ENABLED && !isDemoMode ? walletAddress : null,
@@ -1066,9 +1092,9 @@ export function App({
     let quick: ReturnType<typeof setTimeout> | undefined;
     const sync = () =>
       fetchWalletHistoryFull(walletAddress)
-        .then(({ swaps, complete }) => {
+        .then(({ swaps, onramps, complete }) => {
           if (!alive) return;
-          setHistory((prev) => mergeServerHistory(prev, swaps));
+          setHistory((prev) => mergeServerHistory(prev, swaps, onramps));
           // A new wallet's history is read in a few steps: ask again soon instead of waiting minutes
           if (!complete && quickTries < 12) {
             quickTries += 1;
@@ -1088,7 +1114,7 @@ export function App({
   // Repair history rows saved with 0 G$ (older recovery bug) by reading the swap back from Celo
   useEffect(() => {
     if (isDemoMode) return;
-    const broken = history.filter((h) => !h.amountInG && h.txHash);
+    const broken = history.filter((h) => h.kind !== 'onramp' && !h.amountInG && h.txHash);
     if (broken.length === 0) return;
     let alive = true;
     broken.forEach((h) => {
@@ -1127,7 +1153,7 @@ export function App({
 
   // Keep History honest without the customer opening anything: ask which order belongs to each unpaid swap
   const unpaidSwapKey = history
-    .filter((h) => h.steps?.paidInNaira !== 'completed' && h.txHash)
+    .filter((h) => h.kind !== 'onramp' && h.steps?.paidInNaira !== 'completed' && h.txHash)
     .map((h) => h.txHash.toLowerCase())
     .slice(0, 6)
     .join(',');
@@ -1169,7 +1195,7 @@ export function App({
     announcePaid(orderId, nairaAmount);
     setHistory((prev) =>
       prev.map((h) =>
-        h.orderId === orderId
+        h.kind !== 'onramp' && h.orderId === orderId
           ? {
               ...h,
               ...(nairaAmount !== null ? { nairaAmount } : {}),
@@ -1385,7 +1411,9 @@ export function App({
             wallet={walletAddress}
             initialAsset={addAsset}
             onClose={() => setAddOpen(false)}
-            onArrived={() => {
+            onOrderCreated={recordOnrampOrder}
+            onArrived={(orderId) => {
+              markOnrampArrived(orderId);
               setOkNotice('Your G$ is in your wallet.');
               refreshGBalance();
             }}
@@ -1633,19 +1661,19 @@ export function App({
                 <div className="gc-lab" style={{ marginBottom: '2px' }}>{t.yourTotals}</div>
                 <div className="gc-row">
                   <span>{t.totalCashOuts}</span>
-                  <span>{history.length}</span>
+                  <span>{history.filter((h) => h.kind !== 'onramp').length}</span>
                 </div>
                 <div className="gc-row">
                   <span>{t.totalGSwapped}</span>
                   <span>
-                    {history.reduce((sum, item) => sum + (item.amountInG || 0), 0).toLocaleString()} G$
+                    {history.filter((h) => h.kind !== 'onramp').reduce((sum, item) => sum + (item.amountInG || 0), 0).toLocaleString()} G$
                   </span>
                 </div>
                 <div className="gc-row">
                   <span>{t.totalNairaReceived}</span>
                   <span>
                     {(() => {
-                      const total = history.reduce((sum, item) => {
+                      const total = history.filter((h) => h.kind !== 'onramp').reduce((sum, item) => {
                         const naira = item.nairaAmount ?? (item.steps?.paidInNaira === 'completed' ? getHistoryNaira(item, pendingQuote?.ngnPerUsdt ?? liveNgnRate) ?? 0 : 0);
                         return sum + (Number.isFinite(naira) ? naira : 0);
                       }, 0);
