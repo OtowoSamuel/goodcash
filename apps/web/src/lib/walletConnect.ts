@@ -26,9 +26,9 @@ let provider: WcProvider | null = null;
 export function walletConnectInitOptions(projectId: string, origin: string, rpcUrl: string) {
   return {
     projectId,
-    optionalChains: [42220],
+    optionalChains: [42220, 8453],
     showQrModal: true,
-    rpcMap: { 42220: rpcUrl },
+    rpcMap: { 42220: rpcUrl, 8453: 'https://mainnet.base.org' },
     metadata: {
       name: 'GoodCash',
       description: 'Cash out your GoodDollar (G$) to naira.',

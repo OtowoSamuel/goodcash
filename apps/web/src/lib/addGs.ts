@@ -1,5 +1,5 @@
 import { ORDERS_API_BASE } from './rate';
-import { getWalletProvider } from './router';
+import { getWalletProvider, chainIdNumber } from './router';
 
 /**
  * Add G$ (naira in): the customer pays naira by bank transfer, dollars arrive in their own wallet on Base,
@@ -111,8 +111,8 @@ export const formatNaira = (n: number) => `₦${Math.round(n).toLocaleString('en
 type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
 
 async function switchChain(p: Eip1193, hex: string, add?: Record<string, unknown>): Promise<void> {
-  const current = (await p.request({ method: 'eth_chainId' })) as string;
-  if (current.toLowerCase() === hex) return;
+  const current = await p.request({ method: 'eth_chainId' });
+  if (chainIdNumber(current) === parseInt(hex, 16)) return;
   try {
     await p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] });
   } catch (e) {

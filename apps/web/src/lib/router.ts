@@ -737,13 +737,21 @@ function getEthereum(): Eip1193 | null {
   return ((window as unknown as { ethereum?: Eip1193 }).ethereum ?? null);
 }
 
+/** A wallet's chain id as a number. Browser wallets answer with hex text ("0xa4ec"); WalletConnect answers with a number. */
+export function chainIdNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'bigint') return Number(v);
+  if (typeof v === 'string') return /^0x/i.test(v) ? parseInt(v, 16) : parseInt(v, 10);
+  return NaN;
+}
+
 /**
  * Make sure the wallet is on Celo mainnet before sending anything. A phone wallet is often left on
  * Ethereum, and it then refuses Celo transactions. This asks it to switch (or to add Celo first).
  */
 export async function ensureCeloChain(provider: Eip1193): Promise<void> {
-  const current = (await provider.request({ method: 'eth_chainId' })) as string;
-  if (parseInt(current, 16) === 42220) return;
+  const current = await provider.request({ method: 'eth_chainId' });
+  if (chainIdNumber(current) === 42220) return;
   try {
     await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xa4ec' }] });
   } catch {
