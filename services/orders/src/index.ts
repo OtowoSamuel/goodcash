@@ -1997,14 +1997,20 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
     JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, asset, createdAt }),
     { expirationTtl: 14 * 24 * 3600 }
   );
-  await saveOnrampHistory(env, input.wallet, order.id, {
-    naira: input.naira,
-    asset,
-    at: Math.floor(createdAt / 1000),
-    stage: 'waiting',
-    ...(input.expectedOut ? { out: input.expectedOut } : {}),
-    ...(input.expectedUsd ? { usd: input.expectedUsd } : {}),
-  });
+  // History is a convenience. The order already exists at the partner, so a storage hiccup here must never turn into
+  // an error for the customer (they would think nothing was created and might pay twice).
+  try {
+    await saveOnrampHistory(env, input.wallet, order.id, {
+      naira: input.naira,
+      asset,
+      at: Math.floor(createdAt / 1000),
+      stage: 'waiting',
+      ...(input.expectedOut ? { out: input.expectedOut } : {}),
+      ...(input.expectedUsd ? { usd: input.expectedUsd } : {}),
+    });
+  } catch (e) {
+    console.error('[onramp] could not save the History row:', (e as Error)?.message);
+  }
   return json(
     {
       orderId: order.id,
@@ -2205,10 +2211,58 @@ async function updateOnrampHistory(env: Env, orderId: string, patch: Partial<Onr
     const stored = await env.ORDER_STORE.get(key);
     if (!stored) return;
     const entry = JSON.parse(stored) as OnrampHistoryEntry;
+    // The app asks for an order's status every few seconds while the customer waits. Writing on every ask would burn
+    // through storage writes, so only write when something actually changed.
+    const changed = (Object.keys(patch) as Array<keyof OnrampHistoryEntry>).some((k) => patch[k] !== undefined && entry[k] !== patch[k]);
+    if (!changed) return;
     await saveOnrampHistory(env, meta.wallet, orderId, { ...entry, ...patch, at: entry.at });
   } catch {
     // Convenience only.
   }
+}
+
+const BACKFILL_DONE_KEY = 'onramp-backfill:done';
+const BACKFILL_CURSOR_KEY = 'onramp-backfill:cursor';
+const BACKFILL_BATCH = 20;
+
+/**
+ * One-time catch-up for naira orders made BEFORE History knew about them. Those orders only exist under
+ * `onramp:<id>` (kept 14 days: wallet, naira, asset, time), so this gives each one the wallet-scoped History row it
+ * would have got. It runs on the worker's 10-minute schedule, a few at a time (storage calls per run are limited),
+ * skips rows that already exist, and stops for good once it has seen every order. No personal details are involved.
+ * The stage is left empty on purpose: History asks the payout partner for it the first time the wallet looks.
+ */
+export async function backfillOnrampHistory(env: Env): Promise<{ scanned: number; added: number; done: boolean }> {
+  if (await env.ORDER_STORE.get(BACKFILL_DONE_KEY)) return { scanned: 0, added: 0, done: true };
+  const cursor = (await env.ORDER_STORE.get(BACKFILL_CURSOR_KEY)) ?? undefined;
+  const page = (await env.ORDER_STORE.list({ prefix: 'onramp:', limit: BACKFILL_BATCH, ...(cursor ? { cursor } : {}) })) as {
+    keys: Array<{ name: string }>;
+    list_complete?: boolean;
+    cursor?: string;
+  };
+  let added = 0;
+  for (const key of page.keys) {
+    const orderId = key.name.slice('onramp:'.length);
+    if (!/^[0-9a-f-]{36}$/i.test(orderId)) continue;
+    try {
+      const raw = await env.ORDER_STORE.get(key.name);
+      if (!raw) continue;
+      const meta = JSON.parse(raw) as { wallet?: unknown; naira?: unknown; asset?: unknown; createdAt?: unknown };
+      if (typeof meta.wallet !== 'string' || !/^0x[0-9a-f]{40}$/i.test(meta.wallet)) continue;
+      const naira = Number(meta.naira);
+      const createdAt = Number(meta.createdAt);
+      if (!Number.isFinite(naira) || naira <= 0 || !Number.isFinite(createdAt) || createdAt <= 0) continue;
+      if (await env.ORDER_STORE.get(onrampHistoryKey(meta.wallet, orderId))) continue;
+      await saveOnrampHistory(env, meta.wallet, orderId, { naira, asset: parseAsset(meta.asset), at: Math.floor(createdAt / 1000) });
+      added += 1;
+    } catch {
+      // one unreadable order must not stop the rest
+    }
+  }
+  const done = page.list_complete !== false;
+  if (done) await env.ORDER_STORE.put(BACKFILL_DONE_KEY, String(Date.now()), { expirationTtl: ONRAMP_HISTORY_TTL });
+  else if (page.cursor) await env.ORDER_STORE.put(BACKFILL_CURSOR_KEY, page.cursor, { expirationTtl: 60 * 60 * 24 });
+  return { scanned: page.keys.length, added, done };
 }
 
 /** This wallet's naira-in orders, newest first, refreshed from the partner at most a few at a time. */
@@ -2221,56 +2275,63 @@ async function listWalletOnramps(wallet: string, env: Env): Promise<OnrampHistor
     return [];
   }
 
-  let live = 0;
-  const rows: OnrampHistoryRow[] = [];
+  const entries: Array<{ orderId: string; entry: OnrampHistoryEntry }> = [];
   for (const key of listed.keys) {
-    const orderId = key.name.slice(prefix.length);
     const raw = await env.ORDER_STORE.get(key.name);
     if (!raw) continue;
-    let entry: OnrampHistoryEntry;
     try {
-      entry = JSON.parse(raw) as OnrampHistoryEntry;
+      entries.push({ orderId: key.name.slice(prefix.length), entry: JSON.parse(raw) as OnrampHistoryEntry });
     } catch {
-      continue;
+      // skip a row we cannot read
     }
+  }
 
-    let stage = entry.stage;
-    const arrived = entry.arrived === true;
-    const needsCheck =
-      !arrived &&
-      stage !== 'done' &&
-      stage !== 'expired' &&
-      stage !== 'refund' &&
-      (!entry.checkedAt || Date.now() - entry.checkedAt > ONRAMP_HISTORY_REFRESH_MS);
-    if (needsCheck && live < 6) {
-      live += 1;
+  // Ask the payout partner about open orders: a few at a time, all together, never longer than 4 seconds, so one
+  // slow answer cannot hold the whole History page back.
+  const open = entries
+    .filter(({ entry }) => {
+      const stage = entry.stage;
+      return (
+        entry.arrived !== true &&
+        stage !== 'done' &&
+        stage !== 'expired' &&
+        stage !== 'refund' &&
+        (!entry.checkedAt || Date.now() - entry.checkedAt > ONRAMP_HISTORY_REFRESH_MS)
+      );
+    })
+    .slice(0, 6);
+  await Promise.all(
+    open.map(async (item) => {
       try {
-        const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${orderId}`, {
+        const res = await fetch(`${env.PAYCREST_BASE_URL}/v2/sender/orders/${item.orderId}`, {
           headers: { 'API-Key': env.PAYCREST_API_KEY },
+          signal: AbortSignal.timeout(4000),
         });
-        if (res.ok) {
-          const o = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
-          const held = (await env.ORDER_STORE.get(`onramphold:${orderId}`)) !== null;
-          stage = onrampStage(String(o?.status ?? 'initiated'), held);
-        }
-        await saveOnrampHistory(env, wallet, orderId, { ...entry, stage, arrived: entry.arrived, checkedAt: Date.now() });
+        if (!res.ok) return;
+        const o = unwrapPaycrestData<OnrampPaycrestOrder>(await res.json());
+        const held = (await env.ORDER_STORE.get(`onramphold:${item.orderId}`)) !== null;
+        item.entry = { ...item.entry, stage: onrampStage(String(o?.status ?? 'initiated'), held), checkedAt: Date.now() };
+        await saveOnrampHistory(env, wallet, item.orderId, item.entry);
       } catch {
         // Keep the last known stage.
       }
-    }
+    })
+  );
 
-    rows.push({
+  const rows: OnrampHistoryRow[] = entries.map(({ orderId, entry }) => {
+    const arrived = entry.arrived === true;
+    return {
       orderId,
       naira: entry.naira,
       asset: entry.asset ?? 'g',
       at: entry.at,
-      stage: arrived ? 'done' : stage ?? 'waiting',
+      stage: arrived ? 'done' : entry.stage ?? 'waiting',
       arrived,
       ...(entry.out ? { out: entry.out } : {}),
       ...(entry.usd ? { usd: entry.usd } : {}),
       ...(entry.txHash ? { txHash: entry.txHash } : {}),
-    });
-  }
+    };
+  });
 
   return rows.sort((a, b) => b.at - a.at).slice(0, 25);
 }
@@ -2429,7 +2490,7 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
     const status = String(o?.status ?? 'initiated');
     const held = (await env.ORDER_STORE.get(`onramphold:${orderId}`)) !== null;
     const stage = onrampStage(status, held);
-    await updateOnrampHistory(env, orderId, { stage, checkedAt: Date.now() });
+    await updateOnrampHistory(env, orderId, { stage });
     let arrived = false;
     let txHash: string | undefined;
     try {
@@ -2669,6 +2730,12 @@ export default {
       if (out.alerted > 0) console.error(`[slow-payout] alerted ${out.alerted} of ${out.checked} open orders`);
     } catch (e) {
       console.error('[slow-payout] check failed:', e);
+    }
+    try {
+      const out = await backfillOnrampHistory(env);
+      if (out.added > 0 || out.done) console.log(`[onramp-backfill] scanned ${out.scanned}, added ${out.added}${out.done ? ', finished' : ''}`);
+    } catch (e) {
+      console.error('[onramp-backfill] failed:', e);
     }
   },
 };
