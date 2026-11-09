@@ -53,7 +53,7 @@ switched off (`PARTNER_API_ENABLED = "false"`) until you turn it on.
 ## Not done or not verified
 
 - Nothing deployed: the widget site, the `api.goodcash.xyz` `/v1` routes in production, and docs hosting.
-- Docs and READMEs link to `https://goodcash.xyz/partners`, which does not exist yet.
+- Docs are published at `https://pay.goodcash.xyz/docs` (built from `docs/partners` by `scripts/build-docs.mjs`).
 - A **live** partner cash out with real money (only tests, mocks, a fork and local test mode so far).
 - The Magic / WalletConnect panel itself was **not run with real keys** (tests use stand-ins for it); try it once on a phone after deploying.
 - The Pages Function framing rule was not run (Vite preview does not run Pages Functions); its logic is small and

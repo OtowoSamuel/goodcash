@@ -34,4 +34,4 @@ export function Wallet() {
 Events: `cashout.created`, `cashout.sent`, `cashout.paid`, `cashout.failed`, `closed`.
 Use webhooks (server) for anything that must not be missed, like crediting a user.
 
-Docs: https://goodcash.xyz/partners
+Docs: https://pay.goodcash.xyz/docs

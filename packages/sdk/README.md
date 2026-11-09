@@ -64,6 +64,6 @@ Paying out from your own wallet (games, fintechs): pass a viem `WalletClient` wi
 ## Errors
 
 Every error is a `GoodCashError` with a stable `code`, a plain `message` you can show customers, and a `detail` for
-you. Full list: https://goodcash.xyz/partners/errors
+you. Full list: https://pay.goodcash.xyz/docs/errors/
 
-Docs: https://goodcash.xyz/partners · API reference (OpenAPI): https://goodcash.xyz/partners/openapi.yaml
+Docs: https://pay.goodcash.xyz/docs · API reference (OpenAPI): https://pay.goodcash.xyz/docs/openapi.yaml

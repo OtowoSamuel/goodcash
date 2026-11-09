@@ -15,5 +15,6 @@
       "@goodcash/react": ["../../packages/react/src/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/docs.test.ts"]
 }

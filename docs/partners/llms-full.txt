@@ -21,9 +21,9 @@ Rules an AI coding tool MUST follow:
 - Keep "Powered by GoodCash" visible.
 
 ## Docs
-- [Full reference for AI tools](https://goodcash.xyz/partners/llms-full.txt)
-- [OpenAPI](https://goodcash.xyz/partners/openapi.yaml)
-- [Quickstarts](https://goodcash.xyz/partners)
+- [Full reference for AI tools](https://pay.goodcash.xyz/docs/llms-full.txt)
+- [OpenAPI](https://pay.goodcash.xyz/docs/openapi.yaml)
+- [Quickstarts](https://pay.goodcash.xyz/docs)
 
 <!-- README.md -->
 

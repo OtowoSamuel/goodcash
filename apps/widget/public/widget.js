@@ -1,5 +1,5 @@
 /*!
- * GoodCash widget loader. https://goodcash.xyz/partners
+ * GoodCash widget loader. https://pay.goodcash.xyz/docs
  *
  *   <script src="https://pay.goodcash.xyz/widget.js"></script>
  *   <script>

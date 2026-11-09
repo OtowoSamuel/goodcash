@@ -58,8 +58,8 @@ enabled = true
 # Production-only origins. Dev origins live in [env.development.vars] so they
 # are never shipped to production.
 RESEND_FROM = "GoodCash <hello@goodcash.xyz>"
-# Partner API (/v1). Off until you switch it on; nothing else changes while it is off.
-PARTNER_API_ENABLED = "false"
+# Partner API (/v1). On since 9 Nov 2026. Set to "false" to switch it off at once (nothing else changes).
+PARTNER_API_ENABLED = "true"
 WIDGET_ORIGINS = "https://pay.goodcash.xyz"
 PARTNER_MAX_G = "1000000"
 PAYCREST_BASE_URL = "https://api.paycrest.io"
