@@ -60,8 +60,8 @@ enabled = true
 RESEND_FROM = "GoodCash <hello@goodcash.xyz>"
 # Partner API (/v1). On since 9 Nov 2026. Set to "false" to switch it off at once (nothing else changes).
 PARTNER_API_ENABLED = "true"
-# Partners getting TEST keys themselves (email-confirmed, capped per day). Off until you switch it on.
-PARTNER_SIGNUP_ENABLED = "false"
+# Partners getting TEST keys themselves (email-confirmed, capped per day). Set to "false" to switch it off at once.
+PARTNER_SIGNUP_ENABLED = "true"
 PARTNER_SIGNUP_DAILY_CAP = "20"
 WIDGET_ORIGINS = "https://pay.goodcash.xyz"
 PARTNER_MAX_G = "1000000"
