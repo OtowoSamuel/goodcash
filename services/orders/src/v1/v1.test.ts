@@ -267,7 +267,11 @@ describe('test mode never touches the payout partner or the chain', () => {
   });
 
   it('lists by wallet with a publishable key, everything only with the secret key', async () => {
+    // newest first is by the clock, so give the two cash outs different times (same-millisecond order is not defined)
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T10:00:00Z'));
     await browser('POST', '/v1/cashouts', CREATE, KEYS.pkTest, 'idem-test-0007');
+    vi.setSystemTime(new Date('2026-11-10T10:00:05Z'));
     await browser('POST', '/v1/cashouts', { ...CREATE, amountG: '7000' }, KEYS.pkTest, 'idem-test-0008');
     const mine = (await (await browser('GET', `/v1/cashouts?wallet=${WALLET}`)).json()) as { data: Array<{ amountG: string }> };
     expect(mine.data.map((d) => d.amountG)).toEqual(['7000', '5000']);

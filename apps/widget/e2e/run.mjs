@@ -47,6 +47,8 @@ async function waitFor(url, ms = 60_000) {
 
 const key = `gc_pk_test_${randomBytes(30).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 32)}`;
 const hash = createHash('sha256').update(key).digest('hex');
+const liveKey = `gc_pk_live_${randomBytes(30).toString('base64').replace(/[^A-Za-z0-9]/g, '').slice(0, 32)}`;
+const liveHash = createHash('sha256').update(liveKey).digest('hex');
 
 function kvPut(k, v) {
   execFileSync('npx', ['wrangler', 'kv', 'key', 'put', k, JSON.stringify(v), '--binding', 'ORDER_STORE', '--local', '--persist-to', persist], { cwd: WORKER_DIR, stdio: 'ignore' });
@@ -56,6 +58,7 @@ async function main() {
   log('seeding a test partner in local storage');
   kvPut('partner:p_e2e', { id: 'p_e2e', name: 'Acme Game', enabled: true, allowedOrigins: ['http://localhost:5198'], appIds: [], feePercent: 0.5, createdAt: Date.now() });
   kvPut(`key:${hash}`, { partnerId: 'p_e2e', kind: 'pk', mode: 'test', createdAt: Date.now() });
+  kvPut(`key:${liveHash}`, { partnerId: 'p_e2e', kind: 'pk', mode: 'live', createdAt: Date.now() });
 
   log('starting the worker');
   procs.push(
@@ -119,7 +122,35 @@ async function main() {
     await sleep(300);
     check((await page.locator('[data-goodcash-overlay]').count()) === 0, 'Escape closes the widget');
 
-    // 2. A site that is not on the list: the widget refuses
+    // 2. A live cash out needs a wallet: "Connect your wallet" first. Test keys (above) never ask.
+    const bare = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await bare.goto(`http://localhost:5198/?key=${liveKey}`);
+    await bare.click('#cash');
+    const noWallet = bare.frameLocator('iframe[title="Cash out to your bank"]');
+    await noWallet.getByRole('heading', { name: 'Connect your wallet' }).waitFor({ timeout: 30_000 });
+    check(await noWallet.getByText(/No wallet was found/).isVisible(), 'live key with no wallet: asked to connect, with a kind note');
+    check((await noWallet.getByLabel('How much G$?').count()) === 0, 'no cash-out screen before a wallet is connected');
+    const noWalletText = await noWallet.locator('body').innerText();
+    check(!/swap|slippage|usdt|paycrest|relay|quote|magic|walletconnect/i.test(noWalletText), 'no jargon on the connect screen');
+    await bare.screenshot({ path: path.join(here, 'connect.png') });
+
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await ctx.addInitScript(() => {
+      window.ethereum = {
+        request: async ({ method }) => (method === 'eth_requestAccounts' || method === 'eth_accounts' ? ['0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'] : method === 'eth_chainId' ? '0xa4ec' : null),
+      };
+    });
+    const withWallet = await ctx.newPage();
+    await withWallet.goto(`http://localhost:5198/?key=${liveKey}`);
+    await withWallet.click('#cash');
+    const f3 = withWallet.frameLocator('iframe[title="Cash out to your bank"]');
+    await f3.getByRole('button', { name: "Use this browser's wallet" }).click({ timeout: 30_000 });
+    await f3.getByLabel('How much G$?').waitFor({ timeout: 30_000 });
+    check((await f3.getByLabel('How much G$?').inputValue()) === '5000', 'after connecting, the cash-out screen opens with the amount from the partner page');
+    await ctx.close();
+    await bare.close();
+
+    // 3. A site that is not on the list: the widget refuses
     const evil = await browser.newPage();
     await evil.goto(`http://localhost:5197/?key=${key}`);
     await evil.click('#cash');

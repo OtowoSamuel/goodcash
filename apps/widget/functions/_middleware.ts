@@ -2,6 +2,8 @@
  * Pages Function for pay.goodcash.xyz: the widget page may be framed ONLY by the sites on the partner's allowed list
  * (asked from the partner API with the publishable key in the address). Everything else: no framing at all.
  */
+import { widgetCsp } from '../src/csp';
+
 interface Env {
   API_BASE?: string;
 }
@@ -31,20 +33,7 @@ export const onRequest = async (ctx: { request: Request; env: Env; next: () => P
   }
 
   const headers = new Headers(res.headers);
-  headers.set(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https:",
-      `connect-src 'self' ${api} https://forno.celo.org`,
-      `frame-ancestors ${ancestors}`,
-      "base-uri 'none'",
-      "form-action 'none'",
-      "object-src 'none'",
-    ].join('; ')
-  );
+  headers.set('Content-Security-Policy', widgetCsp(api, ancestors));
   headers.set('Cache-Control', 'no-store');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 };

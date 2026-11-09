@@ -14,5 +14,5 @@ export default defineConfig({
     },
   },
   build: { target: 'es2020', sourcemap: false },
-  test: { environment: 'jsdom', include: ['src/**/*.test.ts'] },
+  test: { environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}'] },
 });

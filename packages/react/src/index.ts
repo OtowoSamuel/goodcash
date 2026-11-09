@@ -6,4 +6,6 @@ export type { CashOutFlowProps, CashOutEvent } from './CashOutFlow';
 export { CashOutButton } from './CashOutButton';
 export type { CashOutButtonProps } from './CashOutButton';
 export type { GoodCashTheme } from './theme';
+export { themeVars } from './theme';
+export { injectStyles } from './styles';
 export { CSS as GOODCASH_CSS } from './styles';

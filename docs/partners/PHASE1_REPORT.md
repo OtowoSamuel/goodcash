@@ -25,8 +25,8 @@ switched off (`PARTNER_API_ENABLED = "false"`) until you turn it on.
 | sdk | 24 passed, 1 skipped (fork test, opt-in) |
 | sdk fork test (`RUN_ANVIL_FORK=1`) | 1 passed: on a Celo mainnet fork the SDK-built transaction, sent through the SDK, paid the payout address exactly, took exactly 5,000 G$, returned the surplus, left the router empty |
 | react | 4 passed |
-| widget unit | 5 passed |
-| widget end to end (Chromium, real worker in local test mode) | all passed: full flow to paid, fee lines, no jargon, host got created/sent/paid, spoofed message ignored, Escape closes, not-allowed site refused |
+| widget unit | 37 passed |
+| widget end to end (Chromium, real worker in local test mode) | all passed: full flow to paid, fee lines, no jargon, host got created/sent/paid, spoofed message ignored, Escape closes, live key asks to connect a wallet (with and without a browser wallet), not-allowed site refused |
 | web app | 218 passed, 2 skipped (unchanged) |
 | worker | 116 passed (86 existing + 30 new) |
 | contracts | 60 passed (`CELO_RPC_URL` now defaulted in `npm run contracts:test`) |
@@ -41,9 +41,10 @@ switched off (`PARTNER_API_ENABLED = "false"`) until you turn it on.
    in `wrangler.toml`. Per-wallet create limit reuses the existing limiter.
 3. **The web app's bank picker and step bar were not moved into `@goodcash/react`**: moving them would restyle the
    live app. The React package has its own; the web app is untouched.
-4. **Widget wallets:** browser/in-app wallets (injected) and the host signing bridge. **WalletConnect and Magic are not
-   in the widget yet** (they need their own project ids and CSP; next step). Partners using React/SDK can pass any
-   provider already.
+4. **Widget wallets:** the partner's own wallet (host signing), a wallet already in the browser, and Magic's Wallet
+   Kit panel (WalletConnect, Coinbase, email) for everyone else. Phone browsers are only offered wallets that can work
+   there (see `apps/widget/README.md`). The panel needs the Magic and WalletConnect public keys at build time and
+   `pay.goodcash.xyz` allowed in both dashboards.
 5. **OpenAPI is hand-written**, not generated from zod (most `/v1` checks are not zod schemas).
 6. **Allowed sites must be exact origins**; wildcard sub-domains are not supported (matters for AI app builders).
 7. **Fee ledger built** (option A): one entry per paid live cash out; a partner is only credited if the payout
@@ -54,6 +55,7 @@ switched off (`PARTNER_API_ENABLED = "false"`) until you turn it on.
 - Nothing deployed: the widget site, the `api.goodcash.xyz` `/v1` routes in production, and docs hosting.
 - Docs and READMEs link to `https://goodcash.xyz/partners`, which does not exist yet.
 - A **live** partner cash out with real money (only tests, mocks, a fork and local test mode so far).
+- The Magic / WalletConnect panel itself was **not run with real keys** (tests use stand-ins for it); try it once on a phone after deploying.
 - The Pages Function framing rule was not run (Vite preview does not run Pages Functions); its logic is small and
   the JavaScript checks it backs up were tested end to end.
 - React Native and Unity examples were written, not run on devices.
@@ -82,7 +84,7 @@ Secrets to set (names only): `PARTNER_SECRETS_KEY`. New binding: `RATE_LIMITER_P
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
-| 1 | WalletConnect + Magic inside the widget | Yes, next (needed for games in WebViews without an in-app wallet) |
+| 1 | Add `pay.goodcash.xyz` to the Magic and Reown dashboards, and put the two public keys in `apps/widget/.env.production` | Needed before the wallet panel works in the widget |
 | 2 | Where partner docs live | `pay.goodcash.xyz/docs` (same Pages project as the widget) |
 | 3 | Wildcard sub-domains for AI builders | Add `https://*.example.app` support only for vetted builders |
 | 4 | Contact address and licence | Confirm `hello@goodcash.xyz` and MIT |

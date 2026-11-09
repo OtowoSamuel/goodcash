@@ -4,6 +4,8 @@ import { GoodCash, type Signer } from '@goodcash/sdk';
 import { CashOutFlow, GoodCashProvider, type CashOutEvent } from '@goodcash/react';
 import { checkHost, readParams, type WidgetParams } from './params';
 import { hostSigner, postToHost } from './bridge';
+import { ConnectGate } from './ConnectGate';
+import type { ConnectedWallet } from './wallet';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'https://api.goodcash.xyz';
 
@@ -26,6 +28,7 @@ function Problem({ text }: { text: string }) {
 
 function Widget({ p }: { p: WidgetParams }) {
   const [state, setState] = useState<{ ready: boolean; problem?: string; client?: GoodCash; name?: string }>({ ready: false });
+  const [conn, setConn] = useState<ConnectedWallet | null>(null);
 
   useEffect(() => {
     if (p.mode === 'embed') document.body.classList.add('gc-embedded');
@@ -65,7 +68,19 @@ function Widget({ p }: { p: WidgetParams }) {
   if (state.problem) return <Problem text={state.problem} />;
   if (!state.ready || !state.client) return <div aria-busy="true" style={{ font: '600 15px system-ui', padding: 20 }}>Loading…</div>;
 
-  const signer: Signer | undefined = p.bridge && p.wallet && p.hostOrigin ? hostSigner(p.hostOrigin) : ((window as unknown as { ethereum?: Signer }).ethereum ?? undefined);
+  const viaHost = p.bridge && !!p.wallet && !!p.hostOrigin;
+  const theme = { accent: p.accent, mode: p.theme ?? ('light' as const) };
+
+  const close = () => {
+    postToHost(p.hostOrigin, { source: 'goodcash', type: 'closed' });
+    if (p.mode === 'popup') window.close();
+    if (p.mode === 'redirect' && p.returnUrl) window.location.assign(p.returnUrl);
+  };
+
+  // A live cash out needs a wallet: the host's (bridge), or one the customer connects here. Test keys never sign.
+  if (state.client.mode === 'live' && !viaHost && !conn) return <ConnectGate theme={theme} onConnected={setConn} onClose={close} />;
+
+  const signer: Signer | undefined = viaHost ? hostSigner(p.hostOrigin as string) : (conn?.provider as Signer | undefined);
 
   const onEvent = (e: CashOutEvent) => {
     if (e.type === 'closed') return;
@@ -78,15 +93,9 @@ function Widget({ p }: { p: WidgetParams }) {
     }
   };
 
-  const close = () => {
-    postToHost(p.hostOrigin, { source: 'goodcash', type: 'closed' });
-    if (p.mode === 'popup') window.close();
-    if (p.mode === 'redirect' && p.returnUrl) window.location.assign(p.returnUrl);
-  };
-
   return (
-    <GoodCashProvider publishableKey={p.key} client={state.client} theme={{ accent: p.accent, mode: p.theme ?? 'light' }}>
-      <CashOutFlow signer={signer} wallet={p.wallet} defaultAmountG={p.amountG} partnerRef={p.partnerRef} onEvent={onEvent} onClose={close} />
+    <GoodCashProvider publishableKey={p.key} client={state.client} theme={theme}>
+      <CashOutFlow signer={signer} wallet={conn?.address ?? p.wallet} defaultAmountG={p.amountG} partnerRef={p.partnerRef} onEvent={onEvent} onClose={close} />
     </GoodCashProvider>
   );
 }
