@@ -1,27 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- tile -->
   <rect x="34" y="34" width="464" height="464" rx="112" fill="#111"/>
   <rect x="20" y="20" width="464" height="464" rx="112" fill="#cdb8ff" stroke="#111" stroke-width="16"/>
 
-  <g transform="translate(248 262) scale(0.86) translate(-272 -236)">
-  <!-- coin -->
-  <circle cx="192" cy="292" r="124" fill="#111" transform="translate(14 14)"/>
-  <circle cx="192" cy="292" r="124" fill="#ffd23f" stroke="#111" stroke-width="18"/>
-  <path d="M112 262a90 90 0 0 1 52-52" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round"/>
-  <path d="M234 258 A52 52 0 1 0 244 296 H196" fill="none" stroke="#111" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- arrow sweeping from coin to badge -->
-  <path d="M300 236 C 372 262, 418 236, 414 176" fill="none" stroke="#111" stroke-width="44" stroke-linecap="round"/>
-  <path d="M300 236 C 372 262, 418 236, 414 176" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round"/>
-  <path d="M370 188 L414 128 L458 188 Z" fill="#fff" stroke="#111" stroke-width="16" stroke-linejoin="round" transform="translate(0 6)"/>
-
-  <!-- naira badge -->
-  <g transform="rotate(-8 408 100)">
-    <rect x="348" y="62" width="124" height="86" rx="28" fill="#111" transform="translate(10 10)"/>
-    <rect x="348" y="62" width="124" height="86" rx="28" fill="#7b39fc" stroke="#111" stroke-width="14"/>
-    <g fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M394 86v40M426 86v40M394 86l32 40"/>
-      <path d="M382 100h56M382 112h56"/>
-    </g>
+  <!-- naira coin (behind) -->
+  <circle cx="330" cy="196" r="104" fill="#111" transform="translate(12 12)"/>
+  <circle cx="330" cy="196" r="104" fill="#7b39fc" stroke="#111" stroke-width="16"/>
+  <path d="M262 150a96 96 0 0 1 52-40" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" opacity=".55"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M298 236V158L362 236V158" stroke-width="22"/>
+    <path d="M280 187H380M280 211H380" stroke-width="13"/>
   </g>
+
+  <!-- G$ coin (in front) -->
+  <circle cx="196" cy="320" r="128" fill="#111" transform="translate(14 14)"/>
+  <circle cx="196" cy="320" r="128" fill="#ffd23f" stroke="#111" stroke-width="18"/>
+  <g transform="translate(196 320) scale(1.1) translate(-192 -292)">
+    <path d="M112 262a90 90 0 0 1 52-52" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round"/>
+    <path d="M234 258 A52 52 0 1 0 244 296 H196" fill="none" stroke="#111" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
