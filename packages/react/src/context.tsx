@@ -3,6 +3,7 @@ import { GoodCash, type GoodCashOptions } from '@goodcash/sdk';
 import type { GoodCashTheme } from './theme';
 
 interface Ctx {
+  publishableKey: string;
   client: GoodCash;
   theme: GoodCashTheme;
 }
@@ -20,7 +21,7 @@ export interface GoodCashProviderProps extends Omit<GoodCashOptions, 'secretKey'
 
 export function GoodCashProvider({ publishableKey, appId, baseUrl, rpcUrl, fetch, theme, client, children }: GoodCashProviderProps) {
   const value = useMemo<Ctx>(
-    () => ({ client: client ?? new GoodCash({ publishableKey, appId, baseUrl, rpcUrl, fetch }), theme: theme ?? {} }),
+    () => ({ publishableKey, client: client ?? new GoodCash({ publishableKey, appId, baseUrl, rpcUrl, fetch }), theme: theme ?? {} }),
     [client, publishableKey, appId, baseUrl, rpcUrl, fetch, theme]
   );
   return <GoodCashContext.Provider value={value}>{children}</GoodCashContext.Provider>;

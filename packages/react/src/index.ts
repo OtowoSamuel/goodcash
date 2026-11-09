@@ -5,6 +5,8 @@ export { CashOutFlow } from './CashOutFlow';
 export type { CashOutFlowProps, CashOutEvent } from './CashOutFlow';
 export { CashOutButton } from './CashOutButton';
 export type { CashOutButtonProps } from './CashOutButton';
+export { TopUpButton } from './TopUpButton';
+export type { TopUpButtonProps, TopUpEvent } from './TopUpButton';
 export type { GoodCashTheme } from './theme';
 export { themeVars } from './theme';
 export { injectStyles } from './styles';

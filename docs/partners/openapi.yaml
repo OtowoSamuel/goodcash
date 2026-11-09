@@ -155,6 +155,50 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CashOut' } } } }
         default: { $ref: '#/components/responses/Error' }
+  /v1/topup/quote:
+    get:
+      summary: What a customer gets for this much naira (naira in). Off until GoodCash enables top-ups for you.
+      parameters:
+        - { name: amountNaira, in: query, required: true, schema: { type: integer, minimum: 1000, maximum: 2000000 }, example: 5000 }
+        - { name: asset, in: query, schema: { type: string, enum: [g, celo], default: g } }
+        - { name: wallet, in: query, schema: { $ref: '#/components/schemas/Address' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TopUpQuote' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/topups:
+    post:
+      summary: Register a top-up. Test mode creates a simulated one. In live mode the GoodCash widget does this once the order exists. No ID details are ever sent here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet, amountNaira]
+              properties:
+                wallet: { $ref: '#/components/schemas/Address' }
+                amountNaira: { type: integer, minimum: 1000 }
+                asset: { type: string, enum: [g, celo] }
+                partnerRef: { type: string, maxLength: 100 }
+                orderId: { type: string, description: 'Live only: the order made on pay.goodcash.xyz for this wallet and amount' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TopUp' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    get:
+      summary: List your top-ups (secret key)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200': { description: OK }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/topups/{id}:
+    get:
+      summary: A top-up's current status
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, pattern: '^tu_[0-9a-f]{24}$' } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TopUp' } } } }
+        default: { $ref: '#/components/responses/Error' }
   /v1/webhooks:
     get:
       summary: Secret key. Your webhook URL for this key's mode.
@@ -219,7 +263,7 @@ components:
     Address: { type: string, pattern: '^0x[0-9a-fA-F]{40}$' }
     ErrorCode:
       type: string
-      enum: [invalid_request, amount_too_small, amount_too_large, insufficient_balance, fee_mismatch, price_unavailable, cashout_paused, bank_account_not_found, unavailable, rate_limited, unauthorized, partner_disabled, forbidden_origin, secret_key_in_browser, secret_key_required, test_mode_only, not_found, idempotency_conflict, transaction_mismatch, webhook_not_configured]
+      enum: [invalid_request, amount_too_small, amount_too_large, insufficient_balance, fee_mismatch, price_unavailable, cashout_paused, bank_account_not_found, unavailable, rate_limited, unauthorized, partner_disabled, forbidden_origin, secret_key_in_browser, secret_key_required, test_mode_only, not_found, idempotency_conflict, transaction_mismatch, webhook_not_configured, topups_not_enabled]
     Partner:
       type: object
       properties:
@@ -271,6 +315,32 @@ components:
         haveCelo: { type: number }
         enough: { type: boolean }
         celoUsd: { type: [number, 'null'] }
+    TopUp:
+      type: object
+      properties:
+        id: { type: string, pattern: '^tu_[0-9a-f]{24}$' }
+        object: { const: topup }
+        mode: { type: string, enum: [live, test] }
+        status: { type: string, enum: [awaiting_payment, paid_in, delivered, failed, expired] }
+        amountNaira: { type: integer }
+        asset: { type: string, enum: [g, celo] }
+        wallet: { $ref: '#/components/schemas/Address' }
+        partnerRef: { type: [string, 'null'] }
+        txHash: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        deliveredAt: { type: string, format: date-time }
+    TopUpQuote:
+      type: object
+      properties:
+        object: { const: topup_quote }
+        mode: { type: string, enum: [live, test] }
+        amountNaira: { type: integer }
+        asset: { type: string, enum: [g, celo] }
+        youGet: { type: object, properties: { amount: { type: number }, minimum: { type: number } } }
+        fees: { type: array, items: { type: object, properties: { label: { type: string }, usd: { type: number } } } }
+        minimumNaira: { type: integer }
+        validForSeconds: { type: integer }
     CashOut:
       type: object
       properties:

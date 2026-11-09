@@ -10,6 +10,7 @@ One wallet confirmation; paid in minutes. GoodCash never holds your users' money
 | A React Native app | [React Native quickstart](quickstarts/react-native.md) | 30 min |
 | A fintech / server (airtime, bills, your own UI) | [Server quickstart](quickstarts/fintech-server.md) | 1 day |
 | An AI app builder | [AI builder quickstart](quickstarts/ai-builder.md) + [llms.txt](llms.txt) | 5 min |
+| Adding G$ / CELO with naira (the other direction) | [Top-ups quickstart](quickstarts/topups.md) | 10 min |
 
 Reference: [OpenAPI](openapi.yaml) · [Errors](errors.md) · [Webhooks](webhooks.md) · [Test mode](test-mode.md) ·
 [Fees](FEES.md) · [Go-live checklist](go-live.md) · [Changelog](CHANGELOG.md)

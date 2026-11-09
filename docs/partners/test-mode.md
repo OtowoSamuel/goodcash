@@ -18,4 +18,10 @@ Test keys (`gc_pk_test_...`, `gc_sk_test_...`) never touch real money, the payou
 | `0000000003` | stays `processing`, sends `cashout.delayed` |
 | `0000000009` | name check fails (`bank_account_not_found`) |
 
+## Top-ups (naira in)
+
+Simulated end to end, no wallet, ID details or bank needed. `POST /v1/topups` creates one; it reads `awaiting_payment`, then
+`paid_in` after about 5 seconds, then `delivered` after about 15 seconds, with webhooks. An amount ending in **13** fails
+(`failed` after about 5 seconds). See [Add G$ / CELO with naira](quickstarts/topups.md).
+
 Test data is deleted after 7 days.

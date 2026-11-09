@@ -34,5 +34,6 @@ with the same fields plus `status` and `requestId`.
 | `test_mode_only` | 400 | Simulation with a live key | Use a test key |
 | `not_found` | 404 | No such cash out (for this key and mode) | Check the id and mode |
 | `webhook_not_configured` | 400 | Test send without a URL | `PUT /v1/webhooks` first |
+| `topups_not_enabled` | 403 | Live top-ups are not switched on for your account | Ask GoodCash to enable them (test mode needs no switch) |
 | `invalid_signature` (server helper) | - | Webhook failed verification | Reject it (400) |
 | `unavailable` / `network_error` | 503 / - | Temporary problem | Retry with back-off |

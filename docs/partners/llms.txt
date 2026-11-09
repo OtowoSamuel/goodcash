@@ -14,6 +14,7 @@ Rules an AI coding tool MUST follow:
 - Credit users from webhooks (server, verified with `verifyWebhook` from `@goodcash/sdk/server` using the RAW body), not from browser events.
 - Show `error.message` to users (plain words). Log `error.detail` for developers.
 - Keep "Powered by GoodCash" visible.
+- Naira in (adding G$/CELO): use `GoodCash.open({ publishableKey, flow: 'topup' })` or `<TopUpButton />`. NEVER build a form that collects a customer's BVN/NIN or bank details: those are typed only on GoodCash's own page. It is switched on per partner; test mode first.
 
 ## Docs
 - [Full reference for AI tools](https://pay.goodcash.xyz/docs/llms-full.txt)

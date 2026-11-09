@@ -19,6 +19,7 @@ Rules an AI coding tool MUST follow:
 - Credit users from webhooks (server, verified with `verifyWebhook` from `@goodcash/sdk/server` using the RAW body), not from browser events.
 - Show `error.message` to users (plain words). Log `error.detail` for developers.
 - Keep "Powered by GoodCash" visible.
+- Naira in (adding G$/CELO): use `GoodCash.open({ publishableKey, flow: 'topup' })` or `<TopUpButton />`. NEVER build a form that collects a customer's BVN/NIN or bank details: those are typed only on GoodCash's own page. It is switched on per partner; test mode first.
 
 ## Docs
 - [Full reference for AI tools](https://pay.goodcash.xyz/docs/llms-full.txt)
@@ -39,6 +40,7 @@ One wallet confirmation; paid in minutes. GoodCash never holds your users' money
 | A React Native app | [React Native quickstart](quickstarts/react-native.md) | 30 min |
 | A fintech / server (airtime, bills, your own UI) | [Server quickstart](quickstarts/fintech-server.md) | 1 day |
 | An AI app builder | [AI builder quickstart](quickstarts/ai-builder.md) + [llms.txt](llms.txt) | 5 min |
+| Adding G$ / CELO with naira (the other direction) | [Top-ups quickstart](quickstarts/topups.md) | 10 min |
 
 Reference: [OpenAPI](openapi.yaml) · [Errors](errors.md) · [Webhooks](webhooks.md) · [Test mode](test-mode.md) ·
 [Fees](FEES.md) · [Go-live checklist](go-live.md) · [Changelog](CHANGELOG.md)
@@ -320,6 +322,91 @@ credit the user in your system when `cashout.paid` arrives. Your agreement with 
 - Set your own per-user and per-day limits before calling `cashOut`.
 - Treat `uncertain` and `pending_confirmation` as "do not retry": check `getCashOut` first.
 
+<!-- quickstarts/topups.md -->
+
+# Add G$ / CELO with naira (top-ups)
+
+Let your users **pay naira from their own bank account and receive G$ (or CELO) in their own wallet**, without leaving
+your app. It is the other direction from cash out.
+
+> **Availability.** Top-ups are switched on per partner by GoodCash. Until they are, these calls answer "not found".
+> Ask GoodCash to enable test mode for you, then live later. Test mode never moves money.
+
+## Your users' ID details never come to you
+
+Paying naira needs the payer's name, date of birth and BVN or NIN. **They are typed on GoodCash's own page
+(`pay.goodcash.xyz`) and go straight to the payout partner.** Your app, your page and your servers never see them, and
+no `/v1` call accepts them. You only get the order's progress: quotes, status and webhooks.
+
+## The quickest way: one button
+
+```html
+<script src="https://pay.goodcash.xyz/widget.js"></script>
+<script>
+  function addMoney(playerId) {
+    GoodCash.open({
+      publishableKey: 'gc_pk_test_...',   // test first
+      flow: 'topup',
+      mode: 'popup',                      // or 'embed' (a panel over your page)
+      amountNaira: 5000,                  // optional starting amount
+      asset: 'g',                         // 'g' (G$) or 'celo'
+      partnerRef: playerId,
+      onEvent: (e) => { if (e.type === 'topup.delivered') showToast('G$ added!'); },
+    });
+  }
+</script>
+```
+
+React:
+
+```tsx
+import { GoodCashProvider, TopUpButton } from '@goodcash/react';
+
+<GoodCashProvider publishableKey="gc_pk_test_...">
+  <TopUpButton amountNaira={5000} partnerRef={user.id} onEvent={(e) => console.log(e.type)} />
+</GoodCashProvider>
+```
+
+The customer connects their own wallet, pays by bank transfer, and approves **once** in their wallet. Games with their
+own embedded wallets are not supported for top-ups yet: the customer's own wallet signs.
+
+## Events
+
+Browser events (`e.topUp` has the top-up): `topup.created`, `topup.paid_in` (the naira arrived), `topup.delivered`
+(the G$/CELO is in the wallet), `topup.failed` (expired or refunded).
+
+## From your server
+
+Quote and status, with your keys. Listing needs the secret key.
+
+```bash
+curl "https://api.goodcash.xyz/v1/topup/quote?amountNaira=5000&asset=g" -H "Authorization: Bearer $GOODCASH_PUBLISHABLE_KEY" -H "Origin: https://your-site.example"
+curl https://api.goodcash.xyz/v1/topups/tu_... -H "Authorization: Bearer $GOODCASH_SECRET_KEY"
+curl https://api.goodcash.xyz/v1/topups        -H "Authorization: Bearer $GOODCASH_SECRET_KEY"
+```
+
+With the SDK: `gc.topUpQuote({ amountNaira })`, `gc.getTopUp(id)`, `gc.watchTopUp(id, onChange)`, `gc.listTopUps()`.
+
+Statuses: `awaiting_payment` → `paid_in` → `delivered`; or `failed` / `expired`.
+
+**Webhooks** (same signed, retried delivery as cash out): `topup.paid_in`, `topup.delivered`, `topup.failed`. `data` is the
+top-up. Credit your user from `topup.delivered`, not from browser events alone.
+
+## Quote
+
+`youGet.amount` is about what the customer receives and `youGet.minimum` is the least. Show every line in `fees`. A quote
+is good for about 30 seconds. The smallest top-up is ₦1,000 (`minimumNaira`).
+
+## Test mode
+
+Simulated end to end, in a few seconds: waiting, then the naira lands (about 5 s), then delivered (about 15 s). **An amount
+ending in 13 fails**, so you can test your failure path. No wallet or ID details are asked for in test mode.
+
+## Fees
+
+GoodCash's top-up price is shown as lines in the quote (a payment partner fee and a network and exchange fee). There is
+no partner fee on top-ups yet.
+
 <!-- FEES.md -->
 
 # Fees for partners
@@ -363,6 +450,12 @@ Test keys (`gc_pk_test_...`, `gc_sk_test_...`) never touch real money, the payou
 | `0000000003` | stays `processing`, sends `cashout.delayed` |
 | `0000000009` | name check fails (`bank_account_not_found`) |
 
+## Top-ups (naira in)
+
+Simulated end to end, no wallet, ID details or bank needed. `POST /v1/topups` creates one; it reads `awaiting_payment`, then
+`paid_in` after about 5 seconds, then `delivered` after about 15 seconds, with webhooks. An amount ending in **13** fails
+(`failed` after about 5 seconds). See [Add G$ / CELO with naira](quickstarts/topups.md).
+
 Test data is deleted after 7 days.
 
 <!-- webhooks.md -->
@@ -384,6 +477,10 @@ The response contains `secret` (`whsec_...`) **once**. Store it. Lost it? Send `
 
 `cashout.paid`, `cashout.failed`, `cashout.refunded`, `cashout.expired` (never signed), `cashout.delayed`
 (not paid 25 minutes after sending), `cashout.test`. `data` is the cash out (same as `GET /v1/cashouts/{id}`).
+
+If top-ups (naira in) are switched on for you: `topup.paid_in` (the naira arrived), `topup.delivered` (the G$ or CELO is in
+the wallet), `topup.failed` (expired or refunded). `data` is the top-up (same as `GET /v1/topups/{id}`). See
+[Add G$ / CELO with naira](quickstarts/topups.md).
 
 Each event is sent once per change, at once; failures are retried after about 10 min, 30 min, 2 h and 12 h.
 Answer 2xx within 5 seconds. The same event may arrive twice: ignore an `id` you have already handled.
@@ -471,6 +568,7 @@ with the same fields plus `status` and `requestId`.
 | `test_mode_only` | 400 | Simulation with a live key | Use a test key |
 | `not_found` | 404 | No such cash out (for this key and mode) | Check the id and mode |
 | `webhook_not_configured` | 400 | Test send without a URL | `PUT /v1/webhooks` first |
+| `topups_not_enabled` | 403 | Live top-ups are not switched on for your account | Ask GoodCash to enable them (test mode needs no switch) |
 | `invalid_signature` (server helper) | - | Webhook failed verification | Reject it (400) |
 | `unavailable` / `network_error` | 503 / - | Temporary problem | Retry with back-off |
 

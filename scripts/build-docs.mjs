@@ -24,6 +24,7 @@ export const PAGES = [
   { group: 'Quickstarts', file: 'quickstarts/react-native.md', slug: 'quickstarts/react-native', title: 'React Native' },
   { group: 'Quickstarts', file: 'quickstarts/fintech-server.md', slug: 'quickstarts/fintech-server', title: 'Fintech and servers' },
   { group: 'Quickstarts', file: 'quickstarts/ai-builder.md', slug: 'quickstarts/ai-builder', title: 'AI app builders' },
+  { group: 'Quickstarts', file: 'quickstarts/topups.md', slug: 'quickstarts/topups', title: 'Add G$ with naira' },
   { group: 'Reference', file: 'webhooks.md', slug: 'webhooks', title: 'Webhooks' },
   { group: 'Reference', file: 'errors.md', slug: 'errors', title: 'Errors' },
   { group: 'Reference', file: 'FEES.md', slug: 'fees', title: 'Fees' },

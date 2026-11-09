@@ -16,6 +16,10 @@ The response contains `secret` (`whsec_...`) **once**. Store it. Lost it? Send `
 `cashout.paid`, `cashout.failed`, `cashout.refunded`, `cashout.expired` (never signed), `cashout.delayed`
 (not paid 25 minutes after sending), `cashout.test`. `data` is the cash out (same as `GET /v1/cashouts/{id}`).
 
+If top-ups (naira in) are switched on for you: `topup.paid_in` (the naira arrived), `topup.delivered` (the G$ or CELO is in
+the wallet), `topup.failed` (expired or refunded). `data` is the top-up (same as `GET /v1/topups/{id}`). See
+[Add G$ / CELO with naira](quickstarts/topups.md).
+
 Each event is sent once per change, at once; failures are retried after about 10 min, 30 min, 2 h and 12 h.
 Answer 2xx within 5 seconds. The same event may arrive twice: ignore an `id` you have already handled.
 
