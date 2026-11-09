@@ -234,7 +234,7 @@ export function friendlyAddError(err: unknown): string {
     return 'Your wallet needs a small top-up to cover the network fee. Add a little more and try again. Your money is safe.';
   }
   if (/chain|network|switch/i.test(raw)) {
-    return 'Your wallet did not switch network. Please switch it when asked, then try again. Nothing was taken.';
+    return 'Your wallet did not approve this step. Please tap Approve when it asks, then try again. Nothing was taken.';
   }
   if (/did not match|not ready|price/i.test(raw)) return 'The price changed. Nothing was taken. Please try again.';
   if (/connect your wallet/i.test(raw)) return 'Connect your wallet first.';
