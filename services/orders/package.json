@@ -19,6 +19,7 @@
     "wrangler": "^3.95.0"
   },
   "dependencies": {
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@goodcash/core": "0.1.0"
   }
 }

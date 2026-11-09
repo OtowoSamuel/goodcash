@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import { handleV1, isV1Path, type V1Deps } from './v1';
 
 // ---------------------------------------------------------------------------
 // Environment bindings (declared in wrangler.toml or via CF dashboard)
@@ -38,6 +39,12 @@ export interface Env {
   VERIFY_SWAP_ONCHAIN?: string;   // "false" disables swap-proof checks (tests/local only)
   RATE_LIMIT_MAX?: string;        // Requests per window per IP
   RATE_LIMIT_WINDOW_SECONDS?: string;
+  // Partner API (/v1)
+  PARTNER_API_ENABLED?: string;   // "true" turns /v1 on. Anything else: /v1 answers 404 and nothing else changes
+  WIDGET_ORIGINS?: string;        // Comma-separated widget sites allowed for every publishable key (default https://pay.goodcash.xyz)
+  PARTNER_MAX_G?: string;         // Largest single partner cash out in G$ (default 1000000)
+  PARTNER_SECRETS_KEY?: string;   // Secret: base64 32-byte key that encrypts partners' webhook signing secrets
+  RATE_LIMITER_PARTNER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }; // per partner, all requests
 }
 
 // Browser origins allowed to call the Worker. Override with ALLOWED_ORIGINS.
@@ -141,7 +148,7 @@ const VerifyAccountSchema = z.object({
 // Paycrest API types (v2)
 // ---------------------------------------------------------------------------
 
-interface PaycrestInstitution {
+export interface PaycrestInstitution {
   name: string;
   code: string;
   type: string;
@@ -1129,9 +1136,16 @@ async function createPaycrestOrderRaw(
     reference: string;
     /** The fee percent the customer's screen showed (see chargedFeePercent) */
     feePercentShown?: number;
+    /** Partner orders: the exact total fee percent (GoodCash + partner) already checked against what was shown */
+    feePercentOverride?: number;
   }
 ): Promise<{ order: PaycrestOrderResponse } | { response: Response }> {
-  const feePct = chargedFeePercent(env, input.feePercentShown);
+  const feePct =
+    input.feePercentOverride !== undefined
+      ? input.feePercentOverride > 0 && input.feePercentOverride <= 5 && /^0x[0-9a-fA-F]{40}$/.test(env.SENDER_FEE_ADDRESS ?? '')
+        ? input.feePercentOverride
+        : 0
+      : chargedFeePercent(env, input.feePercentShown);
   const feeFields: Record<string, string> =
     feePct > 0
       ? // A percent fee. "customer" pays the partner's own transaction fee on top, so GoodCash earns the full percent
@@ -1455,6 +1469,15 @@ async function handleGetInstitutions(currency: string, env: Env): Promise<Respon
     return err('Currency must be a three-letter uppercase ISO code', 400);
   }
 
+  const out = await fetchInstitutionList(currency, env);
+  return 'institutions' in out ? json({ institutions: out.institutions }) : err(out.error, out.status);
+}
+
+/** The payout partner's bank list for a currency. Shared by the app and the partner API. */
+export async function fetchInstitutionList(
+  currency: string,
+  env: Env
+): Promise<{ institutions: PaycrestInstitution[] } | { error: string; status: number }> {
   const base = env.PAYCREST_BASE_URL || 'https://api.paycrest.io';
   try {
     const res = await fetch(`${base}/v2/institutions/${currency}`, {
@@ -1465,7 +1488,7 @@ async function handleGetInstitutions(currency: string, env: Env): Promise<Respon
     });
     if (!res.ok) {
       console.error(`[orders] Paycrest institutions error ${res.status}`);
-      return err(`Institution list unavailable (${res.status})`, 502);
+      return { error: `Institution list unavailable (${res.status})`, status: 502 };
     }
 
     const payload = (await res.json()) as { data?: PaycrestInstitution[] };
@@ -1478,11 +1501,19 @@ async function handleGetInstitutions(currency: string, env: Env): Promise<Respon
         )
       : [];
 
-    return json({ institutions });
+    return { institutions };
   } catch (e) {
     console.error('[orders] Paycrest institutions fetch failed:', e);
-    return err('Institution list unavailable', 503);
+    return { error: 'Institution list unavailable', status: 503 };
   }
+}
+
+/** The bank list for naira, cached at the edge for an hour (same cache as the app). Null when unavailable. */
+export async function cachedInstitutionList(env: Env): Promise<PaycrestInstitution[] | null> {
+  const res = await edgeCached('institutions-NGN', 3600, () => handleGetInstitutions('NGN', env));
+  if (!res.ok) return null;
+  const d = (await res.json().catch(() => ({}))) as { institutions?: PaycrestInstitution[] };
+  return Array.isArray(d.institutions) ? d.institutions : null;
 }
 
 /**
@@ -1504,7 +1535,16 @@ async function handleVerifyAccount(request: Request, env: Env): Promise<Response
   if (!parsed.success) {
     return err('institution and accountIdentifier are required');
   }
+  const out = await verifyAccountName(parsed.data, env);
+  if ('error' in out) return err(out.error, out.status);
+  return json({ accountName: out.accountName, message: out.message });
+}
 
+/** The account holder's name for a bank account, from the payout partner. Shared by the app and the partner API. */
+export async function verifyAccountName(
+  input: { institution: string; accountIdentifier: string },
+  env: Env
+): Promise<{ accountName: string; message: string } | { error: string; status: number; reason: 'not_found' | 'unavailable' }> {
   const base = env.PAYCREST_BASE_URL || 'https://api.paycrest.io';
   let res: Response;
   try {
@@ -1515,28 +1555,28 @@ async function handleVerifyAccount(request: Request, env: Env): Promise<Response
         Accept: 'application/json',
         'API-Key': env.PAYCREST_API_KEY,
       },
-      body: JSON.stringify(parsed.data),
+      body: JSON.stringify({ institution: input.institution, accountIdentifier: input.accountIdentifier }),
     });
   } catch (e) {
     console.error('[orders] Paycrest verify-account fetch failed:', e);
-    return err('Failed to verify account. Please try again.', 503);
+    return { error: 'Failed to verify account. Please try again.', status: 503, reason: 'unavailable' };
   }
 
   const payload = (await res.json().catch(() => ({}))) as { message?: string; data?: unknown };
 
   if (res.status === 400) {
-    return err(payload.message || 'Account could not be verified. Check the institution and account number.', 400);
+    return { error: payload.message || 'Account could not be verified. Check the institution and account number.', status: 400, reason: 'not_found' };
   }
   if (!res.ok) {
-    return err(payload.message || 'Failed to verify account. Please try again.', 503);
+    return { error: payload.message || 'Failed to verify account. Please try again.', status: 503, reason: 'unavailable' };
   }
 
   const accountName = typeof payload.data === 'string' ? payload.data.trim() : '';
   if (!accountName || accountName.toUpperCase() === 'OK') {
-    return err('Account name could not be resolved for this account.', 503);
+    return { error: 'Account name could not be resolved for this account.', status: 503, reason: 'unavailable' };
   }
 
-  return json({ accountName, message: payload.message ?? 'Account name was fetched successfully' });
+  return { accountName, message: payload.message ?? 'Account name was fetched successfully' };
 }
 
 /**
@@ -1558,6 +1598,19 @@ async function edgeCached(key: string, ttlSeconds: number, make: () => Promise<R
 
 async function handleGetRates(env: Env): Promise<Response> {
   return edgeCached('rates', 15, () => fetchRates(env));
+}
+
+/** Naira per dollar the payout partner pays right now (cached at the edge for 15 seconds). Null when unavailable. */
+export async function fetchNgnRate(env: Env): Promise<number | null> {
+  try {
+    const res = await handleGetRates(env);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { data?: { sell?: { rate?: unknown } } };
+    const rate = Number(data?.data?.sell?.rate);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchRates(env: Env): Promise<Response> {
@@ -1615,6 +1668,84 @@ function fromAtomic6Str(v: bigint): string {
   return `${whole}.${frac}`;
 }
 
+/**
+ * Create a payout order sized so that payout + fees never exceed the swap's guaranteed minimum, and remember it.
+ * Shared by the app's one-tap flow and the partner API.
+ */
+export async function createSizedOneTapOrder(
+  env: Env,
+  input: {
+    minUsdtAtomic: bigint;
+    refundAddress: string;
+    recipient: { institution: string; accountIdentifier: string; accountName: string; memo?: string };
+    reference: string;
+    feePercentShown?: number;
+    feePercentOverride?: number;
+  }
+): Promise<{ order: PaycrestOrderResponse; receive: string; payAmountAtomic: bigint } | { response: Response; reason?: 'amount_too_small' }> {
+  const minAtomic = input.minUsdtAtomic;
+  const floor = toAtomic6(PAYCREST_MIN_USDT.toFixed(2));
+  // Start from what fits: (guaranteed minimum - partner fee) / (1 + GoodCash fee %). The loop below corrects any rounding.
+  const feePct = input.feePercentOverride !== undefined ? input.feePercentOverride : chargedFeePercent(env, input.feePercentShown);
+  const feeBps = BigInt(Math.round(feePct * 100));
+  let amountAtomic = ((minAtomic - ONE_TAP_FEE_RESERVE_ATOMIC) * 10_000n) / (10_000n + feeBps);
+  const tooSmall = () => ({ response: err('That amount is too small to pay out after fees. Try a larger amount.', 400), reason: 'amount_too_small' as const });
+  if (amountAtomic < floor) return tooSmall();
+
+  // The partner's fee is added on top of the order amount. The total to send must never exceed the guaranteed minimum.
+  let order: PaycrestOrderResponse | null = null;
+  const reference = input.reference;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const created = await createPaycrestOrderRaw(env, {
+      amount: fromAtomic6Str(amountAtomic),
+      refundAddress: input.refundAddress,
+      recipient: input.recipient,
+      reference: attempt === 0 ? reference : `${reference}-${attempt}`.slice(0, 64),
+      feePercentShown: input.feePercentShown,
+      feePercentOverride: input.feePercentOverride,
+    });
+    if ('response' in created) return { response: created.response };
+    const toSend = toAtomic6(created.order.providerAccount.amountToTransfer);
+    if (toSend <= minAtomic) {
+      order = created.order;
+      break;
+    }
+    amountAtomic -= toSend - minAtomic;
+    if (amountAtomic < floor) return tooSmall();
+  }
+  if (!order) return { response: err('The payout partner could not create the order right now. Please try again shortly.', 502) };
+
+  const receive = order.providerAccount.receiveAddress ?? '';
+  if (!/^0x[0-9a-fA-F]{40}$/.test(receive) || /^0x0{40}$/.test(receive)) {
+    console.error('[orders] one-tap order had an unusable deposit address');
+    return { response: err('The payout partner could not create the order right now. Please try again shortly.', 502) };
+  }
+  const validUntil = new Date(order.providerAccount.validUntil).getTime();
+  if (!Number.isFinite(validUntil) || validUntil - Date.now() < 5 * 60 * 1000) {
+    return { response: err('The payout partner could not create the order right now. Please try again shortly.', 502) };
+  }
+
+  await env.ORDER_STORE.put(
+    `order:${order.id}`,
+    JSON.stringify({
+      status: order.status ?? 'initiated',
+      receiveAddress: receive,
+      amountToTransfer: order.providerAccount.amountToTransfer,
+      validUntil: order.providerAccount.validUntil,
+      paymentReference: null as string | null,
+      createdAt: Date.now(),
+    }),
+    { expirationTtl: 86400 }
+  );
+  // Lets us find the order from the deposit address later (the swap pays that address directly)
+  const naira = expectedNairaFromOrder(order);
+  await env.ORDER_STORE.put(`rcv:${receive.toLowerCase()}`, JSON.stringify({ o: order.id, ...(naira ? { n: naira } : {}) }), {
+    expirationTtl: 60 * 60 * 24 * 14,
+  });
+
+  return { order, receive, payAmountAtomic: toAtomic6(order.providerAccount.amountToTransfer) };
+}
+
 /** POST /orders/v2 - create the payout order BEFORE a one-tap swap. */
 async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Response> {
   const limited = await checkRateLimit(request, env, 'orders');
@@ -1643,66 +1774,65 @@ async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Resp
     return err('Could not check your balance right now. Please try again.', 503);
   }
 
-  const minAtomic = toAtomic6(input.minUsdt);
-  const floor = toAtomic6(PAYCREST_MIN_USDT.toFixed(2));
-  // Start from what fits: (guaranteed minimum - partner fee) / (1 + GoodCash fee %). The loop below corrects any rounding.
-  const feeBps = BigInt(Math.round(chargedFeePercent(env, input.feePercent) * 100));
-  let amountAtomic = ((minAtomic - ONE_TAP_FEE_RESERVE_ATOMIC) * 10_000n) / (10_000n + feeBps);
-  const tooSmall = () => err('That amount is too small to pay out after fees. Try a larger amount.', 400);
-  if (amountAtomic < floor) return tooSmall();
-
-  // The partner's fee is added on top of the order amount. The total to send must never exceed the guaranteed minimum.
-  let order: PaycrestOrderResponse | null = null;
-  const reference = input.reference ?? generateRef();
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const created = await createPaycrestOrderRaw(env, {
-      amount: fromAtomic6Str(amountAtomic),
-      refundAddress: input.refundAddress,
-      recipient: input.recipient,
-      reference: attempt === 0 ? reference : `${reference}-${attempt}`.slice(0, 64),
-      feePercentShown: input.feePercent,
-    });
-    if ('response' in created) return created.response;
-    const toSend = toAtomic6(created.order.providerAccount.amountToTransfer);
-    if (toSend <= minAtomic) {
-      order = created.order;
-      break;
-    }
-    amountAtomic -= toSend - minAtomic;
-    if (amountAtomic < floor) return tooSmall();
-  }
-  if (!order) return err('The payout partner could not create the order right now. Please try again shortly.', 502);
-
-  const receive = order.providerAccount.receiveAddress ?? '';
-  if (!/^0x[0-9a-fA-F]{40}$/.test(receive) || /^0x0{40}$/.test(receive)) {
-    console.error('[orders] one-tap order had an unusable deposit address');
-    return err('The payout partner could not create the order right now. Please try again shortly.', 502);
-  }
-  const validUntil = new Date(order.providerAccount.validUntil).getTime();
-  if (!Number.isFinite(validUntil) || validUntil - Date.now() < 5 * 60 * 1000) {
-    return err('The payout partner could not create the order right now. Please try again shortly.', 502);
-  }
-
-  await env.ORDER_STORE.put(
-    `order:${order.id}`,
-    JSON.stringify({
-      status: order.status ?? 'initiated',
-      receiveAddress: receive,
-      amountToTransfer: order.providerAccount.amountToTransfer,
-      validUntil: order.providerAccount.validUntil,
-      paymentReference: null as string | null,
-      createdAt: Date.now(),
-    }),
-    { expirationTtl: 86400 }
-  );
-  // Lets us find the order from the deposit address later (the swap pays that address directly)
-  const naira = expectedNairaFromOrder(order);
-  await env.ORDER_STORE.put(`rcv:${receive.toLowerCase()}`, JSON.stringify({ o: order.id, ...(naira ? { n: naira } : {}) }), {
-    expirationTtl: 60 * 60 * 24 * 14,
+  const created = await createSizedOneTapOrder(env, {
+    minUsdtAtomic: toAtomic6(input.minUsdt),
+    refundAddress: input.refundAddress,
+    recipient: input.recipient,
+    reference: input.reference ?? generateRef(),
+    feePercentShown: input.feePercent,
   });
+  if ('response' in created) return created.response;
+  const { order } = created;
 
   const client = toClientOrder(order);
   return json({ ...client, payAmountAtomic: toAtomic6(order.providerAccount.amountToTransfer).toString(), routerAddress: routerV2 }, 201);
+}
+
+/**
+ * Check on chain that `txHash` is a successful one-tap cash out by `wallet` that paid order `orderId` exactly,
+ * then remember the link. Shared by the app and the partner API.
+ */
+export async function linkOneTapSwap(
+  orderId: string,
+  txHash: string,
+  wallet: string,
+  env: Env
+): Promise<{ ok: true } | { pending: true } | { error: string; status: number; reason: string }> {
+  const routerV2 = env.ROUTER_V2_ADDRESS?.toLowerCase();
+  if (!routerV2) return { error: 'This is not available right now. Please try again later.', status: 503, reason: 'unavailable' };
+  const stateRaw = await env.ORDER_STORE.get(`order:${orderId}`);
+  if (!stateRaw) return { error: 'We could not find that order.', status: 404, reason: 'not_found' };
+  const state = JSON.parse(stateRaw) as { receiveAddress: string; amountToTransfer: string };
+
+  let receipt: RpcReceipt | null;
+  try {
+    receipt = (await rpcCall(env, 'eth_getTransactionReceipt', [txHash])) as RpcReceipt | null;
+  } catch (e) {
+    console.error('[orders] one-tap link RPC failed:', e);
+    return { error: 'Could not check the transaction right now. Please try again.', status: 503, reason: 'unavailable' };
+  }
+  if (!receipt) return { pending: true };
+  if (receipt.status !== '0x1') return { error: 'That transaction did not succeed.', status: 400, reason: 'transaction_failed' };
+
+  const log = receipt.logs?.find((l) => l.address?.toLowerCase() === routerV2 && l.topics?.[0]?.toLowerCase() === CASH_OUT_PAID_TOPIC);
+  if (!log) return { error: 'That transaction is not a cash out.', status: 400, reason: 'not_a_cashout' };
+  if (topicToAddress(log.topics[1]) !== wallet) return { error: 'That cash out belongs to a different wallet.', status: 403, reason: 'wrong_wallet' };
+  if (topicToAddress(log.topics[2]) !== state.receiveAddress.toLowerCase()) return { error: 'That cash out was not paid to this order.', status: 400, reason: 'wrong_order' };
+  const data = log.data.startsWith('0x') ? log.data.slice(2) : log.data;
+  if (data.length < 192) return { error: 'That cash out looks malformed.', status: 400, reason: 'malformed' };
+  const paid = BigInt(`0x${data.slice(128, 192)}`);
+  if (paid !== toAtomic6(state.amountToTransfer)) return { error: 'That cash out does not match this order.', status: 400, reason: 'wrong_amount' };
+
+  const key = txHash.toLowerCase();
+  await env.ORDER_STORE.put(`swap:${key}`, orderId, { expirationTtl: 60 * 60 * 24 * 400 });
+  const link = await env.ORDER_STORE.get(`rcv:${state.receiveAddress.toLowerCase()}`);
+  try {
+    const n = link ? (JSON.parse(link) as { n?: string }).n : undefined;
+    if (n) await env.ORDER_STORE.put(`naira:${key}`, n, { expirationTtl: 60 * 60 * 24 * 400 });
+  } catch {
+    // optional
+  }
+  return { ok: true };
 }
 
 /** POST /orders/:id/swap - link a finished one-tap swap to its order, after checking the chain. */
@@ -1723,38 +1853,9 @@ async function handleLinkOneTapSwap(orderId: string, request: Request, env: Env)
   const wallet = typeof body.wallet === 'string' ? body.wallet.toLowerCase() : '';
   if (!/^0x[0-9a-fA-F]{64}$/.test(txHash) || !/^0x[0-9a-f]{40}$/.test(wallet)) return err('Some details were missing or not right. Please try again.', 400);
 
-  const stateRaw = await env.ORDER_STORE.get(`order:${orderId}`);
-  if (!stateRaw) return err('We could not find that order.', 404);
-  const state = JSON.parse(stateRaw) as { receiveAddress: string; amountToTransfer: string };
-
-  let receipt: RpcReceipt | null;
-  try {
-    receipt = (await rpcCall(env, 'eth_getTransactionReceipt', [txHash])) as RpcReceipt | null;
-  } catch (e) {
-    console.error('[orders] one-tap link RPC failed:', e);
-    return err('Could not check the transaction right now. Please try again.', 503);
-  }
-  if (!receipt) return json({ pending: true }, 202);
-  if (receipt.status !== '0x1') return err('That transaction did not succeed.', 400);
-
-  const log = receipt.logs?.find((l) => l.address?.toLowerCase() === routerV2 && l.topics?.[0]?.toLowerCase() === CASH_OUT_PAID_TOPIC);
-  if (!log) return err('That transaction is not a cash out.', 400);
-  if (topicToAddress(log.topics[1]) !== wallet) return err('That cash out belongs to a different wallet.', 403);
-  if (topicToAddress(log.topics[2]) !== state.receiveAddress.toLowerCase()) return err('That cash out was not paid to this order.', 400);
-  const data = log.data.startsWith('0x') ? log.data.slice(2) : log.data;
-  if (data.length < 192) return err('That cash out looks malformed.', 400);
-  const paid = BigInt(`0x${data.slice(128, 192)}`);
-  if (paid !== toAtomic6(state.amountToTransfer)) return err('That cash out does not match this order.', 400);
-
-  const key = txHash.toLowerCase();
-  await env.ORDER_STORE.put(`swap:${key}`, orderId, { expirationTtl: 60 * 60 * 24 * 400 });
-  const link = await env.ORDER_STORE.get(`rcv:${state.receiveAddress.toLowerCase()}`);
-  try {
-    const n = link ? (JSON.parse(link) as { n?: string }).n : undefined;
-    if (n) await env.ORDER_STORE.put(`naira:${key}`, n, { expirationTtl: 60 * 60 * 24 * 400 });
-  } catch {
-    // optional
-  }
+  const linked = await linkOneTapSwap(orderId, txHash, wallet, env);
+  if ('pending' in linked) return json({ pending: true }, 202);
+  if ('error' in linked) return err(linked.error, linked.status);
   return new Response(null, { status: 204 });
 }
 
@@ -2491,8 +2592,24 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   return err('Not found', 404);
 }
 
+/** The worker functions the partner API (/v1) reuses, so both share one implementation. */
+const v1Deps: V1Deps = {
+  rpcCall,
+  generateRef,
+  lookupOrderStatus,
+  goodcashFeePercent,
+  fetchNgnRate,
+  createSizedOneTapOrder,
+  linkOneTapSwap,
+  verifyAccountName,
+  cachedInstitutionList,
+  clientIp,
+};
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+    // Partner API: its own keys, CORS and errors. Off unless PARTNER_API_ENABLED is "true".
+    if (isV1Path(new URL(request.url).pathname)) return handleV1(request, env, v1Deps, ctx ? (p) => ctx.waitUntil(p) : undefined);
     const response = await handleRequest(request, env);
     return withCors(response, request, env);
   },
