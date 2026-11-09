@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { startPolling } from '../lib/polling';
 import { Modal } from './Modal';
 import { useBankAccountVerification } from '../lib/useOffRamp';
 import {
@@ -148,11 +149,10 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
         // keep trying
       }
     };
-    void tick();
-    const id = setInterval(tick, 8000);
+    const stop = startPolling(tick, { base: 8000 });
     return () => {
       live = false;
-      clearInterval(id);
+      stop();
     };
   }, [step, order]);
 

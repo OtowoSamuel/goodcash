@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { startPolling } from './polling';
 import { fetchOnrampStatus, fetchSwapStatus, reportOnrampArrived, returnToCelo } from './addGs';
 import { loadSavedAddGs, saveAddGs } from './addGsSaved';
 
@@ -73,11 +74,10 @@ export function useAddGsWatcher({ wallet, popupOpen, onReady, onArrived, interva
         // try again at the next check
       }
     };
-    void tick();
-    const id = setInterval(tick, intervalMs);
+    const stop = startPolling(tick, { base: intervalMs });
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [wallet, popupOpen, intervalMs]);
 

@@ -1,4 +1,5 @@
 import { isPaidOutStatus } from '../lib/useOffRamp';
+import { startPolling } from '../lib/polling';
 import { nairaFromUsdt } from '../lib/units';
 import { friendlyPayError, hasInjectedWallet, PLACEHOLDER_DEPOSIT_ADDRESS } from '../lib/router';
 import { getWalletLink, openWalletApp } from '../lib/walletLink';
@@ -375,9 +376,7 @@ export const CashOutTracker: React.FC<CashOutTrackerProps> = ({
     if (isPaidOutStatus(localOrder.status) || localOrder.status === 'refunded' || localOrder.status === 'error' || activeFailure) return;
 
     // Check on load, then every few seconds until the order is finished
-    void checkNow();
-    const interval = setInterval(() => void checkNow(), 4000);
-    return () => clearInterval(interval);
+    return startPolling(checkNow, { base: 4000 });
   }, [localOrder.status, activeFailure, checkNow]);
 
   // Format countdown string MM:SS

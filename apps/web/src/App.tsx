@@ -1,4 +1,5 @@
 import { isPaidOutStatus } from './lib/useOffRamp';
+import { startPolling } from './lib/polling';
 import { loadSavedAddGs, saveAddGs, findStuckOnramp, savedFromStuckOnramp } from './lib/addGsSaved';
 import { useAddGsWatcher, type AddGsPhase } from './lib/useAddGsWatcher';
 import { gToWei, nairaFromUsdt, GOODCASH_FEE_PERCENT } from './lib/units';
@@ -316,11 +317,11 @@ export function App({
       }
     };
     const first = setTimeout(check, 2500);
-    const iv = setInterval(check, 6000);
+    const stopPolling = startPolling(check, { base: 6000, immediate: false });
     return () => {
       alive = false;
       clearTimeout(first);
-      clearInterval(iv);
+      stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileView, trackerData?.orderId]);
@@ -1207,11 +1208,10 @@ export function App({
         }
       }
     };
-    void check();
-    const iv = setInterval(check, 15000);
+    const stopPolling = startPolling(check, { base: 15000 });
     return () => {
       alive = false;
-      clearInterval(iv);
+      stopPolling();
     };
   }, [unpaidSwapKey, isDemoMode]);
 

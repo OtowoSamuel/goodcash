@@ -663,11 +663,18 @@ export async function executeOneTapCashOut(args: {
 
 type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
 
+let activeKind: 'wallet' | 'magic' = 'wallet';
 let activeProvider: Eip1193 | null = null;
 
 /** Use a connected WalletConnect session (or clear it) instead of the browser's own wallet. */
-export function setActiveProvider(provider: Eip1193 | null): void {
+export function setActiveProvider(provider: Eip1193 | null, kind: 'wallet' | 'magic' = 'wallet'): void {
   activeProvider = provider;
+  activeKind = provider ? kind : 'wallet';
+}
+
+/** 'magic' for an email or passkey wallet (one network, fixed at sign-in), otherwise a wallet the customer brought. */
+export function activeProviderKind(): 'wallet' | 'magic' {
+  return activeKind;
 }
 
 /** Tell the app when the wallet's account or network changes. Returns an unsubscribe function. */
