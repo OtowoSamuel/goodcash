@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { GOODCASH_CSS, themeVars, type GoodCashTheme } from '@goodcash/react';
-import { connectInjected, finishMagicLogin, friendlyConnectError, injectedProvider, MAGIC_ENABLED, restoreMagic, type ConnectedWallet, type MagicLoginResult } from './wallet';
+import { browserHasWallet, connectInjected, connectWithWalletConnect, finishMagicLogin, friendlyConnectError, injectedProvider, MAGIC_ENABLED, restoreMagic, restoreWalletConnect, WALLETCONNECT_ENABLED, type ConnectedWallet, type MagicLoginResult } from './wallet';
 
 const MagicPanel = React.lazy(() => import('./MagicPanel'));
 
@@ -23,19 +23,21 @@ export function ConnectGate({ theme, onConnected, onClose }: Props) {
   ensureStyles();
   const [panel, setPanel] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [restoring, setRestoring] = useState(MAGIC_ENABLED);
+  const [restoring, setRestoring] = useState(MAGIC_ENABLED || WALLETCONNECT_ENABLED);
   const [error, setError] = useState<string | null>(null);
   const injected = injectedProvider();
 
   // A returning customer: reconnect silently
   useEffect(() => {
-    if (!MAGIC_ENABLED) return;
+    if (!MAGIC_ENABLED && !WALLETCONNECT_ENABLED) return;
     let alive = true;
-    restoreMagic().then((w) => {
-      if (!alive) return;
-      if (w) onConnected(w);
-      else setRestoring(false);
-    });
+    restoreMagic()
+      .then((w) => w ?? restoreWalletConnect())
+      .then((w) => {
+        if (!alive) return;
+        if (w) onConnected(w);
+        else setRestoring(false);
+      });
     return () => {
       alive = false;
     };
@@ -48,6 +50,18 @@ export function ConnectGate({ theme, onConnected, onClose }: Props) {
     setError(null);
     try {
       onConnected(await connectInjected(injected));
+    } catch (e) {
+      setError(friendlyConnectError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function useWalletApp() {
+    setBusy(true);
+    setError(null);
+    try {
+      onConnected(await connectWithWalletConnect());
     } catch (e) {
       setError(friendlyConnectError(e));
     } finally {
@@ -100,12 +114,17 @@ export function ConnectGate({ theme, onConnected, onClose }: Props) {
               Use this browser's wallet
             </button>
           )}
-          {MAGIC_ENABLED && (
-            <button type="button" className={injected ? 'gcw-btn gcw-btn--ghost' : 'gcw-btn'} disabled={busy} onClick={() => setPanel(true)}>
-              {injected ? 'Other wallets or email' : 'Choose a wallet'}
+          {(!injected || !browserHasWallet()) && WALLETCONNECT_ENABLED && (
+            <button type="button" className="gcw-btn" disabled={busy} onClick={useWalletApp}>
+              Use my wallet app
             </button>
           )}
-          {!injected && !MAGIC_ENABLED && (
+          {MAGIC_ENABLED && (
+            <button type="button" className={injected || WALLETCONNECT_ENABLED ? 'gcw-btn gcw-btn--ghost' : 'gcw-btn'} disabled={busy} onClick={() => setPanel(true)}>
+              {injected ? 'Other wallets or email' : WALLETCONNECT_ENABLED ? 'Sign in with email or passkey' : 'Choose a wallet'}
+            </button>
+          )}
+          {!injected && !MAGIC_ENABLED && !WALLETCONNECT_ENABLED && (
             <p className="gcw-note">No wallet was found. Open cash out inside your wallet app's browser (for example MiniPay), or on a device with a wallet.</p>
           )}
         </>

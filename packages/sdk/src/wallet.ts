@@ -36,10 +36,18 @@ export async function signerAddress(signer: Signer): Promise<`0x${string}` | nul
   return (asked?.[0] as `0x${string}`) ?? null;
 }
 
+/** A wallet's chain id as a number: browser wallets answer in hex text ("0xa4ec"), WalletConnect wallets with a number. */
+export function chainIdNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'bigint') return Number(v);
+  if (typeof v === 'string') return /^0x/i.test(v) ? parseInt(v, 16) : parseInt(v, 10);
+  return NaN;
+}
+
 /** Ask the wallet to switch to Celo (adding Celo first if the wallet does not know it). */
 export async function ensureCelo(provider: Eip1193Provider, rpcUrl = CELO_RPC_DEFAULT): Promise<void> {
-  const current = (await provider.request({ method: 'eth_chainId' })) as string;
-  if (parseInt(current, 16) === CELO_CHAIN_ID) return;
+  const current = await provider.request({ method: 'eth_chainId' });
+  if (chainIdNumber(current) === CELO_CHAIN_ID) return;
   try {
     await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CELO_CHAIN_HEX }] });
   } catch (e) {
@@ -49,8 +57,8 @@ export async function ensureCelo(provider: Eip1193Provider, rpcUrl = CELO_RPC_DE
       params: [{ chainId: CELO_CHAIN_HEX, chainName: 'Celo', nativeCurrency: { name: 'CELO', symbol: 'CELO', decimals: 18 }, rpcUrls: [rpcUrl], blockExplorerUrls: ['https://celo.blockscout.com'] }],
     });
   }
-  const after = (await provider.request({ method: 'eth_chainId' })) as string;
-  if (parseInt(after, 16) !== CELO_CHAIN_ID) throw new GoodCashError('wrong_network', { detail: `Wallet is on chain ${parseInt(after, 16)}.` });
+  const after = chainIdNumber(await provider.request({ method: 'eth_chainId' }));
+  if (after !== CELO_CHAIN_ID) throw new GoodCashError('wrong_network', { detail: `Wallet is on chain ${after}.` });
 }
 
 /**

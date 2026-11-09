@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { MagicWidget } from '@magic-ext/wallet-kit';
-import { getMagic, walletsForBrowser, type MagicLoginResult } from './wallet';
+import { browserHasWallet, getMagic, walletsForBrowser, type MagicLoginResult } from './wallet';
 
 interface Props {
   onConnected: (result: MagicLoginResult) => void;
@@ -26,7 +26,8 @@ export default function MagicPanel({ onConnected, onError, onClose }: Props) {
     <MagicWidget
       displayMode="modal"
       isOpen
-      wallets={[...walletsForBrowser()]}
+      // Only a browser with a wallet inside it lists wallets here; everyone else uses the wallet-app button instead
+      wallets={browserHasWallet() ? [...walletsForBrowser(true)] : []}
       closeOnSuccess
       closeOnClickOutside
       onClose={onClose}

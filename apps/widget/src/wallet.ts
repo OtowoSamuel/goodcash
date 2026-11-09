@@ -16,6 +16,8 @@ const env = (import.meta as { env?: Record<string, string | undefined> }).env ??
 const MAGIC_KEY = (env.VITE_MAGIC_PUBLISHABLE_KEY ?? '').trim();
 const REOWN_PROJECT_ID = (env.VITE_WALLETCONNECT_PROJECT_ID ?? '').trim();
 
+const CELO_RPC = 'https://forno.celo.org';
+
 export const MAGIC_ENABLED = MAGIC_KEY.length > 0;
 
 /** Wallets the panel offers. */
@@ -30,7 +32,13 @@ export const WALLETS_WITHOUT_EXTENSION = ['walletconnect', 'coinbase'] as const;
 
 /** True when this browser already has a wallet in it: window.ethereum, or a wallet announcing itself (EIP-6963). */
 export function browserHasWallet(win: Window = window): boolean {
-  if ((win as unknown as { ethereum?: unknown }).ethereum) return true;
+  const eth = (win as unknown as { ethereum?: Record<string, unknown> }).ethereum;
+  if (eth) {
+    // On a phone a bare window.ethereum is not a wallet we can connect to: only a wallet app's own browser sets a flag.
+    const phone = /Android|iPhone|iPad|iPod|Mobile/i.test(win.navigator?.userAgent ?? '');
+    const known = ['isMetaMask', 'isCoinbaseWallet', 'isTrust', 'isTrustWallet', 'isPhantom', 'isRabby', 'isMiniPay'].some((k) => eth[k] === true);
+    if (!phone || known) return true;
+  }
   let found = false;
   const onAnnounce = () => {
     found = true;
@@ -80,6 +88,9 @@ export function getMagic(): Promise<MagicLike> {
     magicPromise = (async () => {
       const [{ Magic }, { WalletKitExtension }] = await Promise.all([import('magic-sdk'), import('@magic-ext/wallet-kit')]);
       return new Magic(MAGIC_KEY, {
+        // Email and passkey wallets must live on Celo: Magic starts on Ethereum and cannot switch afterwards.
+        // (Magic dashboard: https://forno.celo.org must be allowed in the Content Security Policy.)
+        ...(env.VITE_MAGIC_CELO_NETWORK === 'false' ? {} : { network: { rpcUrl: CELO_RPC, chainId: 42220 } }),
         extensions: [new WalletKitExtension(REOWN_PROJECT_ID ? { projectId: REOWN_PROJECT_ID } : undefined)],
       } as never) as unknown as MagicLike;
     })();
@@ -179,4 +190,64 @@ export function friendlyConnectError(e: unknown): string {
   if (x?.code === 4001 || /reject|denied|cancel|closed/i.test(text)) return 'You cancelled the connection. You can try again when you are ready.';
   if (/connection was not available|could not read its address/i.test(text)) return text;
   return "We couldn't connect your wallet. Please try again, or pick another wallet.";
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Wallet apps on a phone, through WalletConnect. Magic's own wallet list only knows Ethereum, not Celo, so a phone
+// wallet connected through it can never approve a Celo payment. This asks for Celo directly (as an optional chain,
+// so wallets that do not list it can still connect, and are asked to switch right before paying).
+// ---------------------------------------------------------------------------------------------------------------
+
+export const WALLETCONNECT_ENABLED = REOWN_PROJECT_ID.length > 0;
+
+/** What we ask the WalletConnect library for. */
+export function walletConnectInitOptions(projectId: string, origin: string) {
+  return {
+    projectId,
+    optionalChains: [42220],
+    showQrModal: true,
+    rpcMap: { 42220: CELO_RPC },
+    metadata: {
+      name: 'GoodCash',
+      description: 'Cash out your GoodDollar (G$) to naira.',
+      url: origin,
+      icons: [`${origin}/favicon.svg`],
+    },
+    qrModalOptions: { themeMode: 'light' as const },
+  };
+}
+
+type WcProvider = Eip1193Provider & { accounts: string[]; connect: () => Promise<void> };
+let wcProvider: WcProvider | null = null;
+
+async function initWalletConnect(): Promise<WcProvider> {
+  if (wcProvider) return wcProvider;
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+  wcProvider = (await EthereumProvider.init(walletConnectInitOptions(REOWN_PROJECT_ID, window.location.origin) as never)) as unknown as WcProvider;
+  return wcProvider;
+}
+
+/** Open the wallet picker (wallet apps on a phone, a QR code on a computer). */
+export async function connectWithWalletConnect(): Promise<ConnectedWallet> {
+  if (!WALLETCONNECT_ENABLED) throw new Error('Wallet apps are not set up in this build.');
+  const p = await initWalletConnect();
+  if (!p.accounts?.length) await p.connect();
+  const address = p.accounts?.[0];
+  if (!isAddr(address)) throw new Error('No account was shared.');
+  return { address, provider: p };
+}
+
+/** Reuse a wallet-app session after a reload. */
+export async function restoreWalletConnect(): Promise<ConnectedWallet | null> {
+  if (!WALLETCONNECT_ENABLED) return null;
+  try {
+    // Only load the (large) WalletConnect library for someone who has connected a wallet app before
+    const had = Object.keys(localStorage).some((k) => k.startsWith('wc@2:'));
+    if (!had) return null;
+    const p = await initWalletConnect();
+    const address = p.accounts?.[0];
+    return isAddr(address) ? { address, provider: p } : null;
+  } catch {
+    return null;
+  }
 }

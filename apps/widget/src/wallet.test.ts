@@ -136,3 +136,25 @@ describe('plain words for a failed connection', () => {
     expect(msg).not.toMatch(/websocket|relay|1006/i);
   });
 });
+
+describe('wallet apps on phones (WalletConnect asking for Celo)', () => {
+  it('asks for Celo as an optional chain, so wallets that do not list it can still connect', async () => {
+    const { walletConnectInitOptions } = await import('./wallet');
+    const o = walletConnectInitOptions('pid', 'https://pay.goodcash.xyz');
+    expect(o.optionalChains).toEqual([42220]);
+    expect((o as Record<string, unknown>).chains).toBeUndefined();
+    expect(o.rpcMap[42220]).toBe('https://forno.celo.org');
+  });
+
+  it('on a phone a bare window.ethereum is not a wallet, but a wallet app own browser is', async () => {
+    const { browserHasWallet } = await import('./wallet');
+    const phone = (eth: Record<string, unknown>) => {
+      const w = new EventTarget() as unknown as Record<string, unknown>;
+      w.navigator = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Mobile' };
+      w.ethereum = eth;
+      return w as unknown as Window;
+    };
+    expect(browserHasWallet(phone({}))).toBe(false);
+    expect(browserHasWallet(phone({ isMetaMask: true }))).toBe(true);
+  });
+});
