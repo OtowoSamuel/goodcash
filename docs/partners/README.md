@@ -29,7 +29,7 @@ Reference: [OpenAPI](openapi.yaml) · [Errors](errors.md) · [Webhooks](webhooks
 | `gc_pk_test_...` / `gc_pk_live_...` (publishable) | Browsers, apps, the widget. Only from your allowed sites or app ids. | Everything a user's own cash out needs |
 | `gc_sk_test_...` / `gc_sk_live_...` (secret) | Your server only. Refused from browsers. | Plus: list all cash outs, webhook settings |
 
-Test keys never move money (see [test mode](test-mode.md)). Ask GoodCash for keys; we add your sites and app ids.
+Test keys never move money (see [test mode](test-mode.md)). **Get test keys yourself, right away:** https://pay.goodcash.xyz/docs/get-test-keys/ (email-confirmed; you list the websites you will test from). Live keys are approved by GoodCash after you have tested: see the [go-live checklist](go-live.md).
 
 ## Packages
 

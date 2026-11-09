@@ -41,6 +41,8 @@ export interface Env {
   RATE_LIMIT_WINDOW_SECONDS?: string;
   // Partner API (/v1)
   PARTNER_API_ENABLED?: string;   // "true" turns /v1 on. Anything else: /v1 answers 404 and nothing else changes
+  PARTNER_SIGNUP_ENABLED?: string; // "true" lets partners get TEST keys themselves (email-confirmed). Anything else: off
+  PARTNER_SIGNUP_DAILY_CAP?: string; // New sign-ups per day (default 20); keeps storage writes small
   WIDGET_ORIGINS?: string;        // Comma-separated widget sites allowed for every publishable key (default https://pay.goodcash.xyz)
   PARTNER_MAX_G?: string;         // Largest single partner cash out in G$ (default 1000000)
   PARTNER_SECRETS_KEY?: string;   // Secret: base64 32-byte key that encrypts partners' webhook signing secrets

@@ -8,6 +8,7 @@ import { createCashOut, listCashOuts, loadCashOut, notifyChange, publicCashOut, 
 import { buildEvent, deliver, processWebhookQueue, setWebhook } from './webhooks';
 import { requireSecret } from './auth';
 import type { CashOutRecord } from './types';
+import { handleSignup, isSignupPath, requestLiveAccess } from './signup';
 import { requestId, V1Error, v1ErrorResponse, v1Json, v1Preflight, withV1Headers } from './http';
 import { ethCallVia, feeLines, maxG, minimumG, parseAmountG, priceCashOut } from './pricing';
 import type { AuthContext, Env, V1Deps } from './types';
@@ -30,6 +31,17 @@ export async function handleV1(request: Request, env: Env, deps: V1Deps, waitUnt
   const reqId = requestId();
   if (env.PARTNER_API_ENABLED !== 'true') return withV1Headers(v1Json({ error: { code: 'not_found', message: 'Not found' } }, 404), reqId, null);
   if (request.method === 'OPTIONS') return v1Preflight(request);
+
+  // Public sign-up for test keys: no key yet, so it has its own checks (see signup.ts)
+  if (isSignupPath(new URL(request.url).pathname)) {
+    try {
+      return withV1Headers(await handleSignup(request, env, deps), reqId, null);
+    } catch (e) {
+      if (e instanceof V1Error) return withV1Headers(v1ErrorResponse(e), reqId, null);
+      console.error(`[v1] ${reqId} unexpected error:`, (e as Error)?.message ?? e);
+      return withV1Headers(v1ErrorResponse(new V1Error('unavailable')), reqId, null);
+    }
+  }
 
   let ctx: AuthContext | null = null;
   try {
@@ -63,6 +75,11 @@ async function route(request: Request, env: Env, ctx: AuthContext, deps: V1Deps,
     const p = ctx.partner;
     // allowedOrigins are public web addresses; the widget uses them to decide where it may be shown and talk to
     return v1Json({ id: p.id, name: p.name, mode: ctx.mode, logoUrl: p.logoUrl ?? null, accentColor: p.accentColor ?? null, feePercent: p.feePercent, allowedOrigins: p.allowedOrigins });
+  }
+
+  if (m === 'POST' && path === '/v1/live-access') {
+    requireSecret(ctx);
+    return requestLiveAccess(env, ctx);
   }
 
   if (m === 'GET' && path === '/v1/limits') {

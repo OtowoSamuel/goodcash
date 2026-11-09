@@ -1,5 +1,7 @@
 # Go-live checklist
 
+Got your keys from the [self-serve page](https://pay.goodcash.xyz/docs/get-test-keys/)? Finish the list below, then ask for live access with your **test secret key** from your server: `POST https://api.goodcash.xyz/v1/live-access`. A person at GoodCash reviews it and replies by email.
+
 - [ ] Agreement with GoodCash signed (fees, acceptable use, user checks for server-wallet payouts).
 - [ ] Every site that loads the widget or uses the publishable key is on your allowed list (exact origins).
       Native apps: your app id is registered and sent as `X-GoodCash-App` (SDK option `appId`).

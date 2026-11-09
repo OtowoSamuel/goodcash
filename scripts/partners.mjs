@@ -12,6 +12,7 @@
  *   node scripts/partners.mjs enable  <partnerId>
  *   node scripts/partners.mjs rotate  <partnerId> --kind pk|sk --mode live|test   (old key stops working)
  *   node scripts/partners.mjs ledger  <partnerId> <YYYY-MM>   (fees earned that month, for the monthly payout)
+ *   node scripts/partners.mjs approve-live <partnerId>   (a partner who got test keys themselves: issues their LIVE keys)
  *   node scripts/partners.mjs secrets-key                (how to set PARTNER_SECRETS_KEY without seeing it)
  *
  * Add --dry-run to print what would be written instead of writing (keys are then shown masked).
@@ -109,6 +110,8 @@ function show(key) {
   return DRY ? `${key.slice(0, 15)}…(dry run, not stored)` : key;
 }
 
+const index_hasLive = (index) => !!(index && (index.pk_live || index.sk_live));
+
 function makeKey(kind, mode) {
   return `gc_${kind}_${mode}_${randomString(40)}`;
 }
@@ -163,7 +166,10 @@ async function main() {
       if (!names.length) return console.log('No partners yet.');
       for (const n of names) {
         const p = get(n);
-        if (p) console.log(`${p.enabled ? 'ON ' : 'OFF'}  ${p.id}  ${p.name}  fee ${p.feePercent}%  sites: ${p.allowedOrigins.join(', ') || '-'}  apps: ${p.appIds.join(', ') || '-'}`);
+        if (p) {
+          const tag = p.selfServe ? (index_hasLive(get(`partnerkeys:${p.id}`)) ? '  [self-serve, live]' : p.liveRequestedAt ? '  [self-serve, LIVE REQUESTED]' : '  [self-serve, test]') : '';
+          console.log(`${p.enabled ? 'ON ' : 'OFF'}  ${p.id}  ${p.name}  fee ${p.feePercent}%  sites: ${p.allowedOrigins.join(', ') || '-'}  apps: ${p.appIds.join(', ') || '-'}${tag}`);
+        }
       }
       break;
     }
@@ -209,6 +215,24 @@ async function main() {
       console.log(`\nNew ${mode} ${kind === 'pk' ? 'publishable' : 'secret'} key (shown once): ${show(key)}\nThe old one has stopped working.\n`);
       break;
     }
+    case 'approve-live': {
+      const id = positional[0];
+      if (!id) throw new Error('Usage: approve-live <partnerId>');
+      const p = DRY ? { id, name: 'dry', enabled: true } : get(`partner:${id}`);
+      if (!p) throw new Error(`No partner ${id}`);
+      const index = (DRY ? {} : get(`partnerkeys:${id}`)) ?? {};
+      if (index_hasLive(index)) throw new Error('This partner already has live keys. To replace one, use: rotate <partnerId> --kind pk|sk --mode live');
+      const pk = await issueKey(id, 'pk', 'live', index);
+      const sk = await issueKey(id, 'sk', 'live', index);
+      put(`partnerkeys:${id}`, index);
+      console.log(`\nLive keys issued for ${p.name} (${id}). Shown ONCE; give them over a private channel.\n`);
+      console.log(`  Live publishable  ${show(pk)}`);
+      console.log(`  Live secret       ${show(sk)}\n`);
+      console.log(`Their live publishable key works only from: ${(p.allowedOrigins ?? []).join(', ') || '(no sites)'}`);
+      if (p.contactEmail) console.log(`Contact: ${p.contactEmail}`);
+      console.log('Check first: they have finished the go-live checklist (docs/partners/go-live.md) and you have agreed the fee.\n');
+      break;
+    }
     case 'ledger': {
       const [id, month] = positional;
       if (!id || !/^\d{4}-\d{2}$/.test(month ?? '')) throw new Error('Usage: ledger <partnerId> <YYYY-MM>');
@@ -238,7 +262,7 @@ async function main() {
     }
     default:
       console.log(fileURLToPath(import.meta.url));
-      console.log('Commands: create, list, show, update, disable, enable, rotate, ledger, secrets-key (add --dry-run to try safely)');
+      console.log('Commands: create, list, show, update, disable, enable, rotate, approve-live, ledger, secrets-key (add --dry-run to try safely)');
   }
 }
 

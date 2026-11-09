@@ -15,6 +15,8 @@ const SITE = '/docs';
 /** Pages, in menu order. `file` is relative to docs/partners; `slug` is the web address under /docs/. */
 export const PAGES = [
   { group: 'Start', file: 'README.md', slug: '', title: 'Overview' },
+  { group: 'Start', custom: 'keys-form', slug: 'get-test-keys', title: 'Get test keys' },
+  { group: 'Start', custom: 'keys-confirm', slug: 'get-test-keys/confirm', title: 'Your test keys', hidden: true },
   { group: 'Start', file: 'test-mode.md', slug: 'test-mode', title: 'Test mode' },
   { group: 'Start', file: 'go-live.md', slug: 'go-live', title: 'Go-live checklist' },
   { group: 'Quickstarts', file: 'quickstarts/game.md', slug: 'quickstarts/game', title: 'Games' },
@@ -35,11 +37,11 @@ const urlFor = (page) => `${SITE}/${page.slug ? page.slug + '/' : ''}`;
 
 /** Where a link written in a Markdown file should go on the website. */
 export function resolveLink(href, fromFile) {
-  if (!href || /^(https?:|mailto:|#)/i.test(href)) return href;
+  if (!href || /^(https?:|mailto:|#|\/)/i.test(href)) return href;
   const [target, hash = ''] = href.split('#');
   const frag = hash ? `#${hash}` : '';
   const abs = path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), target));
-  const page = PAGES.find((p) => p.file === abs);
+  const page = PAGES.find((p) => p.file && p.file === abs);
   if (page) return urlFor(page) + frag;
   if (RAW.includes(abs)) return `${SITE}/${abs}`;
   // Anything else points into the repository (packages, examples): send it to GitHub
@@ -67,6 +69,51 @@ function render(markdown, fromFile) {
   return marked.parse(markdown);
 }
 
+const CUSTOM = {
+  'keys-form': `<h1>Get test keys</h1>
+<p>Test keys let you try the whole cash out flow, from your own app, with <b>no real money</b>. They work right away. Live keys come later, after you have tested and we have agreed the details.</p>
+<form id="gcd-form" class="gcd-form">
+  <label>Your app or company name<input id="gcd-name" type="text" required minlength="2" maxlength="60" autocomplete="organization"></label>
+  <label>Your email<input id="gcd-email" type="email" required autocomplete="email"></label>
+  <label>Websites you will test from <span class="gcd-hint">One per line. Exact addresses, like <code>https://mygame.example</code>. For development you can use <code>http://localhost</code>.</span>
+    <textarea id="gcd-origins" rows="3" required placeholder="https://mygame.example"></textarea></label>
+  <button id="gcd-submit" type="submit">Email me a link</button>
+</form>
+<p id="gcd-msg" class="gcd-msg" hidden></p>
+<h2>What happens next</h2>
+<ol>
+  <li>We email you a link to confirm it is you. It works once and expires in one hour.</li>
+  <li>The link opens a page that shows your test keys <b>one time</b>. Save them somewhere safe.</li>
+  <li>Follow a <a href="/docs/">quickstart</a> and try a cash out in <a href="/docs/test-mode/">test mode</a>.</li>
+  <li>When you are ready, ask for live access from your server (see <a href="/docs/go-live/">Go-live checklist</a>). A person at GoodCash reviews it.</li>
+</ol>`,
+  'keys-confirm': `<h1>Your test keys</h1>
+<p id="gcd-msg" class="gcd-msg gcd-info">One moment…</p>
+<div id="gcd-keys" hidden>
+  <p class="gcd-msg gcd-warn"><b>Save these now.</b> They are shown only once and we cannot show them again. If you lose them, ask for new test keys.</p>
+  <p>Account: <b id="gcd-name"></b><br>Allowed websites: <span id="gcd-sites"></span></p>
+  <h2>Publishable key</h2>
+  <p>Goes in your website or app. It only works from the websites above.</p>
+  <pre><code id="gcd-pk"></code></pre><button type="button" data-copy="gcd-pk">Copy</button>
+  <h2>Secret key</h2>
+  <p>Stays on your server only. It is refused from browsers. Never put it in an app or a repository.</p>
+  <pre><code id="gcd-sk"></code></pre><button type="button" data-copy="gcd-sk">Copy</button>
+  <h2>Next</h2>
+  <ul>
+    <li>Try it: <a href="/docs/quickstarts/game/">Games</a>, <a href="/docs/quickstarts/react/">React</a>, <a href="/docs/quickstarts/fintech-server/">servers</a>.</li>
+    <li>Test mode never moves money: <a href="/docs/test-mode/">how test mode works</a>.</li>
+    <li>Ready for live? <code>POST https://api.goodcash.xyz/v1/live-access</code> with your secret key asks GoodCash to review.</li>
+  </ul>
+</div>`,
+};
+
+const EXTRA_CSS = `
+.gcd-form label{display:block;margin:14px 0;font-weight:600}.gcd-form input,.gcd-form textarea{display:block;width:100%;margin-top:6px;padding:10px 12px;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:10px}
+.gcd-hint{display:block;font-weight:400;color:var(--mut);font-size:14px}
+button{font:inherit;font-weight:700;color:#fff;background:var(--brand);border:0;border-radius:10px;padding:10px 18px;cursor:pointer}button:disabled{opacity:.6;cursor:default}
+.gcd-msg{padding:12px 14px;border-radius:10px;background:var(--soft)}.gcd-err{border:1px solid #d33;color:#d33}.gcd-ok{border:1px solid #2a9d63}.gcd-warn{border:1px solid #d99a00}
+`;
+
 const CSS = `
 :root{--bg:#fff;--fg:#14111f;--mut:#5d5873;--line:#e6e2f2;--brand:#7b39fc;--soft:#f5f1ff;--code:#f3f1f8}
 @media (prefers-color-scheme:dark){:root{--bg:#120e20;--fg:#f1eefb;--mut:#aaa3c4;--line:#2d2644;--brand:#a98bff;--soft:#1b1530;--code:#1d1733}}
@@ -86,14 +133,14 @@ table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,t
 code{background:var(--code);padding:.1em .35em;border-radius:6px;font-size:.92em}
 pre{background:var(--code);padding:14px;border-radius:12px;overflow-x:auto}pre code{background:none;padding:0}
 blockquote{margin:1em 0;padding:.2em 1em;border-left:4px solid var(--brand);background:var(--soft);border-radius:0 8px 8px 0}
-li input[type=checkbox]{margin-right:8px}
+li input[type=checkbox]{margin-right:8px}${EXTRA_CSS}
 @media (max-width:760px){.wrap{display:block}nav{width:auto;padding:12px 0;border-bottom:1px solid var(--line)}nav div{display:inline-block;margin-right:12px;vertical-align:top}}
 `;
 
 function nav(current) {
   const groups = [...new Set(PAGES.map((p) => p.group))];
   const parts = groups.map((g) => {
-    const links = PAGES.filter((p) => p.group === g)
+    const links = PAGES.filter((p) => p.group === g && !p.hidden)
       .map((p) => `<a href="${urlFor(p)}"${p === current ? ' aria-current="page"' : ''}>${esc(p.title)}</a>`)
       .join('');
     return `<div><h2>${esc(g)}</h2>${links}</div>`;
@@ -103,6 +150,7 @@ function nav(current) {
 }
 
 export function pageHtml(page, body) {
+  const script = page.custom ? '<script src="/docs/keys.js" defer></script>' : '';
   const title = page.slug ? `${page.title} · GoodCash for Partners` : 'GoodCash for Partners';
   return `<!doctype html>
 <html lang="en"><head>
@@ -114,6 +162,7 @@ export function pageHtml(page, body) {
 </head><body>
 <header><b>GoodCash</b><span>Partner docs</span></header>
 <div class="wrap">${nav(page)}<main>${body}</main></div>
+${script}
 </body></html>
 `;
 }
@@ -121,11 +170,12 @@ export function pageHtml(page, body) {
 export function build() {
   rmSync(OUT, { recursive: true, force: true });
   for (const page of PAGES) {
-    const md = readFileSync(path.join(SRC, page.file), 'utf8');
+    const body = page.custom ? CUSTOM[page.custom] : render(readFileSync(path.join(SRC, page.file), 'utf8'), page.file);
     const dir = path.join(OUT, page.slug);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, 'index.html'), pageHtml(page, render(md, page.file)));
+    writeFileSync(path.join(dir, 'index.html'), pageHtml(page, body));
   }
+  copyFileSync(path.join(root, 'scripts/docs-assets/keys.js'), path.join(OUT, 'keys.js'));
   for (const f of RAW) copyFileSync(path.join(SRC, f), path.join(OUT, f));
   return PAGES.length + RAW.length;
 }

@@ -54,16 +54,32 @@ describe('partner docs website', () => {
 
   it('keeps internal planning documents off the website', async () => {
     const { PAGES } = await docs();
-    for (const p of PAGES) expect(p.file).not.toMatch(/PLAN|PHASE1|ONE_PAGER/i);
+    for (const p of PAGES as Array<{ file?: string }>) expect(p.file ?? '').not.toMatch(/PLAN|PHASE1|ONE_PAGER/i);
   });
 
-  it('has a title, a page description and no scripts on every page', async () => {
+  it('has a title and a page description on every page, and no inline scripts', async () => {
     await docs().then((d) => d.build());
     for (const f of htmlFiles(OUT)) {
       const html = readFileSync(f, 'utf8');
       expect(html).toMatch(/<title>[^<]+<\/title>/);
       expect(html).toContain('name="description"');
-      expect(html).not.toMatch(/<script/i);
+      // the only script is the key sign-up script, loaded from this site, and only on the two sign-up pages
+      const scripts = [...html.matchAll(/<script[^>]*>/gi)].map((m) => m[0]);
+      const isSignup = /get-test-keys/.test(f);
+      expect(scripts).toEqual(isSignup ? ['<script src="/docs/keys.js" defer>'] : []);
+      expect(html).not.toMatch(/<script[^>]*>[^<]+<\/script>/i);
     }
+  });
+
+  it('the sign-up form asks for the details the API needs, and the confirm page shows the keys', async () => {
+    await docs().then((d) => d.build());
+    const form = readFileSync(path.join(OUT, 'get-test-keys/index.html'), 'utf8');
+    for (const id of ['gcd-form', 'gcd-name', 'gcd-email', 'gcd-origins', 'gcd-submit']) expect(form).toContain(`id="${id}"`);
+    const confirm = readFileSync(path.join(OUT, 'get-test-keys/confirm/index.html'), 'utf8');
+    for (const id of ['gcd-keys', 'gcd-pk', 'gcd-sk', 'gcd-msg']) expect(confirm).toContain(`id="${id}"`);
+    const js = readFileSync(path.join(OUT, 'keys.js'), 'utf8');
+    expect(js).toContain('/v1/signup');
+    expect(js).toContain('/v1/signup/confirm');
+    expect(js).not.toMatch(/innerHTML/); // text from the server is only ever set as text
   });
 });

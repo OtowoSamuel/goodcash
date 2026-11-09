@@ -23,6 +23,12 @@ export interface Partner {
   /** The webhook signing secret per mode, encrypted with PARTNER_SECRETS_KEY (AES-GCM, base64 "iv.cipher") */
   webhookSecretEnc?: { live?: string; test?: string };
   createdAt: number;
+  /** Set for partners who signed up themselves (test keys only until GoodCash approves live) */
+  selfServe?: boolean;
+  /** Where to reach a self-serve partner (their sign-up email) */
+  contactEmail?: string;
+  /** When a self-serve partner last asked for live keys */
+  liveRequestedAt?: number;
 }
 
 /** What is stored at `key:<sha256 of the key>`. */
