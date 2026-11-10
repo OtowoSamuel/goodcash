@@ -12,6 +12,7 @@
 import { z } from 'zod';
 import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
 import { processLiveApprovals } from './v1/liveKeys';
+import { clearWorkIfIdle, markWork, shouldList } from './v1/work';
 
 // ---------------------------------------------------------------------------
 // Environment bindings (declared in wrangler.toml or via CF dashboard)
@@ -1322,6 +1323,7 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
     JSON.stringify(orderState),
     { expirationTtl: 86400 }, // 24 hours
   );
+  await markWork(env, 'orders');
 
   if (swapKey) {
     await env.ORDER_STORE.put(swapKey, paycrestResponse.id, { expirationTtl: 60 * 60 * 24 * 400 });
@@ -1746,6 +1748,7 @@ export async function createSizedOneTapOrder(
     }),
     { expirationTtl: 86400 }
   );
+  await markWork(env, 'orders');
   // Lets us find the order from the deposit address later (the swap pays that address directly)
   const naira = expectedNairaFromOrder(order);
   await env.ORDER_STORE.put(`rcv:${receive.toLowerCase()}`, JSON.stringify({ o: order.id, ...(naira ? { n: naira } : {}) }), {
@@ -2765,7 +2768,10 @@ const SLOW_PAYOUT_MINUTES = 25;
 export async function alertSlowPayouts(env: Env, now = Date.now()): Promise<{ checked: number; alerted: number }> {
   let checked = 0;
   let alerted = 0;
-  const list = await env.ORDER_STORE.list({ prefix: 'order:', limit: 100 });
+  if (!(await shouldList(env, 'orders', now))) return { checked, alerted };
+  const startedAt = Date.now();
+  const list = (await env.ORDER_STORE.list({ prefix: 'order:', limit: 100 })) as { keys: Array<{ name: string }>; list_complete?: boolean };
+  let anyOpen = false;
   for (const key of list.keys) {
     const id = key.name.slice('order:'.length);
     const raw = await env.ORDER_STORE.get(key.name);
@@ -2776,6 +2782,7 @@ export async function alertSlowPayouts(env: Env, now = Date.now()): Promise<{ ch
     } catch {
       continue;
     }
+    if (!state.status || !FINAL_STATUSES.has(state.status)) anyOpen = true;
     if (!state.createdAt || now - state.createdAt < SLOW_PAYOUT_MINUTES * 60_000) continue;
     if (state.status && FINAL_STATUSES.has(state.status)) continue;
     checked++;
@@ -2816,6 +2823,7 @@ export async function alertSlowPayouts(env: Env, now = Date.now()): Promise<{ ch
       }
     }
   }
+  if (!anyOpen && list.list_complete !== false) await clearWorkIfIdle(env, 'orders', startedAt);
   return { checked, alerted };
 }
 

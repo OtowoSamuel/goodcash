@@ -18,6 +18,7 @@ import {
   type Hex,
 } from '@goodcash/core';
 import { V1Error } from './http';
+import { clearWorkIfIdle, markWork, shouldList } from './work';
 import { emitCashOutEvent, eventForStatus } from './webhooks';
 import { ethCallVia, feeLines, parseAmountG, priceCashOut } from './pricing';
 import type { AuthContext, CashOutRecord, Env, V1Deps } from './types';
@@ -239,6 +240,7 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
   await env.ORDER_STORE.put(`pca:${ctx.partner.id}:${ctx.mode}:${inv(now)}:${id}`, '1', { expirationTtl: ttl });
   // Open cash outs the schedule keeps an eye on (for webhooks when nobody is polling)
   await env.ORDER_STORE.put(`pcopen:${id}`, '1', { expirationTtl: 3 * DAY });
+  await markWork(env, 'pcopen');
 
   const body = {
     ...publicCashOut(rec),
@@ -377,7 +379,10 @@ export async function notifyChange(
 
 /** Refresh open cash outs on the schedule, so partners get webhooks even when nobody is polling. */
 export async function sweepOpenCashOuts(env: Env, deps: V1Deps): Promise<{ checked: number }> {
+  if (!(await shouldList(env, 'pcopen'))) return { checked: 0 };
+  const startedAt = Date.now();
   const page = await env.ORDER_STORE.list({ prefix: 'pcopen:', limit: 50 });
+  if (page.keys.length === 0 && page.list_complete !== false) await clearWorkIfIdle(env, 'pcopen', startedAt);
   let checked = 0;
   for (const k of page.keys) {
     const id = k.name.slice('pcopen:'.length);

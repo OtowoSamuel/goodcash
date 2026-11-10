@@ -15,6 +15,7 @@
  */
 import { isAddress } from '@goodcash/core';
 import { V1Error, v1Json } from './http';
+import { clearWorkIfIdle, markWork, shouldList } from './work';
 import { emitTopUpEvent, type EventType } from './webhooks';
 import type { AuthContext, Env, Mode, Partner, TopUpAsset, TopUpRecord, TopUpStatus, V1Deps } from './types';
 
@@ -193,6 +194,7 @@ export async function createTopUp(request: Request, env: Env, ctx: AuthContext, 
   await save(env, rec);
   await env.ORDER_STORE.put(`pta:${ctx.partner.id}:${ctx.mode}:${String(now).padStart(13, '0')}:${rec.id}`, '1', { expirationTtl: (ctx.mode === 'test' ? 7 : 400) * 86400 });
   await env.ORDER_STORE.put(`ptopen:${rec.id}`, '1', { expirationTtl: 30 * 86400 });
+  await markWork(env, 'ptopen');
   return v1Json(publicTopUp(rec), 201);
 }
 
@@ -279,7 +281,10 @@ export async function notifyTopUp(env: Env, rec: TopUpRecord, changed: boolean, 
 /** Refresh open top-ups on the schedule, so partners get webhooks even when nobody is polling. */
 export async function sweepOpenTopUps(env: Env, deps: V1Deps): Promise<{ checked: number }> {
   if (!onrampSwitchOn(env)) return { checked: 0 };
+  if (!(await shouldList(env, 'ptopen'))) return { checked: 0 };
+  const startedAt = Date.now();
   const page = await env.ORDER_STORE.list({ prefix: 'ptopen:', limit: 50 });
+  if (page.keys.length === 0 && page.list_complete !== false) await clearWorkIfIdle(env, 'ptopen', startedAt);
   let checked = 0;
   for (const k of page.keys) {
     const rec = await loadTopUp(env, k.name.slice('ptopen:'.length));

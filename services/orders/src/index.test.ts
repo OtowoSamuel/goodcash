@@ -1350,8 +1350,10 @@ describe('slow payout alert for the team', () => {
   let kv: MockKV;
   let env: Env;
 
-  const seed = async (id: string, status: string, ageMin: number) =>
-    kv.put(`order:${id}`, JSON.stringify({ status, receiveAddress: '0xP', amountToTransfer: '0.57', validUntil: 'x', paymentReference: null, createdAt: NOW - ageMin * MIN }));
+  const seed = async (id: string, status: string, ageMin: number) => {
+    await kv.put(`order:${id}`, JSON.stringify({ status, receiveAddress: '0xP', amountToTransfer: '0.57', validUntil: 'x', paymentReference: null, createdAt: NOW - ageMin * MIN }));
+    await kv.put('work:orders', String(NOW - 1)); // creating an order sets this marker; the schedule only looks while it is set
+  };
 
   /** Pretends to be the payout partner (live status per order) and the email service. */
   const partner = (live: Record<string, string>) => {
@@ -1373,6 +1375,36 @@ describe('slow payout alert for the team', () => {
     env = makeEnv(kv, { RESEND_API_KEY: 'key', SUPPORT_INBOX: 'team@example.com', RESEND_FROM: 'GoodCash <hello@goodcash.xyz>' });
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it('A0. Makes no list call on a quiet run with nothing open, finds old work on the hourly run, and clears its marker when all are finished', async () => {
+    const base = Math.floor(NOW / (6 * 10 * MIN)) * 6 * 10 * MIN; // a safety slot at or before now
+    const quiet = base + 7 * 10 * MIN; // slot 7: not a safety run
+    const safety = base + 12 * 10 * MIN; // slot 12: a safety run
+    const p = partner({ [ID1]: 'pending' });
+    vi.stubGlobal('fetch', p.f);
+    let lists = 0;
+    const realList = kv.list.bind(kv);
+    kv.list = (async (o: { prefix?: string }) => {
+      lists++;
+      return realList(o);
+    }) as typeof kv.list;
+
+    // stuck order created before markers existed: no marker, so a quiet run does not look...
+    await kv.put(`order:${ID1}`, JSON.stringify({ status: 'pending', receiveAddress: '0xP', amountToTransfer: '0.57', validUntil: 'x', paymentReference: null, createdAt: NOW - 30 * MIN }));
+    expect(await alertSlowPayouts(env, quiet)).toEqual({ checked: 0, alerted: 0 });
+    expect(lists).toBe(0);
+    // ...but the hourly run does, and finds it
+    expect(await alertSlowPayouts(env, safety)).toEqual({ checked: 1, alerted: 1 });
+    expect(lists).toBe(1);
+
+    // once every order is finished, the next marked run finds nothing open and clears the marker
+    await kv.put(`order:${ID1}`, JSON.stringify({ status: 'settled', createdAt: NOW - 30 * MIN }));
+    await kv.put('work:orders', String(NOW - 1));
+    await alertSlowPayouts(env, quiet);
+    expect(await kv.get('work:orders')).toBeNull();
+    await alertSlowPayouts(env, quiet);
+    expect(lists).toBe(2);
+  });
 
   it('A1. Alerts once for a paid order stuck for too long, with no bank details', async () => {
     await seed(ID1, 'pending', 30);

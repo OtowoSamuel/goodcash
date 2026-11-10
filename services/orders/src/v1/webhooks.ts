@@ -8,6 +8,7 @@
  * PARTNER_SECRETS_KEY and shown to the partner only once.
  */
 import { V1Error } from './http';
+import { clearWorkIfIdle, markWork, shouldList } from './work';
 import { loadPartner } from './auth';
 import type { CashOutRecord, Env, Mode, Partner, TopUpRecord } from './types';
 
@@ -118,6 +119,7 @@ function queueKey(dueMs: number, eventId: string): string {
 async function enqueue(env: Env, item: QueueItem, now = Date.now()): Promise<void> {
   const minutes = RETRY_MINUTES[Math.min(item.attempt - 1, RETRY_MINUTES.length - 1)];
   await env.ORDER_STORE.put(queueKey(now + minutes * 60_000, item.event.id), JSON.stringify(item), { expirationTtl: QUEUE_TTL });
+  await markWork(env, 'whq', now);
 }
 
 /**
@@ -153,7 +155,10 @@ export async function processWebhookQueue(env: Env, now = Date.now()): Promise<{
   let delivered = 0;
   let retried = 0;
   let dropped = 0;
+  if (!(await shouldList(env, 'whq', now))) return { delivered, retried, dropped };
+  const startedAt = Date.now();
   const page = await env.ORDER_STORE.list({ prefix: 'whq:', limit: 50 });
+  if (page.keys.length === 0 && page.list_complete !== false) await clearWorkIfIdle(env, 'whq', startedAt);
   for (const k of page.keys) {
     const due = Number(k.name.split(':')[1]);
     if (due > now) break; // keys sort by due time
