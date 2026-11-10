@@ -37,6 +37,7 @@ import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, frie
 import { findOneTapPayment, findRecentCashOut, fetchWalletHistoryFull, createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { disconnectWalletConnect, restoreWalletConnect } from './lib/walletConnect';
+import { disconnectOkx, restoreOkx } from './lib/okxWallet';
 import { MAGIC_ENABLED, finishMagicLogin, restoreMagic, disconnectMagic, type MagicLoginResult } from './lib/magicWallet';
 import { PendingPayoutCard } from './components/PendingPayoutCard';
 import { reportIssue } from './lib/diag';
@@ -392,6 +393,7 @@ export function App({
     let alive = true;
     restoreMagic()
       .then((acct) => acct ?? restoreWalletConnect(() => setWalletAddress(null)))
+      .then((acct) => acct ?? restoreOkx())
       .then((acct) => {
         if (alive && acct) setWalletAddress(acct);
       });
@@ -626,6 +628,7 @@ export function App({
     // Sign out of Magic (closes a Magic email wallet or a connected wallet); a browser wallet is also asked to forget this site
     void disconnectMagic();
     void disconnectWalletConnect();
+    disconnectOkx();
     if (hasInjectedWallet()) void disconnectInjectedWallet();
     setWalletAddress(null);
     setWalletMessage(null);

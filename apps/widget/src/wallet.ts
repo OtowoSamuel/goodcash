@@ -174,7 +174,9 @@ export async function restoreMagic(): Promise<ConnectedWallet | null> {
 
 /** A wallet the browser already has (extension, or an in-app wallet such as MiniPay). */
 export function injectedProvider(): Eip1193Provider | null {
-  const eth = typeof window !== 'undefined' ? (window as unknown as { ethereum?: Eip1193Provider }).ethereum : undefined;
+  const w = typeof window !== 'undefined' ? (window as unknown as { ethereum?: Eip1193Provider; okxwallet?: Eip1193Provider }) : undefined;
+  // OKX Wallet always sets window.okxwallet; it only sometimes also sets window.ethereum
+  const eth = w?.ethereum ?? w?.okxwallet;
   return eth && typeof eth.request === 'function' ? eth : null;
 }
 

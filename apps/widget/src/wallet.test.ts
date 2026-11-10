@@ -53,6 +53,21 @@ describe('only wallets that can work in this browser are listed', () => {
   });
 });
 
+describe('the wallet inside the browser', () => {
+  it('uses window.ethereum, or OKX Wallet own provider when that is all there is', async () => {
+    const { injectedProvider } = await import('./wallet');
+    const okx = { request: async () => [] };
+    const eth = { request: async () => [] };
+    vi.stubGlobal('window', { okxwallet: okx });
+    expect(injectedProvider()).toBe(okx);
+    vi.stubGlobal('window', { ethereum: eth, okxwallet: okx });
+    expect(injectedProvider()).toBe(eth);
+    vi.stubGlobal('window', {});
+    expect(injectedProvider()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('reading an address out of what Magic returns', () => {
   it.each([
     ['a plain address', A, A],

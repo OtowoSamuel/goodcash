@@ -4,6 +4,7 @@ import { getMagic, browserHasWallet, walletsForBrowser, type MagicLoginResult } 
 import { Modal } from './Modal';
 import '../magicTheme.css';
 import { connectWithWalletConnect, WALLETCONNECT_ENABLED } from '../lib/walletConnect';
+import { connectOkx, isPhoneBrowser, okxAppLink, okxProvider } from '../lib/okxWallet';
 
 interface Props {
   onConnected: (result: MagicLoginResult) => void;
@@ -22,7 +23,9 @@ export default function MagicConnect({ onConnected, onError, onClose, onWalletAp
   // A browser with no wallet in it (a phone browser, or a computer without a wallet extension) first asks how to
   // connect. Magic's own wallet list only knows Ethereum, not Celo, so wallet apps connect through our own link
   // that asks for Celo. Email and passkey sign-in stay with Magic.
-  const [choice, setChoice] = useState<'ask' | 'magic'>(() => (browserHasWallet() ? 'magic' : 'ask'));
+  // A browser with OKX Wallet in it also asks first, so OKX can be picked (Magic's own list has no OKX).
+  const hasOkx = okxProvider() !== null;
+  const [choice, setChoice] = useState<'ask' | 'magic'>(() => (browserHasWallet() && !hasOkx ? 'magic' : 'ask'));
   const [busy, setBusy] = useState(false);
 
   const useWalletApp = async () => {
@@ -31,6 +34,17 @@ export default function MagicConnect({ onConnected, onError, onClose, onWalletAp
     try {
       onWalletApp(await connectWithWalletConnect());
     } catch (e) {
+      onError(e);
+    }
+  };
+
+  const useOkx = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      onWalletApp(await connectOkx());
+    } catch (e) {
+      setBusy(false);
       onError(e);
     }
   };
@@ -52,13 +66,23 @@ export default function MagicConnect({ onConnected, onError, onClose, onWalletAp
   if (choice === 'ask') {
     return (
       <Modal label="Connect" title="Connect" onClose={onClose} z={220} tone="white">
+        {hasOkx && (
+          <button type="button" className="gc-btn" disabled={busy} onClick={useOkx}>
+            {busy ? 'Opening your wallet…' : 'OKX Wallet'}
+          </button>
+        )}
         {WALLETCONNECT_ENABLED && (
-          <button type="button" className="gc-btn" disabled={busy} onClick={useWalletApp}>
+          <button type="button" className={hasOkx ? 'gc-btn gc-btn--white' : 'gc-btn'} disabled={busy} onClick={useWalletApp}>
             {busy ? 'Opening your wallet…' : 'Use my wallet app'}
           </button>
         )}
+        {!hasOkx && !browserHasWallet() && isPhoneBrowser() && (
+          <a className="gc-btn gc-btn--white" style={{ textAlign: 'center', textDecoration: 'none' }} href={okxAppLink(window.location.href)}>
+            Open in OKX Wallet
+          </a>
+        )}
         <button type="button" className="gc-btn gc-btn--white" disabled={busy} onClick={() => setChoice('magic')}>
-          Sign in with email or passkey
+          {browserHasWallet() ? 'Other wallets, email or passkey' : 'Sign in with email or passkey'}
         </button>
       </Modal>
     );
