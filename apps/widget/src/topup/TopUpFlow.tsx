@@ -248,13 +248,16 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
         </button>
       </div>
       {stage !== 'done' && stage !== 'failed' && (
-        <div className="gcw-steps" aria-hidden>
-          {STEP_NAMES.map((n, i) => (
-            <span key={n} className={`gcw-step ${i < stepOf(stage) ? 'gcw-step--done' : ''} ${i === stepOf(stage) ? 'gcw-step--on' : ''}`}>
-              {n}
-            </span>
-          ))}
-        </div>
+        <>
+          <div className="gcw-steps" aria-hidden>
+            {STEP_NAMES.map((n, i) => (
+              <span key={n} className={`gcw-step ${i < stepOf(stage) ? 'gcw-step--done' : ''} ${i === stepOf(stage) ? 'gcw-step--on' : ''}`} />
+            ))}
+          </div>
+          <p className="gcw-sub" style={{ fontWeight: 700 }}>
+            Step {stepOf(stage) + 1} of {STEP_NAMES.length}: {STEP_NAMES[stepOf(stage)]}
+          </p>
+        </>
       )}
       {test && <p className="gcw-note">Test mode: no real money moves.</p>}
 
