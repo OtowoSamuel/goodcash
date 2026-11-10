@@ -13,6 +13,7 @@
  *   node scripts/partners.mjs rotate  <partnerId> --kind pk|sk --mode live|test   (old key stops working)
  *   node scripts/partners.mjs ledger  <partnerId> <YYYY-MM>   (fees earned that month, for the monthly payout)
  *   node scripts/partners.mjs approve-live <partnerId>   (a partner who got test keys themselves: approves LIVE keys; the worker emails them a one-time link within ~10 min)
+ *   node scripts/partners.mjs approve-live <partnerId> --rotate  (a partner who already has live keys: revokes both at once, then the worker emails new ones)
  *   node scripts/partners.mjs approve-live <partnerId> --print   (makes the live keys here and prints them once, to send by hand)
  *   node scripts/partners.mjs secrets-key                (how to set PARTNER_SECRETS_KEY without seeing it)
  *
@@ -227,7 +228,18 @@ async function main() {
       const p = DRY ? { id, name: 'dry', enabled: true, contactEmail: 'dry@example.com' } : get(`partner:${id}`);
       if (!p) throw new Error(`No partner ${id}`);
       const index = (DRY ? {} : get(`partnerkeys:${id}`)) ?? {};
-      if (index_hasLive(index)) throw new Error('This partner already has live keys. To replace one, use: rotate <partnerId> --kind pk|sk --mode live');
+      if (index_hasLive(index)) {
+        if (!argv.includes('--rotate')) throw new Error('This partner already has live keys. To replace BOTH and have the worker email the new ones as a one-time link, use: approve-live <partnerId> --rotate  (to replace one key by hand: rotate <partnerId> --kind pk|sk --mode live)');
+        // Revoke the old live keys now (they stop working at once), then issue new ones the normal way
+        for (const k of ['pk_live', 'sk_live']) {
+          if (index[k]) {
+            del(`key:${index[k]}`);
+            delete index[k];
+          }
+        }
+        put(`partnerkeys:${id}`, index);
+        console.log(`Old live keys for ${p.name} (${id}) revoked.`);
+      }
       if (!argv.includes('--print')) {
         // Default: the worker makes the keys and emails the partner a one-time link, so nothing is shown or sent by hand
         if (!p.contactEmail) throw new Error('This partner has no confirmed contact email. Use --print to make the keys here and send them yourself.');
