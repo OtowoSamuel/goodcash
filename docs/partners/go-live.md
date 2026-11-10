@@ -1,6 +1,6 @@
 # Go-live checklist
 
-Got your keys from the [self-serve page](https://pay.goodcash.xyz/docs/get-test-keys/)? Finish the list below, then ask for live access with your **test secret key** from your server: `POST https://api.goodcash.xyz/v1/live-access`. A person at GoodCash reviews it and replies by email.
+Got your keys from the [self-serve page](https://pay.goodcash.xyz/docs/get-test-keys/)? Finish the list below, then ask for live access with your **test secret key** from your server: `POST https://api.goodcash.xyz/v1/live-access`. A person at GoodCash reviews it. When approved, GoodCash emails the address you signed up with a one-time link (valid 24 hours) that shows your live keys once. Nobody sends you keys in a chat.
 
 - [ ] Agreement with GoodCash signed (fees, acceptable use, user checks for server-wallet payouts).
 - [ ] Every site that loads the widget or uses the publishable key is on your allowed list (exact origins).

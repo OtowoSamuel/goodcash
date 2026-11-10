@@ -1,4 +1,4 @@
-// Get test keys (the form) and the confirmation page (shows the keys once). No libraries; text is set with textContent.
+// Get test keys (the form) and the confirmation pages for test and live keys (show the keys once). No libraries; text is set with textContent.
 (function () {
   var API = 'https://api.goodcash.xyz';
   function el(id) { return document.getElementById(id); }
@@ -51,11 +51,12 @@
     var token = (location.hash || '').replace(/^#/, '');
     // Take the token out of the address bar and history straight away
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+    var live = out.getAttribute('data-mode') === 'live';
     if (!/^[A-Za-z0-9]{40}$/.test(token)) {
-      show(status, 'This link is not valid. Please ask for new test keys.', 'err');
+      show(status, live ? 'This link is not valid. Please contact GoodCash for a new one.' : 'This link is not valid. Please ask for new test keys.', 'err');
     } else {
-      show(status, 'Creating your test keys…', 'info');
-      post('/v1/signup/confirm', { token: token })
+      show(status, live ? 'Getting your live keys…' : 'Creating your test keys…', 'info');
+      post(live ? '/v1/live-keys/confirm' : '/v1/signup/confirm', { token: token })
         .then(function (r) {
           if (!r.ok) return show(status, errorText(r.body, r.status), 'err');
           status.hidden = true;

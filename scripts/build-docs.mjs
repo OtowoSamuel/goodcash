@@ -17,6 +17,7 @@ export const PAGES = [
   { group: 'Start', file: 'README.md', slug: '', title: 'Overview' },
   { group: 'Start', custom: 'keys-form', slug: 'get-test-keys', title: 'Get test keys' },
   { group: 'Start', custom: 'keys-confirm', slug: 'get-test-keys/confirm', title: 'Your test keys', hidden: true },
+  { group: 'Start', custom: 'live-keys-confirm', slug: 'get-live-keys/confirm', title: 'Your live keys', hidden: true },
   { group: 'Start', file: 'test-mode.md', slug: 'test-mode', title: 'Test mode' },
   { group: 'Start', file: 'go-live.md', slug: 'go-live', title: 'Go-live checklist' },
   { group: 'Quickstarts', file: 'quickstarts/game.md', slug: 'quickstarts/game', title: 'Games' },
@@ -88,6 +89,23 @@ const CUSTOM = {
   <li>Follow a <a href="/docs/">quickstart</a> and try a cash out in <a href="/docs/test-mode/">test mode</a>.</li>
   <li>When you are ready, ask for live access from your server (see <a href="/docs/go-live/">Go-live checklist</a>). A person at GoodCash reviews it.</li>
 </ol>`,
+  'live-keys-confirm': `<h1>Your live keys</h1>
+<p id="gcd-msg" class="gcd-msg gcd-info">One moment…</p>
+<div id="gcd-keys" data-mode="live" hidden>
+  <p class="gcd-msg gcd-warn"><b>Save these now.</b> They are shown only once and we cannot show them again. These keys move real money. If you lose them, contact GoodCash for new ones.</p>
+  <p>Account: <b id="gcd-name"></b><br>Allowed websites: <span id="gcd-sites"></span></p>
+  <h2>Publishable key</h2>
+  <p>Goes in your website or app. It only works from the websites above.</p>
+  <pre><code id="gcd-pk"></code></pre><button type="button" data-copy="gcd-pk">Copy</button>
+  <h2>Secret key</h2>
+  <p>Stays on your server only. It is refused from browsers. Never put it in an app or a repository, and never send it in a chat or an email.</p>
+  <pre><code id="gcd-sk"></code></pre><button type="button" data-copy="gcd-sk">Copy</button>
+  <h2>Next</h2>
+  <ul>
+    <li>Switch your app from the test keys to these live keys, then do one small cash out yourself first.</li>
+    <li>Checklist: <a href="/docs/go-live/">Go-live checklist</a>.</li>
+  </ul>
+</div>`,
   'keys-confirm': `<h1>Your test keys</h1>
 <p id="gcd-msg" class="gcd-msg gcd-info">One moment…</p>
 <div id="gcd-keys" hidden>

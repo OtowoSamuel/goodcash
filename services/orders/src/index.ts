@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
+import { processLiveApprovals } from './v1/liveKeys';
 
 // ---------------------------------------------------------------------------
 // Environment bindings (declared in wrangler.toml or via CF dashboard)
@@ -3019,6 +3020,12 @@ export default {
       await runPartnerSchedule(env, v1Deps);
     } catch (e) {
       console.error('[v1-schedule] failed:', e);
+    }
+    try {
+      const out = await processLiveApprovals(env);
+      if (out.issued > 0 || out.waiting > 0) console.log(`[live-keys] emailed ${out.issued}, still waiting ${out.waiting}`);
+    } catch (e) {
+      console.error('[live-keys] failed:', e);
     }
     try {
       const out = await backfillOnrampHistory(env);

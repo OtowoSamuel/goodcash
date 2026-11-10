@@ -12,7 +12,8 @@
  *   node scripts/partners.mjs enable  <partnerId>
  *   node scripts/partners.mjs rotate  <partnerId> --kind pk|sk --mode live|test   (old key stops working)
  *   node scripts/partners.mjs ledger  <partnerId> <YYYY-MM>   (fees earned that month, for the monthly payout)
- *   node scripts/partners.mjs approve-live <partnerId>   (a partner who got test keys themselves: issues their LIVE keys)
+ *   node scripts/partners.mjs approve-live <partnerId>   (a partner who got test keys themselves: approves LIVE keys; the worker emails them a one-time link within ~10 min)
+ *   node scripts/partners.mjs approve-live <partnerId> --print   (makes the live keys here and prints them once, to send by hand)
  *   node scripts/partners.mjs secrets-key                (how to set PARTNER_SECRETS_KEY without seeing it)
  *
  * Add --dry-run to print what would be written instead of writing (keys are then shown masked).
@@ -222,11 +223,22 @@ async function main() {
     }
     case 'approve-live': {
       const id = positional[0];
-      if (!id) throw new Error('Usage: approve-live <partnerId>');
-      const p = DRY ? { id, name: 'dry', enabled: true } : get(`partner:${id}`);
+      if (!id) throw new Error('Usage: approve-live <partnerId> [--print]');
+      const p = DRY ? { id, name: 'dry', enabled: true, contactEmail: 'dry@example.com' } : get(`partner:${id}`);
       if (!p) throw new Error(`No partner ${id}`);
       const index = (DRY ? {} : get(`partnerkeys:${id}`)) ?? {};
       if (index_hasLive(index)) throw new Error('This partner already has live keys. To replace one, use: rotate <partnerId> --kind pk|sk --mode live');
+      if (!argv.includes('--print')) {
+        // Default: the worker makes the keys and emails the partner a one-time link, so nothing is shown or sent by hand
+        if (!p.contactEmail) throw new Error('This partner has no confirmed contact email. Use --print to make the keys here and send them yourself.');
+        const queue = (DRY ? [] : get('liveapprove:queue')) ?? [];
+        if (!queue.some((e) => e.id === id)) queue.push({ id, at: Date.now(), tries: 0 });
+        put('liveapprove:queue', queue);
+        console.log(`\nApproved: ${p.name} (${id}). Within about 10 minutes the worker emails ${p.contactEmail} a one-time link (24 hours) that shows the live keys once.`);
+        console.log('Nothing to copy or send. You also get an email when it has gone out. Their live publishable key works only from: ' + ((p.allowedOrigins ?? []).join(', ') || '(no sites)'));
+        console.log('Check first: they have finished the go-live checklist (docs/partners/go-live.md) and you have agreed the fee (update <id> --fee).\n');
+        break;
+      }
       const pk = await issueKey(id, 'pk', 'live', index);
       const sk = await issueKey(id, 'sk', 'live', index);
       put(`partnerkeys:${id}`, index);

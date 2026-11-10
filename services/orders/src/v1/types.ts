@@ -29,6 +29,8 @@ export interface Partner {
   contactEmail?: string;
   /** When a self-serve partner last asked for live keys */
   liveRequestedAt?: number;
+  /** When live keys were emailed to the partner as a one-time link */
+  liveApprovedAt?: number;
   /** GoodCash has switched naira-in (top-ups) on for this partner in LIVE mode (test mode needs no switch) */
   topupEnabled?: boolean;
 }

@@ -9,6 +9,7 @@ import { buildEvent, deliver, processWebhookQueue, setWebhook } from './webhooks
 import { requireSecret } from './auth';
 import type { CashOutRecord } from './types';
 import { handleSignup, isSignupPath, requestLiveAccess } from './signup';
+import { handleLiveKeys, isLiveKeysPath } from './liveKeys';
 import { createTopUp, getTopUp, listTopUps, sweepOpenTopUps, topUpQuote } from './topups';
 import { requestId, V1Error, v1ErrorResponse, v1Json, v1Preflight, withV1Headers } from './http';
 import { ethCallVia, feeLines, maxG, minimumG, parseAmountG, priceCashOut } from './pricing';
@@ -37,6 +38,17 @@ export async function handleV1(request: Request, env: Env, deps: V1Deps, waitUnt
   if (isSignupPath(new URL(request.url).pathname)) {
     try {
       return withV1Headers(await handleSignup(request, env, deps), reqId, null);
+    } catch (e) {
+      if (e instanceof V1Error) return withV1Headers(v1ErrorResponse(e), reqId, null);
+      console.error(`[v1] ${reqId} unexpected error:`, (e as Error)?.message ?? e);
+      return withV1Headers(v1ErrorResponse(new V1Error('unavailable')), reqId, null);
+    }
+  }
+
+  // The emailed live-keys link's page: no key yet either (see liveKeys.ts)
+  if (isLiveKeysPath(new URL(request.url).pathname)) {
+    try {
+      return withV1Headers(await handleLiveKeys(request, env, deps), reqId, null);
     } catch (e) {
       if (e instanceof V1Error) return withV1Headers(v1ErrorResponse(e), reqId, null);
       console.error(`[v1] ${reqId} unexpected error:`, (e as Error)?.message ?? e);

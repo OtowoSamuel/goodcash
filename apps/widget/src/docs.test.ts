@@ -65,7 +65,7 @@ describe('partner docs website', () => {
       expect(html).toContain('name="description"');
       // the only script is the key sign-up script, loaded from this site, and only on the two sign-up pages
       const scripts = [...html.matchAll(/<script[^>]*>/gi)].map((m) => m[0]);
-      const isSignup = /get-test-keys/.test(f);
+      const isSignup = /get-test-keys|get-live-keys/.test(f);
       expect(scripts).toEqual(isSignup ? ['<script src="/docs/keys.js" defer>'] : []);
       expect(html).not.toMatch(/<script[^>]*>[^<]+<\/script>/i);
     }
@@ -80,6 +80,10 @@ describe('partner docs website', () => {
     const js = readFileSync(path.join(OUT, 'keys.js'), 'utf8');
     expect(js).toContain('/v1/signup');
     expect(js).toContain('/v1/signup/confirm');
+    expect(js).toContain('/v1/live-keys/confirm');
+    const live = readFileSync(path.join(OUT, 'get-live-keys/confirm/index.html'), 'utf8');
+    for (const id of ['gcd-keys', 'gcd-pk', 'gcd-sk', 'gcd-msg']) expect(live).toContain(`id="${id}"`);
+    expect(live).toContain('data-mode="live"');
     expect(js).not.toMatch(/innerHTML/); // text from the server is only ever set as text
   });
 });

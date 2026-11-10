@@ -20,7 +20,7 @@ const DEFAULT_DAILY_CAP = 20;
 const MAX_ORIGINS = 5;
 const EMAIL_RE = /^[^\s@<>"]{1,64}@[^\s@<>"]{1,190}\.[^\s@<>"]{2,24}$/;
 
-function randomString(n: number): string {
+export function randomString(n: number): string {
   let out = '';
   while (out.length < n) {
     for (const b of crypto.getRandomValues(new Uint8Array(n * 2))) {
@@ -78,7 +78,7 @@ function dailyCap(env: Env): number {
 }
 
 /** Only the GoodCash widget site (the docs page) may call these endpoints from a browser. */
-function requireDocsSite(request: Request, env: Env): string {
+export function requireDocsSite(request: Request, env: Env): string {
   const origin = request.headers.get('Origin');
   if (!origin || !widgetOrigins(env).includes(origin)) {
     throw new V1Error('forbidden_origin', 'Get test keys from https://pay.goodcash.xyz/docs/get-test-keys/');
@@ -86,7 +86,7 @@ function requireDocsSite(request: Request, env: Env): string {
   return origin;
 }
 
-async function readJson(request: Request): Promise<Record<string, unknown>> {
+export async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
     const body = (await request.json()) as unknown;
     if (body && typeof body === 'object' && !Array.isArray(body)) return body as Record<string, unknown>;
@@ -96,7 +96,7 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   throw new V1Error('invalid_request', 'The body must be JSON.');
 }
 
-async function ipLimited(request: Request, env: Env, deps: V1Deps, name: string): Promise<void> {
+export async function ipLimited(request: Request, env: Env, deps: V1Deps, name: string): Promise<void> {
   const limiter = env.RATE_LIMITER_STRICT;
   if (!limiter) return;
   try {
@@ -125,7 +125,7 @@ function confirmationEmail(link: string, name: string): { html: string; text: st
   return { html, text };
 }
 
-async function sendEmail(env: Env, to: string, subject: string, html: string, text: string): Promise<boolean> {
+export async function sendEmail(env: Env, to: string, subject: string, html: string, text: string): Promise<boolean> {
   if (!env.RESEND_API_KEY) return false;
   try {
     const res = await fetch('https://api.resend.com/emails', {
