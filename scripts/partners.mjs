@@ -242,6 +242,7 @@ async function main() {
       const pk = await issueKey(id, 'pk', 'live', index);
       const sk = await issueKey(id, 'sk', 'live', index);
       put(`partnerkeys:${id}`, index);
+      if (p.topupEnabled === undefined) put(`partner:${id}`, { ...p, topupEnabled: true }); // live keys come with top-ups (switch off with update --topups off)
       console.log(`\nLive keys issued for ${p.name} (${id}). Shown ONCE; give them over a private channel.\n`);
       console.log(`  Live publishable  ${show(pk)}`);
       console.log(`  Live secret       ${show(sk)}\n`);

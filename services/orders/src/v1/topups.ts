@@ -10,7 +10,7 @@
  *   GET  /v1/topups/{id}                       status
  *   GET  /v1/topups                            list (secret key)
  *
- * Off unless PARTNER_ONRAMP_ENABLED is "true". In live mode a partner also needs `topupEnabled` (set by GoodCash).
+ * Off unless PARTNER_ONRAMP_ENABLED is "true". In live mode a partner also needs `topupEnabled` (set when GoodCash approves live keys, or with partners.mjs update --topups).
  * Test mode is simulated end to end (no payout partner, no chain).
  */
 import { isAddress } from '@goodcash/core';

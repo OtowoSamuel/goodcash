@@ -7,6 +7,8 @@
  *
  * The keys are never in the approver's terminal or chat. Until the partner opens the link they are held encrypted
  * (AES-GCM with PARTNER_SECRETS_KEY) for 24 hours; only their SHA-256 is kept as the key record, as always.
+ * Approving live keys also switches top-ups on for the partner (unless GoodCash switched them off on purpose). Top-ups
+ * still need PARTNER_ONRAMP_ENABLED.
  * If the email cannot be sent the new keys are removed again and the partner stays in the queue for the next run.
  */
 import { sha256Hex, widgetOrigins } from './auth';
@@ -122,7 +124,7 @@ async function issueLiveKeys(env: Env, id: string): Promise<Outcome> {
     return 'retry';
   }
 
-  await env.ORDER_STORE.put(`partner:${id}`, JSON.stringify({ ...partner, liveApprovedAt: now } satisfies Partner));
+  await env.ORDER_STORE.put(`partner:${id}`, JSON.stringify({ ...partner, liveApprovedAt: now, topupEnabled: partner.topupEnabled ?? true } satisfies Partner));
   if (env.SUPPORT_INBOX) {
     const text = `Live keys for ${partner.name} (${id}) were emailed as a one-time link to ${partner.contactEmail}. Nothing for you to send.`;
     await sendEmail(env, env.SUPPORT_INBOX, `Live keys sent: ${partner.name}`, `<p>${text.replace(/[&<>]/g, '')}</p>`, text);

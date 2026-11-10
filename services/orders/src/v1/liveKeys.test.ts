@@ -80,6 +80,17 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('live keys by email link', () => {
+  it('switches top-ups on with the live keys, unless GoodCash switched them off on purpose', async () => {
+    await queue('p_abc');
+    await processLiveApprovals(env);
+    expect((JSON.parse(kv.store.get('partner:p_abc')!) as Partner).topupEnabled).toBe(true);
+
+    await kv.put('partner:p_off', JSON.stringify({ ...PARTNER, id: 'p_off', contactEmail: 'off@acme.example', topupEnabled: false }));
+    await queue('p_off');
+    await processLiveApprovals(env);
+    expect((JSON.parse(kv.store.get('partner:p_off')!) as Partner).topupEnabled).toBe(false);
+  });
+
   it('does nothing and reads one key when nobody is waiting', async () => {
     expect(await processLiveApprovals(env)).toEqual({ issued: 0, waiting: 0 });
     expect(mails).toHaveLength(0);
