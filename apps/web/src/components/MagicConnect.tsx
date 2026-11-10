@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MagicWidget } from '@magic-ext/wallet-kit';
 import { getMagic, browserHasWallet, walletsForBrowser, type MagicLoginResult } from '../lib/magicWallet';
 import { Modal } from './Modal';
+import '../magicTheme.css';
 import { connectWithWalletConnect, WALLETCONNECT_ENABLED } from '../lib/walletConnect';
 
 interface Props {

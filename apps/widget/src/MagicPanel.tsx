@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MagicWidget } from '@magic-ext/wallet-kit';
 import { browserHasWallet, getMagic, walletsForBrowser, type MagicLoginResult } from './wallet';
+import './magicTheme.css';
 
 interface Props {
   onConnected: (result: MagicLoginResult) => void;

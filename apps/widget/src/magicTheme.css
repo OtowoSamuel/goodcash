@@ -1,0 +1,32 @@
+/*
+ * Makes Magic's sign-in panel look like GoodCash: our purple, soft lilac surfaces, rounded corners.
+ * Magic's panel reads these settings (colours and radii) from CSS variables; !important makes sure ours win.
+ * The panel's layout, wording and wallet list are Magic's own and are not changed here.
+ */
+#magic-widget-container,
+#magic-widget-container * {
+  --color-brand-base: #7b39fc !important;
+  --color-brand-darker: #6228d7 !important;
+  --color-brand-darkest: #4c1fa8 !important;
+  --color-brand-lighter: #cdb8ff !important;
+  --color-brand-lightest: #ede6ff !important;
+
+  --color-surface-primary: #ffffff !important;
+  --color-surface-secondary: #f6f2ff !important;
+  --color-surface-tertiary: #ede6ff !important;
+  --color-surface-quaternary: #e2d9fb !important;
+
+  --color-text-primary: #111111 !important;
+  --color-text-secondary: #4b4565 !important;
+  --color-text-tertiary: #6b5f8a !important;
+  --color-text-quaternary: #9a91b5 !important;
+
+  --color-neutral-primary: #111111 !important;
+  --color-neutral-secondary: #cfc3ee !important;
+  --color-neutral-tertiary: #e2d9fb !important;
+  --color-neutral-quaternary: #f3eeff !important;
+
+  --container-radius: 24px !important;
+  --button-radius: 999px !important;
+  --input-radius: 14px !important;
+}
