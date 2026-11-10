@@ -118,7 +118,7 @@
     window.addEventListener('message', onMessage);
 
     if (mode === 'popup') {
-      child = window.open(url, o.flow === 'topup' ? 'goodcash_topup' : 'goodcash_cashout', 'popup,width=440,height=780');
+      child = window.open(url, o.flow === 'topup' ? 'goodcash_topup' : 'goodcash_cashout', 'popup,width=480,height=800');
       if (!child) {
         cleanup();
         onEvent({ type: 'error', code: 'popup_blocked', message: 'Your browser blocked the cash out window. Please allow pop-ups and try again.' });
@@ -129,7 +129,7 @@
       frame.src = url;
       frame.title = o.flow === 'topup' ? 'Add G$ with naira' : 'Cash out to your bank';
       frame.setAttribute('allow', 'clipboard-write');
-      frame.style.cssText = 'width:100%;max-width:460px;height:min(780px, calc(100vh - 24px));border:0;border-radius:24px;background:transparent;display:block;';
+      frame.style.cssText = 'width:100%;max-width:500px;height:min(800px, calc(100vh - 24px));border:0;border-radius:24px;background:transparent;display:block;';
       if (o.container) {
         o.container.appendChild(frame);
       } else {
