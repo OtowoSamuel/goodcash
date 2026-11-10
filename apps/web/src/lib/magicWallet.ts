@@ -33,11 +33,13 @@ export const WALLETS_WITHOUT_EXTENSION = ['walletconnect', 'coinbase'] as const;
 /** True when this browser already has a wallet in it: window.ethereum, or a wallet announcing itself (EIP-6963). */
 export function browserHasWallet(win: Window = window): boolean {
   const eth = (win as unknown as { ethereum?: Record<string, unknown> }).ethereum;
+  // OKX Wallet (its app browser or its extension) also sets window.okxwallet
+  if ((win as unknown as { okxwallet?: unknown }).okxwallet) return true;
   if (eth) {
     // On a phone, a bare window.ethereum (injected by some browsers or tools) is not a wallet we can connect to:
     // only a wallet app's own browser sets one of these flags.
     const phone = /Android|iPhone|iPad|iPod|Mobile/i.test(win.navigator?.userAgent ?? '');
-    const known = ['isMetaMask', 'isCoinbaseWallet', 'isTrust', 'isTrustWallet', 'isPhantom', 'isRabby', 'isMiniPay'].some((k) => eth[k] === true);
+    const known = ['isMetaMask', 'isCoinbaseWallet', 'isTrust', 'isTrustWallet', 'isPhantom', 'isRabby', 'isMiniPay', 'isOkxWallet', 'isOKExWallet'].some((k) => eth[k] === true);
     if (!phone || known) return true;
   }
   let found = false;

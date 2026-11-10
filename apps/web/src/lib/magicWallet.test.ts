@@ -118,6 +118,14 @@ describe('which wallets the connect panel offers', () => {
     expect(browserHasWallet(phone((w) => (w.ethereum = { isMetaMask: true })))).toBe(true);
   });
 
+  it('OKX Wallet counts as a wallet in the browser, including on a phone (its app browser)', () => {
+    const phone = (setup: (w: Record<string, any>) => void) => win((w0) => { const w = w0 as Record<string, any>; w.navigator = { userAgent: 'Mozilla/5.0 (Linux; Android 14) Mobile' }; setup(w); });
+    expect(browserHasWallet(phone((w) => (w.ethereum = { isOkxWallet: true })))).toBe(true);
+    expect(browserHasWallet(phone((w) => (w.ethereum = { isOKExWallet: true })))).toBe(true);
+    expect(browserHasWallet(phone((w) => (w.okxwallet = {})))).toBe(true);
+    expect(browserHasWallet(phone((w) => (w.ethereum = {})))).toBe(false); // a bare window.ethereum is still not enough
+  });
+
   it('a wallet that only announces itself (EIP-6963) counts too', () => {
     const w = win((t) => t.addEventListener('eip6963:requestProvider', () => t.dispatchEvent(new Event('eip6963:announceProvider'))));
     expect(browserHasWallet(w)).toBe(true);

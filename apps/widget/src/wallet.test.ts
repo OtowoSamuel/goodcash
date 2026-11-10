@@ -156,5 +156,11 @@ describe('wallet apps on phones (WalletConnect asking for Celo)', () => {
     };
     expect(browserHasWallet(phone({}))).toBe(false);
     expect(browserHasWallet(phone({ isMetaMask: true }))).toBe(true);
+    expect(browserHasWallet(phone({ isOkxWallet: true }))).toBe(true);
+    expect(browserHasWallet(phone({ isOKExWallet: true }))).toBe(true);
+    const okx = new EventTarget() as unknown as Record<string, unknown>;
+    okx.navigator = { userAgent: 'Mozilla/5.0 (Linux; Android 14) Mobile' };
+    okx.okxwallet = {};
+    expect(browserHasWallet(okx as unknown as Window)).toBe(true);
   });
 });
