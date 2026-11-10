@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { widgetCsp } from './csp';
+import { BASE_RPCS } from './topup/chain';
 import appHeaders from '../../web/public/_headers?raw';
 
 const API = 'https://api.goodcash.xyz';
@@ -15,6 +16,10 @@ describe('widget security policy', () => {
     expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'none'");
+  });
+  it('allows every Base node the top-up step reads the customer balance from (a blocked read ends in a vague error)', () => {
+    const csp = widgetCsp(API, "'none'");
+    for (const url of BASE_RPCS) expect(csp).toContain(new URL(url).origin);
   });
   it('frame-ancestors is exactly what it is given (none by default, the partner sites when embedded)', () => {
     expect(widgetCsp(API, "'none'")).toContain("frame-ancestors 'none'");

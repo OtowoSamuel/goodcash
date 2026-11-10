@@ -7,7 +7,7 @@
 export const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 export const BASE_CHAIN_ID = 8453;
 const BASE_CHAIN_HEX = '0x2105';
-const BASE_RPCS = ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'];
+export const BASE_RPCS = ['https://mainnet.base.org', 'https://base-rpc.publicnode.com'];
 /** Under 50 cents is not worth converting (the app's own floor). */
 export const MIN_DOLLARS_ATOMIC = 500_000n;
 
