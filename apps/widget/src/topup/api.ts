@@ -64,6 +64,29 @@ export interface OrderInput {
   refundAccount: { institution: string; accountIdentifier: string; accountName: string };
 }
 
+export interface StuckOrder {
+  orderId: string;
+  naira: number;
+  asset: 'g' | 'celo';
+}
+
+/**
+ * A paid order whose last step ("Get my G$") has not run, found in this wallet's History. The naira has arrived
+ * and the dollars are in the wallet, so the customer must be able to finish from any device or after a reload.
+ * Only recent orders; the newest first. Nothing personal is read: the History row holds the order id, amount and stage.
+ */
+export async function findStuckOrder(api: AppApi, wallet: string, nowMs: number = Date.now()): Promise<StuckOrder | null> {
+  const data = await api.get<{ onramps?: Array<{ orderId?: string; naira?: number | string; asset?: string; at?: number; stage?: string; arrived?: boolean }> }>(
+    `/history?wallet=${encodeURIComponent(wallet)}`
+  );
+  const rows = (data.onramps ?? [])
+    .filter((o) => typeof o.orderId === 'string' && /^[0-9a-f-]{36}$/i.test(o.orderId) && o.stage === 'done' && o.arrived !== true && Number(o.naira) > 0)
+    .filter((o) => nowMs - Number(o.at ?? 0) * 1000 < 14 * 86_400_000)
+    .sort((a, b) => Number(b.at ?? 0) - Number(a.at ?? 0));
+  const best = rows[0];
+  return best ? { orderId: best.orderId as string, naira: Number(best.naira), asset: best.asset === 'celo' ? 'celo' : 'g' } : null;
+}
+
 export const createOrder = (api: AppApi, input: OrderInput) => api.post<OnrampOrder>('/onramp/orders', input);
 
 export const relayStatus = (api: AppApi, requestId: string) => api.get<{ status: string }>(`/relay/status?requestId=${encodeURIComponent(requestId)}`).then((r) => r.status);

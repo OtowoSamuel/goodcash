@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GOODCASH_CSS, themeVars, type GoodCashTheme } from '@goodcash/react';
 import { TEST_WALLET, type GoodCash, type TopUp, type TopUpAsset, type TopUpQuote } from '@goodcash/sdk';
-import { createOrder, fetchInstitutions, formatNaira, isAdultDate, makeAppApi, relayStatus, reportArrived, verifyAccountName, type Institution, type OnrampOrder } from './api';
+import { createOrder, fetchInstitutions, findStuckOrder, formatNaira, isAdultDate, makeAppApi, relayStatus, reportArrived, verifyAccountName, type Institution, type OnrampOrder } from './api';
 import { MIN_DOLLARS_ATOMIC, readDollarsOnBase, signAndStart, walletStepMessage, type Eip1193 } from './chain';
 
 export type TopUpEventType = 'topup.created' | 'topup.paid_in' | 'topup.delivered' | 'topup.failed';
@@ -66,6 +66,9 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
   const [agree, setAgree] = useState(false);
   const [now, setNow] = useState(Date.now());
   const seen = useRef<Set<string>>(new Set());
+  const stageRef = useRef<Stage>('amount');
+  stageRef.current = stage;
+  const resumeChecked = useRef('');
 
   const amount = Math.floor(Number(naira.replace(/,/g, '')) || 0);
   const dark = theme.mode === 'dark' || (theme.mode === 'auto' && typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches);
@@ -77,6 +80,26 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
     seen.current.add(once);
     onEvent(type, t);
   };
+
+  // A paid order whose last step never ran (they reloaded, or paid on another device): the money is waiting in their
+  // wallet, so bring that step back. Checked once per wallet, from History (the same source the GoodCash app uses).
+  useEffect(() => {
+    if (test || !who || stage !== 'amount' || resumeChecked.current === who) return;
+    resumeChecked.current = who;
+    let live = true;
+    findStuckOrder(api, who)
+      .then((s) => {
+        if (!live || !s || stageRef.current !== 'amount') return;
+        setAsset(s.asset);
+        setNaira(String(s.naira));
+        setOrder({ orderId: s.orderId, status: 'settled', bank: { institution: '', accountIdentifier: '', accountName: '' }, amountToTransfer: String(s.naira), validUntil: '' });
+        setStage('collect');
+      })
+      .catch(() => undefined); // History not reachable: the normal screen stays
+    return () => {
+      live = false;
+    };
+  }, [test, who, stage, api]);
 
   // The price, as the customer types
   useEffect(() => {
@@ -218,6 +241,8 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
         const st = await relayStatus(api, requestId).catch(() => 'pending');
         if (st === 'success') {
           void reportArrived(api, order.orderId, requestId).catch(() => undefined);
+          // A finished earlier order has no top-up to follow, so nothing else will move the screen on
+          if (!topUp) setStage('done');
           break;
         }
         if (st === 'failure' || st === 'refund') throw new Error('That did not go through. Your money is safe in your wallet. Please try again.');
