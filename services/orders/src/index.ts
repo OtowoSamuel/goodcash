@@ -9,6 +9,7 @@
  *   POST /webhooks/paycrest    Receive and verify Paycrest status webhooks
  */
 
+import { checkRelayQuote } from '@goodcash/core';
 import { handleStats } from './stats';
 import { z } from 'zod';
 import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
@@ -1919,6 +1920,47 @@ interface OnrampPaycrestOrder {
   providerAccount?: { institution?: string; accountIdentifier?: string; accountName?: string; amountToTransfer?: string; currency?: string; validUntil?: string };
 }
 
+/** What the partner charges for dollars on Base (naira per dollar), or null when it cannot be read. */
+async function fetchOnrampRate(naira: number, env: Env): Promise<number | null> {
+  try {
+    const base = env.PAYCREST_BASE_URL || 'https://api.paycrest.io';
+    const guess = Math.max(ONRAMP_MIN_USDT, Math.round((naira / 1385) * 100) / 100);
+    const res = await fetch(`${base}/v2/rates/base/USDC/${guess}/NGN?side=buy`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { data?: { buy?: { rate?: string } } };
+    const rate = Number(body?.data?.buy?.rate);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  } catch (e) {
+    console.error('[onramp] partner rate failed:', e);
+    return null;
+  }
+}
+
+/** The dollars (6 decimals) one naira order is expected to deliver after the partner fee. The most its conversion may use. */
+function onrampMaxUsdc(naira: number, rate: number): bigint {
+  return BigInt(Math.max(0, Math.floor((naira / rate - ONRAMP_FEE_RESERVE_USDT) * 1e6)));
+}
+
+/**
+ * The most this order's conversion may use. Stored when the order was made; an order made before that was recorded
+ * is worked out again from its naira amount at today's rate. Null when it cannot be worked out.
+ */
+async function onrampOrderCap(orderId: string, env: Env): Promise<{ wallet: string; asset: OnrampAsset; maxUsdc: bigint } | null> {
+  const raw = await env.ORDER_STORE.get(`onramp:${orderId}`);
+  if (!raw) return null;
+  let m: { wallet?: string; naira?: number; asset?: string; usdc?: string };
+  try {
+    m = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof m.wallet !== 'string' || typeof m.naira !== 'number') return null;
+  const asset = parseAsset(m.asset);
+  if (typeof m.usdc === 'string' && /^\d{1,12}$/.test(m.usdc)) return { wallet: m.wallet, asset, maxUsdc: BigInt(m.usdc) };
+  const rate = await fetchOnrampRate(m.naira, env);
+  return rate === null ? null : { wallet: m.wallet, asset, maxUsdc: onrampMaxUsdc(m.naira, rate) };
+}
+
 async function handleOnrampQuote(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const naira = Number(url.searchParams.get('naira'));
@@ -1929,21 +1971,10 @@ async function handleOnrampQuote(request: Request, env: Env): Promise<Response> 
   if (wallet && !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return err('Invalid wallet address', 400);
 
   const unavailable = () => err('Adding G$ is not available right now. Please try again later.', 503);
-  const base = env.PAYCREST_BASE_URL || 'https://api.paycrest.io';
 
   // 1. What the partner charges for dollars on Base (naira per dollar)
-  let rate: number;
-  try {
-    const guess = Math.max(ONRAMP_MIN_USDT, Math.round((naira / 1385) * 100) / 100);
-    const res = await fetch(`${base}/v2/rates/base/USDC/${guess}/NGN?side=buy`, { headers: { Accept: 'application/json' } });
-    if (!res.ok) return unavailable();
-    const body = (await res.json()) as { data?: { buy?: { rate?: string } } };
-    rate = Number(body?.data?.buy?.rate);
-    if (!Number.isFinite(rate) || rate <= 0) return unavailable();
-  } catch (e) {
-    console.error('[onramp] partner rate failed:', e);
-    return unavailable();
-  }
+  const rate = await fetchOnrampRate(naira, env);
+  if (rate === null) return unavailable();
 
   // 2. Dollars that actually reach the customer's wallet after the partner fee
   const usdtDelivered = naira / rate - ONRAMP_FEE_RESERVE_USDT;
@@ -2055,6 +2086,11 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
   const input = parsed.data;
   if (!isAdult(input.birthDate)) return err('You must be 18 or older to use this.', 400);
 
+  // The most this order's conversion may ever use: what the order is expected to deliver (see /relay/quote)
+  const orderRate = await fetchOnrampRate(input.naira, env);
+  if (orderRate === null) return err('Adding G$ is not available right now. Please try again later.', 503);
+  const maxUsdc = onrampMaxUsdc(input.naira, orderRate);
+
   const reference = generateRef('goodcash-in');
   const paycrestBody = {
     amount: String(input.naira),
@@ -2106,7 +2142,7 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
   const createdAt = Date.now();
   await env.ORDER_STORE.put(
     `onramp:${order.id}`,
-    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, asset, createdAt }),
+    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, asset, createdAt, usdc: maxUsdc.toString() }),
     { expirationTtl: 14 * 24 * 3600 }
   );
   // History is a convenience. The order already exists at the partner, so a storage hiccup here must never turn into
@@ -2130,6 +2166,7 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
       bank: { institution: pa.institution, accountIdentifier: pa.accountIdentifier, accountName: pa.accountName },
       amountToTransfer: pa.amountToTransfer,
       validUntil: pa.validUntil,
+      maxUsdc: maxUsdc.toString(),
     },
     201
   );
@@ -2145,6 +2182,8 @@ const RelayQuoteSchema = z.object({
   wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
   amount: z.string().regex(/^\d{1,12}$/), // USDC, 6 decimals
   asset: z.enum(['g', 'celo']).optional(),
+  /** The naira order being converted. Its own delivered dollars are the most that may be converted. */
+  orderId: z.string().regex(/^[0-9a-f-]{36}$/),
 });
 
 async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
@@ -2158,6 +2197,30 @@ async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
   }
   const parsed = RelayQuoteSchema.safeParse(body);
   if (!parsed.success || BigInt(parsed.data.amount) < 500_000n) return err('Some details were missing or not right. Please try again.');
+
+  // Only this order's own dollars may be converted: never the rest of the wallet, never another order's
+  const asset = parseAsset(parsed.data.asset);
+  const amount = BigInt(parsed.data.amount);
+  const cap = await onrampOrderCap(parsed.data.orderId, env).catch(() => null);
+  if (!cap) return err('We could not find this order. Please try again.', 404);
+  if (cap.wallet !== parsed.data.wallet.toLowerCase() || cap.asset !== asset) return err('Some details were missing or not right. Please try again.');
+  if (amount > cap.maxUsdc) {
+    console.error(`[relay] quote refused: ${amount} is more than the ${cap.maxUsdc} this order delivers`);
+    return err('Some details were missing or not right. Please try again.');
+  }
+  // One conversion per order: a second tap must not convert more of the wallet's dollars
+  const done = await env.ORDER_STORE.get(`onrampconv:${parsed.data.orderId}`);
+  if (done && /^0x[0-9a-fA-F]{64}$/.test(done)) {
+    let st = 'unknown';
+    try {
+      const sres = await fetch(`https://api.relay.link/intents/status/v3?requestId=${done}`, { headers: relayHeaders(env) });
+      if (sres.ok) st = String(((await sres.json()) as { status?: string }).status ?? 'unknown');
+    } catch {
+      // unknown counts as not finished
+    }
+    if (st !== 'failure' && st !== 'refund') return err('This order was already converted. Nothing more was taken.', 409);
+  }
+
   try {
     const res = await fetch('https://api.relay.link/quote/v2', {
       method: 'POST',
@@ -2178,7 +2241,15 @@ async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
       console.error(`[relay] quote ${res.status}`);
       return err('Could not get a price right now. Please try again.', 502);
     }
-    return json(await res.json());
+    const quote = (await res.json()) as Parameters<typeof checkRelayQuote>[0];
+    // Our own check of what the customer would be asked to sign, before it leaves the server
+    try {
+      checkRelayQuote(quote, { wallet: parsed.data.wallet, amount, asset });
+    } catch (e) {
+      console.error('[relay] quote refused:', (e as Error).message);
+      return err('Could not get a price right now. Please try again.', 502);
+    }
+    return json(quote);
   } catch (e) {
     console.error('[relay] quote failed:', e);
     return err('Could not get a price right now. Please try again.', 503);
@@ -2190,6 +2261,7 @@ const RelayExecuteSchema = z.object({
   requestId: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
   kind: z.literal('eip3009'),
   api: z.enum(['swap', 'bridge', 'user-swap']).optional(),
+  orderId: z.string().regex(/^[0-9a-f-]{36}$/).optional(),
 });
 
 async function handleRelayExecute(request: Request, env: Env): Promise<Response> {
@@ -2203,13 +2275,16 @@ async function handleRelayExecute(request: Request, env: Env): Promise<Response>
   }
   const parsed = RelayExecuteSchema.safeParse(body);
   if (!parsed.success) return err('Some details were missing or not right. Please try again.');
-  const { signature, ...rest } = parsed.data;
+  const { signature, orderId, ...rest } = parsed.data;
   try {
     const res = await fetch(`https://api.relay.link/execute/permits?signature=${signature}`, {
       method: 'POST',
       headers: relayHeaders(env),
       body: JSON.stringify(rest),
     });
+    if (res.ok && orderId) {
+      await env.ORDER_STORE.put(`onrampconv:${orderId}`, rest.requestId, { expirationTtl: 14 * 24 * 3600 }).catch(() => undefined);
+    }
     if (!res.ok) {
       console.error(`[relay] execute ${res.status}`);
       return err('The swap could not be started. Nothing was taken. Please try again.', 502);
@@ -2747,7 +2822,8 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
       // History is optional; the order itself is still followed.
     }
     if (stage === 'done') await maybeSendOnrampReady(orderId, env);
-    return json({ orderId, status, stage, arrived, ...(txHash ? { txHash } : {}) });
+    const cap = await onrampOrderCap(orderId, env).catch(() => null);
+    return json({ orderId, status, stage, arrived, ...(txHash ? { txHash } : {}), ...(cap ? { maxUsdc: cap.maxUsdc.toString() } : {}) });
   } catch {
     return err('Could not check this order right now.', 502);
   }

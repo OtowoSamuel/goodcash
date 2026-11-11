@@ -39,6 +39,8 @@ export interface OnrampOrder {
   bank: { institution: string; accountIdentifier: string; accountName: string };
   amountToTransfer: string;
   validUntil: string;
+  /** The most dollars (6 decimals) this order's conversion may use: what the order itself delivers. */
+  maxUsdc?: string;
 }
 
 export async function fetchInstitutions(api: AppApi): Promise<Institution[]> {
@@ -88,6 +90,9 @@ export async function findStuckOrder(api: AppApi, wallet: string, nowMs: number 
 }
 
 export const createOrder = (api: AppApi, input: OrderInput) => api.post<OnrampOrder>('/onramp/orders', input);
+
+/** The most this order's conversion may use, as the server works it out. */
+export const fetchOrderLimit = (api: AppApi, orderId: string) => api.get<{ maxUsdc?: string }>(`/onramp/orders/${orderId}`).then((r) => r.maxUsdc);
 
 export const relayStatus = (api: AppApi, requestId: string) => api.get<{ status: string }>(`/relay/status?requestId=${encodeURIComponent(requestId)}`).then((r) => r.status);
 

@@ -1480,6 +1480,7 @@ describe('Add G$ orders', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).includes('/v2/rates/')) return new Response(JSON.stringify({ data: { buy: { rate: '1400' } } }));
         if (init?.method === 'POST') {
           sent.push(JSON.parse(String(init.body)));
           return new Response(
@@ -1551,6 +1552,7 @@ describe('Add G$ orders', () => {
             return new Response('{}', { status: 200 });
           }
           if (u.includes('intents/status')) return new Response(JSON.stringify({ status: relayStatus }));
+          if (u.includes('/v2/rates/')) return new Response(JSON.stringify({ data: { buy: { rate: '1400' } } }));
           if (u.includes('/v2/sender/orders') && init?.method === 'POST') {
             return new Response(JSON.stringify({ data: { id: ID, status: 'initiated', providerAccount: { institution: 'B', accountIdentifier: '9990001111', accountName: 'P', amountToTransfer: '5000', validUntil: '2026-11-08T22:00:00Z' } } }), { status: 201 });
           }
@@ -1640,9 +1642,10 @@ describe('Add G$ orders', () => {
 
     it('C2. The swap proxy only ever sends to G$ or native CELO, never an address the caller picks', async () => {
       const env = makeEnv(kv);
-      await worker.fetch(makeRequest('POST', '/relay/quote', { wallet: BODY.wallet, amount: '700000', asset: 'celo' }), env);
+      await worker.fetch(makeRequest('POST', '/onramp/orders', { ...BODY, asset: 'celo' }), env);
+      await worker.fetch(makeRequest('POST', '/relay/quote', { wallet: BODY.wallet, amount: '700000', asset: 'celo', orderId: ID }), env);
       expect(relayBodies[0].destinationCurrency).toBe(NATIVE);
-      const bad = await worker.fetch(makeRequest('POST', '/relay/quote', { wallet: BODY.wallet, amount: '700000', asset: '0x1111111111111111111111111111111111111111' }), env);
+      const bad = await worker.fetch(makeRequest('POST', '/relay/quote', { wallet: BODY.wallet, amount: '700000', asset: '0x1111111111111111111111111111111111111111', orderId: ID }), env);
       expect(bad.status).toBe(400);
     });
 
@@ -1657,7 +1660,7 @@ describe('Add G$ orders', () => {
   });
 
   it('A4. Never prints the customer details when the partner refuses', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"message":"bad BVN 22212345678","field":"Source"}', { status: 400 })));
+    vi.stubGlobal('fetch', vi.fn(async (u: string) => (String(u).includes('/v2/rates/') ? new Response(JSON.stringify({ data: { buy: { rate: '1400' } } })) : new Response('{"message":"bad BVN 22212345678","field":"Source"}', { status: 400 }))));
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), makeEnv(kv));
     expect(res.status).toBe(400);
@@ -1768,5 +1771,151 @@ describe('refused requests read as plain words', () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('Some details were missing or not right. Please check them and try again.');
     expect(body.error).not.toMatch(/expected|received|undefined|Invalid input/i);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Converting an order's dollars to G$ / CELO: only that order's own dollars, once, and only if the answer is safe
+// ---------------------------------------------------------------------------
+describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
+  const ID = '660e8400-e29b-41d4-a716-446655440001';
+  const OTHER_ID = '660e8400-e29b-41d4-a716-446655440002';
+  const WALLET = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
+  const REQ = '0x' + 'ab'.repeat(32);
+  const BODY = {
+    naira: 5000,
+    wallet: WALLET,
+    fullName: 'Ada Obi',
+    birthDate: '1995-03-02',
+    idType: 'BVN',
+    idNumber: '22212345678',
+    refundAccount: { institution: 'GTBINGLA', accountIdentifier: '0123456789', accountName: 'Ada Obi' },
+  };
+  // 5000 naira at 1400 per dollar, less the 2 cent partner fee reserve
+  const MAX = 3_551_428n;
+  let kv: MockKV;
+  let relayCalls: number;
+  let relayStatus: string;
+  let relayTo: string;
+  const goodQuote = (amount: string) => ({
+    requestId: REQ,
+    steps: [
+      {
+        id: 'authorize1',
+        items: [
+          {
+            data: {
+              sign: {
+                signatureKind: 'eip712',
+                types: { ReceiveWithAuthorization: [{ name: 'from', type: 'address' }, { name: 'to', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'validAfter', type: 'uint256' }, { name: 'validBefore', type: 'uint256' }, { name: 'nonce', type: 'bytes32' }] },
+                domain: { name: 'USD Coin', version: '2', chainId: 8453, verifyingContract: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' },
+                primaryType: 'ReceiveWithAuthorization',
+                value: { from: WALLET.toLowerCase(), to: relayTo, value: amount, validAfter: 0, validBefore: Math.floor(Date.now() / 1000) + 600, nonce: '0x' + '12'.repeat(32) },
+              },
+              post: { endpoint: '/execute/permits', method: 'POST', body: { kind: 'eip3009', requestId: REQ, api: 'swap' } },
+            },
+          },
+        ],
+      },
+    ],
+    details: {
+      sender: WALLET.toLowerCase(),
+      recipient: WALLET.toLowerCase(),
+      currencyIn: { currency: { chainId: 8453, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }, amount },
+      currencyOut: { currency: { chainId: 42220, address: '0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a' }, amount: '1', minimumAmount: '1' },
+    },
+  });
+  beforeEach(async () => {
+    kv = new MockKV();
+    relayCalls = 0;
+    relayStatus = 'success';
+    relayTo = '0xccc88a9d1b4ed6b0eaba998850414b24f1c315be';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes('/v2/rates/')) return new Response(JSON.stringify({ data: { buy: { rate: '1400' } } }));
+        if (u.includes('api.relay.link/quote')) {
+          relayCalls++;
+          return new Response(JSON.stringify(goodQuote(String(JSON.parse(String(init?.body)).amount))));
+        }
+        if (u.includes('api.relay.link/execute')) return new Response(JSON.stringify({ message: 'Transaction submitted' }));
+        if (u.includes('intents/status')) return new Response(JSON.stringify({ status: relayStatus }));
+        if (u.includes('/v2/sender/orders') && init?.method === 'POST') {
+          return new Response(JSON.stringify({ data: { id: ID, status: 'initiated', providerAccount: { institution: 'B', accountIdentifier: '9990001111', accountName: 'P', amountToTransfer: '5000', validUntil: '2026-11-08T22:00:00Z' } } }), { status: 201 });
+        }
+        return new Response(JSON.stringify({ data: { id: ID, status: 'settled' } }));
+      })
+    );
+    const res = await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), makeEnv(kv));
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { maxUsdc: string }).maxUsdc).toBe(MAX.toString());
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const quote = (over: Record<string, unknown> = {}) =>
+    worker.fetch(makeRequest('POST', '/relay/quote', { wallet: WALLET, amount: MAX.toString(), asset: 'g', orderId: ID, ...over }), makeEnv(kv));
+
+  it('R1. converts exactly what the order delivers, and hands back a checked answer', async () => {
+    const res = await quote();
+    expect(res.status).toBe(200);
+    expect(relayCalls).toBe(1);
+  });
+
+  it('R2. refuses more than the order delivers, however much is in the wallet, and never asks the swap service', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await quote({ amount: (MAX + 1n).toString() });
+    expect(res.status).toBe(400);
+    expect(relayCalls).toBe(0);
+    log.mockRestore();
+  });
+
+  it('R3. a smaller amount is fine; another wallet, another asset, an unknown order, or no order at all is not', async () => {
+    expect((await quote({ amount: '1000000' })).status).toBe(200);
+    expect((await quote({ wallet: '0x1111111111111111111111111111111111111111' })).status).toBe(400);
+    expect((await quote({ asset: 'celo' })).status).toBe(400);
+    expect((await quote({ orderId: OTHER_ID })).status).toBe(404);
+    const none = await worker.fetch(makeRequest('POST', '/relay/quote', { wallet: WALLET, amount: MAX.toString(), asset: 'g' }), makeEnv(kv));
+    expect(none.status).toBe(400);
+  });
+
+  it('R4. an answer that would send the dollars anywhere but the swap service\'s own contract never reaches the customer', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    relayTo = '0x1111111111111111111111111111111111111111';
+    const res = await quote();
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(await res.json())).not.toContain('1111111111111111111111111111111111111111');
+    log.mockRestore();
+  });
+
+  it('R5. once the order has been converted, a second try cannot convert more of the wallet\'s dollars', async () => {
+    const exec = await worker.fetch(makeRequest('POST', '/relay/execute', { signature: '0x' + '11'.repeat(65), requestId: REQ, kind: 'eip3009', api: 'swap', orderId: ID }), makeEnv(kv));
+    expect(exec.status).toBe(200);
+    relayStatus = 'pending';
+    expect((await quote()).status).toBe(409);
+    relayStatus = 'success';
+    expect((await quote()).status).toBe(409);
+  });
+
+  it('R6. but if the conversion failed or was refunded, the customer can try again', async () => {
+    await worker.fetch(makeRequest('POST', '/relay/execute', { signature: '0x' + '11'.repeat(65), requestId: REQ, kind: 'eip3009', api: 'swap', orderId: ID }), makeEnv(kv));
+    relayStatus = 'refund';
+    expect((await quote()).status).toBe(200);
+    relayStatus = 'failure';
+    expect((await quote()).status).toBe(200);
+  });
+
+  it('R7. the order status tells the app the most it may convert', async () => {
+    const res = await worker.fetch(makeRequest('GET', `/onramp/orders/${ID}`), makeEnv(kv));
+    expect(((await res.json()) as { maxUsdc: string }).maxUsdc).toBe(MAX.toString());
+  });
+
+  it('R8. an order made before the limit was recorded gets one worked out from its naira amount', async () => {
+    const old = JSON.parse((await kv.get(`onramp:${ID}`))!) as Record<string, unknown>;
+    delete old.usdc;
+    await kv.put(`onramp:${ID}`, JSON.stringify(old));
+    expect((await quote()).status).toBe(200);
+    expect((await quote({ amount: (MAX + 1n).toString() })).status).toBe(400);
   });
 });

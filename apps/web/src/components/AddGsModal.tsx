@@ -14,7 +14,7 @@ import {
   type AddAsset,
   reportOnrampArrived,
   saveOnrampEmail,
-  readDollarsOnBase,
+  convertibleDollars,
   returnToCelo,
   startGasFreeSwap,
   type OnrampOrder,
@@ -250,12 +250,12 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
     setBusy(true);
     setError(null);
     try {
-      const have = await readDollarsOnBase(wallet);
+      const have = await convertibleDollars(wallet, order!.orderId);
       if (have < 500_000n) {
         setError(friendlyAddError(new Error('has not shown up')));
         return;
       }
-      const r = await startGasFreeSwap(wallet, have, asset);
+      const r = await startGasFreeSwap(wallet, have, asset, order!.orderId);
       save({ order: order!, wallet, asset, swapRequestId: r.requestId });
       saved.current = { order: order!, wallet, asset, swapRequestId: r.requestId };
       setStep('working');

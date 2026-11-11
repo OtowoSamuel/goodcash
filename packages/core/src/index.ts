@@ -7,3 +7,4 @@ export * from './status';
 export * from './wallet';
 export * from './networkFee';
 export * from './chain';
+export * from './relayGuard';

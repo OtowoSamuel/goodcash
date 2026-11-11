@@ -1,3 +1,4 @@
+import { checkRelayQuote } from '@goodcash/core';
 import { ORDERS_API_BASE } from './rate';
 import { getWalletProvider, chainIdNumber, activeProviderKind } from './router';
 
@@ -37,6 +38,8 @@ export interface OnrampOrder {
   bank: { institution: string; accountIdentifier: string; accountName: string };
   amountToTransfer: string;
   validUntil: string;
+  /** The most dollars (6 decimals) this order's conversion may use: what the order itself delivers. */
+  maxUsdc?: string;
 }
 
 export type OnrampStage = 'waiting' | 'received' | 'done' | 'expired' | 'refund' | 'review';
@@ -87,7 +90,7 @@ export const reportOnrampArrived = (orderId: string, requestId: string) =>
   api<unknown>(`/onramp/orders/${orderId}/arrived`, { method: 'POST', body: JSON.stringify({ requestId }) });
 
 export const fetchOnrampStatus = (orderId: string) =>
-  api<{ orderId: string; status: string; stage: OnrampStage; arrived?: boolean; txHash?: string }>(`/onramp/orders/${orderId}`);
+  api<{ orderId: string; status: string; stage: OnrampStage; arrived?: boolean; txHash?: string; maxUsdc?: string }>(`/onramp/orders/${orderId}`);
 
 /** Whole-day check used by the form (the server checks again). */
 export function isAdultDate(birthDate: string, now = new Date()): boolean {
@@ -157,33 +160,44 @@ export async function readDollarsOnBase(wallet: string): Promise<bigint> {
   throw lastError;
 }
 
-interface RelayStep {
-  items?: Array<{ data?: { sign?: { domain: Record<string, unknown>; types: Record<string, unknown>; primaryType: string; value: Record<string, unknown> }; post?: { body?: { kind?: string; api?: string } } } }>;
+/**
+ * The dollars (6 decimals) this order may convert: what is in the wallet, but never more than the order itself
+ * delivers. Other dollars in the wallet, or from another order still in progress, are left alone.
+ */
+export async function convertibleDollars(wallet: string, orderId: string): Promise<bigint> {
+  const [have, status] = await Promise.all([readDollarsOnBase(wallet), fetchOnrampStatus(orderId)]);
+  const cap = status.maxUsdc && /^\d{1,12}$/.test(status.maxUsdc) ? BigInt(status.maxUsdc) : 0n;
+  if (cap === 0n) throw new Error('The price was not ready. Please try again.');
+  return have < cap ? have : cap;
+}
+
+interface RelaySignRequest {
+  domain: Record<string, unknown>;
+  types: Record<string, unknown>;
+  primaryType: string;
+  value: Record<string, unknown>;
 }
 interface RelayQuoteResponse {
   requestId: string;
-  steps: RelayStep[];
-  details?: { currencyOut?: { amount?: string; minimumAmount?: string } };
+  steps: unknown;
+  details?: { currencyOut?: { amount?: string; minimumAmount?: string; currency?: unknown } } & Record<string, unknown>;
 }
 
-/** The signing details Relay returned must be exactly what we expect before the wallet is asked to sign. */
-export function checkRelaySigning(q: RelayQuoteResponse, wallet: string, amount: bigint): {
-  sign: NonNullable<NonNullable<NonNullable<RelayStep['items']>[number]['data']>['sign']>;
+/**
+ * Everything that decides where the money goes must be exactly what we expect before the wallet is asked to sign:
+ * the wallet, the token and network, the amount, the destination contract, the time limit, and where the result goes.
+ * The rules live in @goodcash/core so the app, the hosted widget and our server use the same ones.
+ */
+export function checkRelaySigning(q: RelayQuoteResponse, wallet: string, amount: bigint, asset: AddAsset = 'g'): {
+  sign: RelaySignRequest;
   api?: string;
 } {
-  const item = q.steps?.[0]?.items?.[0]?.data;
-  const sign = item?.sign;
-  if (!sign || !q.requestId) throw new Error('The swap price was not ready. Please try again.');
-  const v = sign.value as Record<string, string | number>;
-  const d = sign.domain as Record<string, string | number>;
-  const ok =
-    sign.primaryType === 'ReceiveWithAuthorization' &&
-    String(d.verifyingContract).toLowerCase() === BASE_USDC.toLowerCase() &&
-    Number(d.chainId) === 8453 &&
-    String(v.from).toLowerCase() === wallet.toLowerCase() &&
-    BigInt(String(v.value)) === amount;
-  if (!ok) throw new Error('The swap details did not match, so nothing was signed. Please try again.');
-  return { sign, api: item?.post?.body?.api };
+  try {
+    return checkRelayQuote(q, { wallet, amount, asset });
+  } catch (e) {
+    const why = String((e as Error)?.message ?? '').replace(/^did not match: /, '');
+    throw new Error(`The swap details did not match, so nothing was signed. Please try again. (${why})`);
+  }
 }
 
 export interface SwapResult {
@@ -192,11 +206,11 @@ export interface SwapResult {
 }
 
 /** Ask for the price, get the customer's one signature, and hand it to the swap service. */
-export async function startGasFreeSwap(wallet: string, amount: bigint, asset: AddAsset = 'g'): Promise<SwapResult> {
+export async function startGasFreeSwap(wallet: string, amount: bigint, asset: AddAsset, orderId: string): Promise<SwapResult> {
   const p = getWalletProvider();
   if (!p) throw new Error('Connect your wallet first.');
-  const quote = await api<RelayQuoteResponse>('/relay/quote', { method: 'POST', body: JSON.stringify({ wallet, amount: amount.toString(), asset }) });
-  const { sign, api: apiKind } = checkRelaySigning(quote, wallet, amount);
+  const quote = await api<RelayQuoteResponse>('/relay/quote', { method: 'POST', body: JSON.stringify({ wallet, amount: amount.toString(), asset, orderId }) });
+  const { sign, api: apiKind } = checkRelaySigning(quote, wallet, amount, asset);
   // A wallet the customer brought must be on Base to sign for Base. An email wallet signs for any network.
   try {
     await switchChain(p, BASE_CHAIN_HEX, BASE_ADD);
@@ -210,7 +224,7 @@ export async function startGasFreeSwap(wallet: string, amount: bigint, asset: Ad
     message: sign.value,
   };
   const signature = (await p.request({ method: 'eth_signTypedData_v4', params: [wallet, JSON.stringify(typed)] })) as string;
-  await api('/relay/execute', { method: 'POST', body: JSON.stringify({ signature, requestId: quote.requestId, kind: 'eip3009', api: apiKind ?? 'swap' }) });
+  await api('/relay/execute', { method: 'POST', body: JSON.stringify({ signature, requestId: quote.requestId, kind: 'eip3009', api: apiKind ?? 'swap', orderId }) });
   const min = quote.details?.currencyOut?.minimumAmount;
   return { requestId: quote.requestId, gMinimum: min ? Number(BigInt(min)) / 1e18 : 0 };
 }

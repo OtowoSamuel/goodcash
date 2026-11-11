@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GOODCASH_CSS, themeVars, type GoodCashTheme } from '@goodcash/react';
 import { TEST_WALLET, type GoodCash, type TopUp, type TopUpAsset, type TopUpQuote } from '@goodcash/sdk';
-import { createOrder, fetchInstitutions, findStuckOrder, formatNaira, isAdultDate, makeAppApi, relayStatus, reportArrived, verifyAccountName, type Institution, type OnrampOrder } from './api';
-import { MIN_DOLLARS_ATOMIC, readDollarsOnBase, signAndStart, walletStepMessage, type Eip1193 } from './chain';
+import { createOrder, fetchInstitutions, fetchOrderLimit, findStuckOrder, formatNaira, isAdultDate, makeAppApi, relayStatus, reportArrived, verifyAccountName, type Institution, type OnrampOrder } from './api';
+import { MIN_DOLLARS_ATOMIC, convertibleDollars, signAndStart, walletStepMessage, type Eip1193 } from './chain';
 
 export type TopUpEventType = 'topup.created' | 'topup.paid_in' | 'topup.delivered' | 'topup.failed';
 
@@ -233,9 +233,9 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
     setBusy(true);
     setError(null);
     try {
-      const have = await readDollarsOnBase(who);
+      const have = await convertibleDollars(who, () => fetchOrderLimit(api, order.orderId));
       if (have < MIN_DOLLARS_ATOMIC) throw new Error('Your money has not shown up in your wallet yet. Please wait a minute and try again.');
-      const { requestId } = await signAndStart(provider, who, have, asset, api.post);
+      const { requestId } = await signAndStart(provider, who, have, asset, api.post, order.orderId);
       setStage('working');
       for (let i = 0; i < 120; i++) {
         const st = await relayStatus(api, requestId).catch(() => 'pending');

@@ -90,6 +90,7 @@ beforeEach(() => {
         scanCalls++;
         return scanHttp === 200 ? Response.json({ items: scanItems, next_page_params: null }) : new Response('slow down', { status: scanHttp });
       }
+      if (u.includes('/v2/rates/')) return Response.json({ data: { buy: { rate: '1400' } } });
       if (u.endsWith('/v2/sender/orders') && init?.method === 'POST') {
         return Response.json(
           { status: 'success', data: { id: ID, status: 'initiated', providerAccount: { institution: 'Bank X', accountIdentifier: '9990001111', accountName: 'Pay Partner', amountToTransfer: '5000', currency: 'NGN', validUntil: '2026-11-08T22:00:00Z' } } },
