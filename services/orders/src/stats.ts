@@ -27,6 +27,7 @@ const PAGE_SIZE = 1000;
 const MAX_PAGES = 5;
 const DAYS_SHOWN = 90;
 const RECENT_SHOWN = 10;
+const WEEKS_SHOWN = 12;
 
 interface ExplorerLog {
   transactionHash: string;
@@ -49,10 +50,12 @@ export interface CashOutRow {
 
 export interface Stats {
   updatedAt: string;
-  totals: { cashOuts: number; wallets: number; gDollars: number; dollars: number; firstAt: string | null; lastAt: string | null };
+  totals: { cashOuts: number; wallets: number; repeatWallets: number; gDollars: number; dollars: number; firstAt: string | null; lastAt: string | null };
   last7Days: { cashOuts: number; wallets: number; gDollars: number; dollars: number };
   routers: Array<{ name: string; address: string; cashOuts: number; gDollars: number }>;
   daily: Array<{ date: string; cashOuts: number; gDollars: number; dollars: number }>;
+  /** Last 12 weeks, each starting on a Monday (UTC) */
+  weekly: Array<{ date: string; cashOuts: number; gDollars: number; dollars: number }>;
   recent: Array<{ wallet: string; time: string; gDollars: number; dollars: number; tx: string }>;
 }
 
@@ -139,12 +142,38 @@ export function summarise(rows: CashOutRow[], now: Date, v2Address: string | nul
     daily.push({ date, cashOuts: d?.cashOuts ?? 0, gDollars: round(d?.gDollars ?? 0, 0), dollars: round(d?.dollars ?? 0) });
   }
 
+  const perWallet = new Map<string, number>();
+  for (const r of sorted) perWallet.set(r.wallet, (perWallet.get(r.wallet) ?? 0) + 1);
+  const repeatWallets = [...perWallet.values()].filter((n) => n >= 2).length;
+
+  // Weeks start on Monday (UTC)
+  const weekStart = (sec: number) => {
+    const d = new Date(Math.floor(sec / 86400) * 86400 * 1000);
+    return day(d.getTime() / 1000 - ((d.getUTCDay() + 6) % 7) * 86400);
+  };
+  const byWeek = new Map<string, { cashOuts: number; gDollars: number; dollars: number }>();
+  for (const r of sorted) {
+    const w = byWeek.get(weekStart(r.time)) ?? { cashOuts: 0, gDollars: 0, dollars: 0 };
+    w.cashOuts++;
+    w.gDollars += r.g;
+    w.dollars += r.usd;
+    byWeek.set(weekStart(r.time), w);
+  }
+  const thisWeek = weekStart(now.getTime() / 1000);
+  const weekly: Stats['weekly'] = [];
+  for (let i = WEEKS_SHOWN - 1; i >= 0; i--) {
+    const date = day(new Date(`${thisWeek}T00:00:00Z`).getTime() / 1000 - i * 7 * 86400);
+    const w = byWeek.get(date);
+    weekly.push({ date, cashOuts: w?.cashOuts ?? 0, gDollars: round(w?.gDollars ?? 0, 0), dollars: round(w?.dollars ?? 0) });
+  }
+
   const v1 = sorted.filter((r) => r.router === 'v1');
   const v2 = sorted.filter((r) => r.router === 'v2');
   return {
     updatedAt: now.toISOString(),
     totals: {
       ...sum(sorted),
+      repeatWallets,
       firstAt: sorted.length ? new Date(sorted[0].time * 1000).toISOString() : null,
       lastAt: sorted.length ? new Date(sorted[sorted.length - 1].time * 1000).toISOString() : null,
     },
@@ -154,6 +183,7 @@ export function summarise(rows: CashOutRow[], now: Date, v2Address: string | nul
       ...(v2Address ? [{ name: 'One-tap contract', address: v2Address, cashOuts: v2.length, gDollars: round(sum(v2).gDollars, 0) }] : []),
     ],
     daily,
+    weekly,
     recent: sorted
       .slice(-RECENT_SHOWN)
       .reverse()

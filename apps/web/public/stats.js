@@ -22,7 +22,7 @@
   function draw(daily) {
     var svg = $('chart');
     var W = 900, H = 150, gap = 2, max = Math.max.apply(null, daily.map(function (d) { return d.cashOuts; }).concat([1]));
-    var bw = W / daily.length;
+    var bw = W / daily.length; gap = 8;
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     daily.forEach(function (d, i) {
       var r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -31,7 +31,7 @@
       r.setAttribute('y', String(H - h)); r.setAttribute('height', String(h));
       if (!d.cashOuts) r.setAttribute('class', 'zero');
       var t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-      t.textContent = d.date + ': ' + d.cashOuts + (d.cashOuts === 1 ? ' cash out, ' : ' cash outs, ') + nf.format(d.gDollars) + ' G$';
+      t.textContent = 'Week of ' + d.date + ': ' + d.cashOuts + (d.cashOuts === 1 ? ' cash out, ' : ' cash outs, ') + nf.format(d.gDollars) + ' G$';
       r.appendChild(t); svg.appendChild(r);
     });
     $('from').textContent = daily[0].date;
@@ -42,10 +42,11 @@
     $('t-cashouts').textContent = nf.format(s.totals.cashOuts);
     $('t-g').textContent = nf.format(s.totals.gDollars);
     $('t-people').textContent = nf.format(s.totals.wallets);
+    $('t-repeat').textContent = nf.format(s.totals.repeatWallets);
     $('t-usd').textContent = usd.format(s.totals.dollars);
     var w = s.last7Days;
     $('week').textContent = 'Last 7 days: ' + nf.format(w.cashOuts) + (w.cashOuts === 1 ? ' cash out' : ' cash outs') + ' from ' + nf.format(w.wallets) + (w.wallets === 1 ? ' wallet' : ' wallets') + ', ' + nf.format(w.gDollars) + ' G$.';
-    draw(s.daily);
+    draw(s.weekly);
     var rec = $('recent');
     if (!s.recent.length) empty(rec, 5, 'No cash outs yet.');
     s.recent.forEach(function (r) {

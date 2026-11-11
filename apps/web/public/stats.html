@@ -10,6 +10,7 @@
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:16px 0}
 .tile{border:2.5px solid var(--ink);border-radius:14px;padding:12px 14px;background:#fff}
 .tile:nth-child(1){background:var(--mi)}.tile:nth-child(2){background:var(--ye)}
+.tile:last-child{grid-column:1/-1}
 .tile b{display:block;font:800 28px/1.1 'Bricolage Grotesque',sans-serif}
 .tile span{font-size:13.5px;color:#333}
 .chart{width:100%;height:150px;display:block;margin-top:8px}
@@ -32,12 +33,13 @@ td.n,th.n{text-align:right}
 <div class="tile"><b id="t-cashouts">–</b><span>cash outs so far</span></div>
 <div class="tile"><b id="t-g">–</b><span>G$ cashed out</span></div>
 <div class="tile"><b id="t-people">–</b><span>different wallets</span></div>
+<div class="tile"><b id="t-repeat">–</b><span>wallets that came back</span></div>
 <div class="tile"><b id="t-usd">–</b><span>paid out, in US dollars</span></div>
 </div>
 <p id="week" class="sub"></p>
-<h2>Cash outs per day (last 90 days)</h2>
-<svg id="chart" class="chart" role="img" aria-label="Cash outs per day for the last 90 days" preserveAspectRatio="none"></svg>
-<div class="axis"><span id="from"></span><span>today</span></div>
+<h2>Cash outs per week (last 12 weeks)</h2>
+<svg id="chart" class="chart" role="img" aria-label="Cash outs per week for the last 12 weeks" preserveAspectRatio="none"></svg>
+<div class="axis"><span id="from"></span><span>this week</span></div>
 <h2>Latest cash outs</h2>
 <div class="wrapx"><table><thead><tr><th>When (UTC)</th><th>Wallet</th><th class="n">G$</th><th class="n">US dollars</th><th>Receipt</th></tr></thead><tbody id="recent"></tbody></table></div>
 <h2>By contract</h2>

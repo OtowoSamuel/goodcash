@@ -64,6 +64,15 @@ describe('summarise', () => {
     expect(JSON.stringify(s)).not.toContain(WALLET);
   });
 
+  it('counts wallets that came back and groups by week starting Monday', () => {
+    const s = summarise(rows, now, null);
+    expect(s.totals.repeatWallets).toBe(1);
+    expect(s.weekly).toHaveLength(12);
+    expect(s.weekly.at(-1)).toMatchObject({ date: '2026-11-09', cashOuts: 2, gDollars: 2500 });
+    expect(s.weekly.at(-2)).toMatchObject({ date: '2026-11-02', cashOuts: 0 });
+    expect(s.weekly.at(-3)).toMatchObject({ date: '2026-10-26', cashOuts: 1 });
+  });
+
   it('copes with no cash outs at all', () => {
     const s = summarise([], now, null);
     expect(s.totals).toMatchObject({ cashOuts: 0, firstAt: null });
