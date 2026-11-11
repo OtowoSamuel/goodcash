@@ -7,8 +7,15 @@ import { addressWord, asciiToHex, bytes32Word, isAddress, readAddressWord, readW
 
 /** Price protection on one-tap: the swap must produce at least 99.5% of the quoted dollars, or it is undone. */
 export const ONE_TAP_SLIPPAGE_BPS = 50;
-/** Smallest dollars a cash out may produce ($0.50 payout minimum + $0.02 partner fee + margin). */
-export const MIN_NET_USDT_REQUIRED = 0.53;
+/**
+ * Smallest dollars a cash out may produce. The payout partner refuses an order that is too small once its fee and ours
+ * are taken off, and it checks the size in naira, not dollars. Seen on 11 Nov 2026: an order worth about ₦709 was refused
+ * ("Failed to validate payload") and one worth about ₦756 went through. So the floor is the level that is known to
+ * work: about ₦756 left for the order after the 0.5% price protection, the 1% GoodCash fee and the 2 cent partner fee,
+ * not the $0.50 the partner's docs suggest. 0.53 was too low and let 4,700 G$ through to a refusal. The partner's
+ * exact cut-off is somewhere between those two orders and is not published.
+ */
+export const MIN_NET_USDT_REQUIRED = 0.57;
 export const MIN_AMOUNT_OUT = BigInt(Math.round(MIN_NET_USDT_REQUIRED * 1e6));
 /** An order must have at least this long left before the wallet is asked to sign. */
 export const MIN_ORDER_TIME_LEFT_MS = 90_000;

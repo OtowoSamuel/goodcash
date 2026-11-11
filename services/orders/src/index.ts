@@ -1207,7 +1207,11 @@ async function createPaycrestOrderRaw(
     if (!res.ok) {
       const errText = await res.text();
       // Sanitise: do not forward raw Paycrest error which may contain internal details
-      console.error(`[orders] Paycrest error ${res.status}: ${safePartnerError(errText)}`);
+      console.error(`[orders] Paycrest error ${res.status} (order amount ${input.amount}): ${safePartnerError(errText)}`);
+      // A refusal of the order itself (not an outage) usually means it is too small for the partner: say so plainly
+      if (res.status === 400 || res.status === 422) {
+        return { response: err('The payout partner could not take an order this small. Please try a slightly larger amount.', 400) };
+      }
       return { response: err('The payout partner could not create the order right now. Please try again shortly.', 502) };
     }
     return { order: unwrapPaycrestData<PaycrestOrderResponse>(await res.json()) };
@@ -1895,6 +1899,8 @@ function parseAsset(v: unknown): OnrampAsset {
 /** Assumed partner fee for a naira order, in dollars. UNVERIFIED: the real fee comes back when an order is created. */
 const ONRAMP_FEE_RESERVE_USDT = 0.02;
 const ONRAMP_MIN_USDT = 0.5;
+/** The least naira an Add G$ order may be. Smaller orders have not gone through (the app has always asked for 1,000). */
+const ONRAMP_MIN_NAIRA = 1000;
 const ONRAMP_MAX_NAIRA = 2_000_000;
 const QUOTE_WALLET_PLACEHOLDER = '0x000000000000000000000000000000000000dEaD'; // only used when no wallet is connected yet
 
@@ -1978,8 +1984,8 @@ async function handleOnrampQuote(request: Request, env: Env): Promise<Response> 
 
   // 2. Dollars that actually reach the customer's wallet after the partner fee
   const usdtDelivered = naira / rate - ONRAMP_FEE_RESERVE_USDT;
-  const minNaira = Math.ceil(((ONRAMP_MIN_USDT + ONRAMP_FEE_RESERVE_USDT) * rate) / 100) * 100;
-  if (usdtDelivered < ONRAMP_MIN_USDT) {
+  const minNaira = Math.max(ONRAMP_MIN_NAIRA, Math.ceil(((ONRAMP_MIN_USDT + ONRAMP_FEE_RESERVE_USDT) * rate) / 100) * 100);
+  if (naira < minNaira || usdtDelivered < ONRAMP_MIN_USDT) {
     return json({ error: `The least you can add is ₦${minNaira.toLocaleString('en-US')}.`, minNaira }, 400);
   }
   const atomic = BigInt(Math.floor(usdtDelivered * 1e6));

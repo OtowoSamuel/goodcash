@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { GOODCASH_CSS, themeVars, type GoodCashTheme } from '@goodcash/react';
 import { TEST_WALLET, type GoodCash, type TopUp, type TopUpAsset, type TopUpQuote } from '@goodcash/sdk';
-import { createOrder, fetchInstitutions, fetchOrderLimit, findStuckOrder, formatNaira, isAdultDate, makeAppApi, relayStatus, reportArrived, verifyAccountName, type Institution, type OnrampOrder } from './api';
+import { createOrder, fetchInstitutions, fetchOrderLimit, findStuckOrder, formatNaira, ONRAMP_MIN_NAIRA, isAdultDate, makeAppApi, relayStatus, reportArrived, verifyAccountName, type Institution, type OnrampOrder } from './api';
 import { MIN_DOLLARS_ATOMIC, convertibleDollars, signAndStart, walletStepMessage, type Eip1193 } from './chain';
 
 export type TopUpEventType = 'topup.created' | 'topup.paid_in' | 'topup.delivered' | 'topup.failed';
@@ -106,7 +106,7 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
     if (stage !== 'amount') return;
     setQuote(null);
     setQuoteError(null);
-    if (amount < 1000) return;
+    if (amount < ONRAMP_MIN_NAIRA) return;
     let live = true;
     const t = setTimeout(() => {
       client
@@ -304,7 +304,12 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
             </label>
             <input id="gcw-naira" className="gcw-input" inputMode="numeric" placeholder="₦5,000" value={naira} onChange={(e) => setNaira(e.target.value.replace(/[^\d,]/g, ''))} />
           </div>
-          {amount >= 1000 && !quote && !quoteError && (
+          {amount > 0 && amount < ONRAMP_MIN_NAIRA && (
+            <div className="gcw-card" role="status">
+              <span className="gcw-lab">The smallest amount you can add is {formatNaira(ONRAMP_MIN_NAIRA)}.</span>
+            </div>
+          )}
+          {amount >= ONRAMP_MIN_NAIRA && !quote && !quoteError && (
             <div className="gcw-card gcw-card--ok" role="status" aria-live="polite">
               <span className="gcw-lab">You will get about</span>
               <div className="gcw-row">

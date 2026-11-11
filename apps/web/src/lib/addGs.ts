@@ -8,6 +8,9 @@ import { getWalletProvider, chainIdNumber, activeProviderKind } from './router';
  * All calls go through our own server; customer ID details are sent once and never kept.
  */
 
+/** The least naira an Add G$ order may be. The server enforces the same number. */
+export const ONRAMP_MIN_NAIRA = 1000;
+
 export const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const BASE_CHAIN_HEX = '0x2105';
 const CELO_CHAIN_HEX = '0xa4ec';

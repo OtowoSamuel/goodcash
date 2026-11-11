@@ -215,7 +215,7 @@ describe('executeRouterSwap', () => {
     ).rejects.toThrow('CashOut event log not found');
   });
 
-  it('10,000 G$ with 1% slippage gives a minimum close to the quote, not 0.53', () => {
+  it('10,000 G$ with 1% slippage gives a minimum close to the quote, not 0.57', () => {
     // 10,000 G$ yields ~1.139928 USDT (1_139_928n in 6 decimals)
     const quote10kUsdtOut = 1_139_928n;
     const slippageBps = 100; // 1%
@@ -224,17 +224,17 @@ describe('executeRouterSwap', () => {
     // Slippage-based minimum: 1_139_928 * 9900 / 10000 = 1_128_528n
     expect(minOut).toBe(1_128_528n);
     expect(minOut).toBeGreaterThan(510_000n);
-    // Confirms it is close to the quote (~1.1285 USDT) and NOT 0.53
+    // Confirms it is close to the quote (~1.1285 USDT) and NOT 0.57
     expect(Number(minOut) / 1e6).toBeCloseTo(1.128528, 5);
   });
 
-  it('clamps minAmountOut to $0.53 so a $0.50 quote with 1% slippage cannot fall below the payout floor', async () => {
+  it('clamps minAmountOut to $0.57 so a $0.50 quote with 1% slippage cannot fall below the payout floor', async () => {
     const justAboveMinimum = { ...QUOTE, usdtOut: 500100n }; // $0.5001
     const slippageAdjusted = (justAboveMinimum.usdtOut * 9900n) / 10000n; // $0.495099
 
-    expect(MIN_AMOUNT_OUT).toBe(530000n); // $0.53 (Paycrest $0.50 + $0.02 fee + margin)
+    expect(MIN_AMOUNT_OUT).toBe(570000n); // $0.57: the smallest payout order the partner is known to take, after our fees
     expect(slippageAdjusted).toBe(495099n);
-    expect(computeMinAmountOut(justAboveMinimum.usdtOut, 100)).toBe(530000n);
+    expect(computeMinAmountOut(justAboveMinimum.usdtOut, 100)).toBe(570000n);
 
     const writeContract = vi.fn().mockImplementation(async (args: { functionName: string }) => {
       if (args.functionName === 'approve') return '0xapprovehash' as `0x${string}`;
@@ -257,7 +257,7 @@ describe('executeRouterSwap', () => {
     );
     expect(cashOutCall).toBeDefined();
     const cashOutArgs = (cashOutCall![0] as { args: readonly unknown[] }).args;
-    expect(cashOutArgs[2]).toBe(530000n);
+    expect(cashOutArgs[2]).toBe(570000n);
     expect(cashOutArgs[2] as bigint).toBeGreaterThan(slippageAdjusted);
   });
 

@@ -111,4 +111,7 @@ export function isAdultDate(birthDate: string, now = new Date()): boolean {
   return age >= 18;
 }
 
+/** The least naira a top-up may be. The server enforces the same number. */
+export const ONRAMP_MIN_NAIRA = 1000;
+
 export const formatNaira = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;

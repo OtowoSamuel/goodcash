@@ -210,7 +210,7 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
 
   beforeEach(() => {
     storageMock.clear();
-    storageMock.setItem('goodcash_balance_g', '5000');
+    storageMock.setItem('goodcash_balance_g', '6000');
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -253,7 +253,7 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
 
     // 2. Enter the amount
     const amountInput = screen.getByPlaceholderText('0');
-    fireEvent.change(amountInput, { target: { value: '5000' } });
+    fireEvent.change(amountInput, { target: { value: '6000' } });
 
     // 3. Type the bank details (the bank field is a select; the other two are text inputs)
     await selectBank();
@@ -327,7 +327,7 @@ describe('localStorage security — render <App /> and drive cash-out', () => {
 
     render(<App />);
     fireEvent.click(screen.getAllByRole('button', { name: /Cash Out/i })[0]);
-    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '5000' } });
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '6000' } });
     await selectBank();
     fireEvent.change(screen.getByPlaceholderText('10-digit account number'), { target: { value: TYPED_ACCOUNT } });
 
@@ -350,7 +350,7 @@ describe('pending payout survives reload', () => {
 
   beforeEach(() => {
     storageMock.clear();
-    storageMock.setItem('goodcash_balance_g', '5000');
+    storageMock.setItem('goodcash_balance_g', '6000');
     // Simulate a confirmed swap that was persisted before the browser reloaded.
     storageMock.setItem(
       PENDING_PAYOUT_KEY,
@@ -469,7 +469,7 @@ describe('pending payout survives reload', () => {
 describe('Swap succeeded but order creation failed — retry payout flow', () => {
   beforeEach(() => {
     storageMock.clear();
-    storageMock.setItem('goodcash_balance_g', '5000');
+    storageMock.setItem('goodcash_balance_g', '6000');
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -515,7 +515,7 @@ describe('Swap succeeded but order creation failed — retry payout flow', () =>
 
     // 2. Input 5000 G$ to satisfy the minimum payout requirement
     const amountInput = screen.getByPlaceholderText('0');
-    fireEvent.change(amountInput, { target: { value: '5000' } });
+    fireEvent.change(amountInput, { target: { value: '6000' } });
 
     // 2b. Enter bank details
     await selectBank();

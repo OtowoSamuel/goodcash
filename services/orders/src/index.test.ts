@@ -182,15 +182,17 @@ describe('POST /orders', () => {
     expect(res.status).toBe(400);
   });
 
-  it('6. Returns 502 when Paycrest returns an error', async () => {
+  it('6. Says the amount is too small (400) when Paycrest refuses the order itself, and 502 when it is down', async () => {
     fetchSpy.mockResolvedValue({
       ok: false,
       status: 400,
       text: async () => 'Amount is below the minimum',
     });
-    const req = makeRequest('POST', '/orders', VALID_BODY);
-    const res = await worker.fetch(req, env);
-    expect(res.status).toBe(502);
+    const res = await worker.fetch(makeRequest('POST', '/orders', VALID_BODY), env);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/slightly larger amount/);
+    fetchSpy.mockResolvedValue({ ok: false, status: 500, text: async () => 'oops' });
+    expect((await worker.fetch(makeRequest('POST', '/orders', VALID_BODY), env)).status).toBe(502);
   });
 
   it('7. Returns 503 when Paycrest is unreachable', async () => {
@@ -1778,6 +1780,32 @@ describe('refused requests read as plain words', () => {
 // ---------------------------------------------------------------------------
 // Converting an order's dollars to G$ / CELO: only that order's own dollars, once, and only if the answer is safe
 // ---------------------------------------------------------------------------
+describe('Add G$ minimum', () => {
+  const kv = new MockKV();
+  afterEach(() => vi.unstubAllGlobals());
+  const ask = async (naira: number) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (u: string) =>
+        String(u).includes('/v2/rates/')
+          ? new Response(JSON.stringify({ data: { buy: { rate: '1400' } } }))
+          : new Response(JSON.stringify({ requestId: '0x' + 'ab'.repeat(32), steps: [], fees: {}, details: { currencyOut: { amount: '5000000000000000000000', minimumAmount: '4900000000000000000000' } } }))
+      )
+    );
+    return worker.fetch(makeRequest('GET', `/onramp/quote?naira=${naira}&asset=g`), makeEnv(kv));
+  };
+  it('M1. the least you can add is 1,000 naira, the same number the app asks for (800 and 900 used to be quoted but never worked)', async () => {
+    for (const n of [800, 900, 999]) {
+      const res = await ask(n);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; minNaira: number };
+      expect(body.minNaira).toBe(1000);
+      expect(body.error).toBe('The least you can add is ₦1,000.');
+    }
+    expect((await ask(1000)).status).toBe(200);
+  });
+});
+
 describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
   const ID = '660e8400-e29b-41d4-a716-446655440001';
   const OTHER_ID = '660e8400-e29b-41d4-a716-446655440002';

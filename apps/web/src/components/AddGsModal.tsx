@@ -9,6 +9,7 @@ import {
   fetchSwapStatus,
   friendlyAddError,
   formatNaira,
+  ONRAMP_MIN_NAIRA,
   isAdultDate,
   ASSET_LABEL,
   type AddAsset,
@@ -121,7 +122,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
     if (step !== 'amount') return;
     setQuote(null);
     setQuoteError(null);
-    if (amount < 1000) return;
+    if (amount < ONRAMP_MIN_NAIRA) return;
     let live = true;
     const t = setTimeout(() => {
       fetchOnrampQuote(amount, wallet, asset)
@@ -368,7 +369,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
         <Field label="How much naira do you want to add?">
           <input className={INPUT} inputMode="numeric" placeholder="₦5,000" value={naira} onChange={(e) => setNaira(e.target.value.replace(/[^\d,]/g, ''))} aria-label="Amount in naira" />
         </Field>
-        {!quote && !quoteError && amount >= 1000 && (
+        {!quote && !quoteError && amount >= ONRAMP_MIN_NAIRA && (
           <div className="gc-note" style={{ background: '#8cf0c0' }} role="status" aria-live="polite">
             <div className="gc-lab">You will get about</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -388,6 +389,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
             </div>
           </div>
         )}
+        {amount > 0 && amount < ONRAMP_MIN_NAIRA && <div className="gc-note">The smallest amount you can add is {formatNaira(ONRAMP_MIN_NAIRA)}.</div>}
         {quoteError && <div className="gc-note">{quoteError}</div>}
         <div className="gc-note">You pay by bank transfer, from your own bank account. Keep a little extra in that account, because your bank may charge its own transfer fee on top of the amount.</div>
         {quote && <div className="gc-sm">The smallest amount you can add is {formatNaira(quote.minNaira)}.</div>}

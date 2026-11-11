@@ -192,7 +192,7 @@ describe('test mode never touches the payout partner or the chain', () => {
   });
 
   it('quote has every fee as its own plain line', async () => {
-    const q = (await (await browser('GET', '/v1/quote?amountG=5000')).json()) as {
+    const q = (await (await browser('GET', '/v1/quote?amountG=6000')).json()) as {
       feePercent: number;
       fees: Array<{ type: string; label: string }>;
       receive: { naira: number; minimumNaira: number };

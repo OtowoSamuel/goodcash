@@ -122,13 +122,13 @@ describe('shared rate conversion', () => {
     });
   });
 
-  it('treats 4,649 G$ as below the minimum and 4,650 G$ as above it', () => {
-    const below = getCashoutRate(4649, 123.48, fakeNgnRate);
-    const above = getCashoutRate(4650, 123.48, fakeNgnRate);
+  it('treats 5,000 G$ as below the minimum and 5,001 G$ as above it', () => {
+    const below = getCashoutRate(5000, 123.48, fakeNgnRate);
+    const above = getCashoutRate(5001, 123.48, fakeNgnRate);
 
     expect(below.minimumReached).toBe(false);
     expect(above.minimumReached).toBe(true);
-    expect(below.remainingUsdt).toBeCloseTo(0.53 - below.netUsdt, 8);
+    expect(below.remainingUsdt).toBeCloseTo(0.57 - below.netUsdt, 8);
     expect(above.remainingUsdt).toBe(0);
   });
 
@@ -153,8 +153,8 @@ describe('shared rate conversion', () => {
   it('keeps the G$ minimum identical across different NGN rates', () => {
     const rates = [1500, 1373.05];
 
-    const first = rates.map((ngn) => getCashoutRate(4650, 123.48, ngn));
-    const belowFirst = rates.map((ngn) => getCashoutRate(4649, 123.48, ngn));
+    const first = rates.map((ngn) => getCashoutRate(5001, 123.48, ngn));
+    const belowFirst = rates.map((ngn) => getCashoutRate(5000, 123.48, ngn));
 
     for (const rate of first) {
       expect(rate.netUsdt).toBeCloseTo(first[0].netUsdt, 8);
@@ -167,8 +167,8 @@ describe('shared rate conversion', () => {
       expect(rate.minimumReached).toBe(false);
     }
 
-    expect(belowFirst[0].netUsdt).toBeCloseTo(0.529953, 5);
-    expect(first[0].netUsdt).toBeCloseTo(0.530067, 5);
+    expect(belowFirst[0].netUsdt).toBeCloseTo(0.569964, 5);
+    expect(first[0].netUsdt).toBeCloseTo(0.570078, 5);
   });
 
   it('with empty or invalid bank fields the Review cash out button is disabled', async () => {
@@ -176,7 +176,7 @@ describe('shared rate conversion', () => {
 
     render(
       React.createElement(CashOutCard, {
-        balanceG: 5000,
+        balanceG: 6000,
         onInitiateCashOut: () => undefined,
         language: 'en',
         ngnPerUsdt: fakeNgnRate,
@@ -184,7 +184,7 @@ describe('shared rate conversion', () => {
     );
 
     const input = screen.getByDisplayValue('1,000');
-    fireEvent.change(input, { target: { value: '5000' } });
+    fireEvent.change(input, { target: { value: '6000' } });
 
     const reviewBtn = screen.getByRole('button', { name: /review cash out/i });
 
@@ -224,7 +224,7 @@ describe('shared rate conversion', () => {
 
     render(
       React.createElement(CashOutCard, {
-        balanceG: 5000,
+        balanceG: 6000,
         onInitiateCashOut: () => undefined,
         language: 'en',
         ngnPerUsdt: fakeNgnRate,
@@ -238,14 +238,14 @@ describe('shared rate conversion', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /confirm this is my account name/i }));
 
     const input = screen.getByDisplayValue('1,000');
-    // 4649 G$ is below the $0.53 floor
-    fireEvent.change(input, { target: { value: '4649' } });
+    // 5,000 G$ is just below the $0.57 floor (static prices)
+    fireEvent.change(input, { target: { value: '5000' } });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /review cash out/i })).toBeDisabled();
     });
 
-    // 4650 G$ reaches the $0.53 floor
-    fireEvent.change(input, { target: { value: '4650' } });
+    // 5,001 G$ reaches the $0.57 floor
+    fireEvent.change(input, { target: { value: '5001' } });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /review cash out/i })).not.toBeDisabled();
     });
@@ -262,7 +262,7 @@ describe('shared rate conversion', () => {
 
     render(
       React.createElement(CashOutCard, {
-        balanceG: 5000,
+        balanceG: 6000,
         onInitiateCashOut: () => undefined,
         language: 'en',
         ngnPerUsdt: fakeNgnRate,
