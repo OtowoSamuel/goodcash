@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         globIgnores: ['404.html'],
         // The About, Privacy and Terms pages are real pages, not part of the app shell
-        navigateFallbackDenylist: [/^\/(about|privacy|terms)\/?$/, /^\/\.well-known\//],
+        navigateFallbackDenylist: [/^\/(about|privacy|terms|stats)\/?$/, /^\/\.well-known\//],
         runtimeCaching: [
           {
             urlPattern: ({ request, url }) => request.mode === 'navigate' || url.origin === 'https://forno.celo.org',

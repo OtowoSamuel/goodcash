@@ -9,6 +9,7 @@
  *   POST /webhooks/paycrest    Receive and verify Paycrest status webhooks
  */
 
+import { handleStats } from './stats';
 import { z } from 'zod';
 import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
 import { processLiveApprovals } from './v1/liveKeys';
@@ -2842,7 +2843,7 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
   }
 
   // Read-only endpoints share a looser limit (many people sit behind one phone-network address)
-  if (m === 'GET' && (pathname === '/rates' || pathname === '/onramp/quote' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname))) {
+  if (m === 'GET' && (pathname === '/rates' || pathname === '/onramp/quote' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname) || pathname === '/stats')) {
     const limited = await checkRateLimit(request, env, 'read', 'read');
     if (limited) return limited;
   }
@@ -2953,6 +2954,9 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
   if (m === 'POST' && pathname === '/webhooks/paycrest') {
     return handleWebhook(request, env, waitUntil);
   }
+
+  // Public numbers for the stats page (from the chain, cached)
+  if (m === 'GET' && pathname === '/stats') return handleStats(env);
 
   // Health check
   if (m === 'GET' && pathname === '/health') {

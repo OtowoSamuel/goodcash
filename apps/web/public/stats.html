@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stats · GoodCash</title>
+<meta name="description" content="Live numbers for GoodCash cash outs, read straight from the Celo network">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/legal.css">
+<style>
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:16px 0}
+.tile{border:2.5px solid var(--ink);border-radius:14px;padding:12px 14px;background:#fff}
+.tile:nth-child(1){background:var(--mi)}.tile:nth-child(2){background:var(--ye)}
+.tile b{display:block;font:800 28px/1.1 'Bricolage Grotesque',sans-serif}
+.tile span{font-size:13.5px;color:#333}
+.chart{width:100%;height:150px;display:block;margin-top:8px}
+.chart rect{fill:var(--pu)}.chart rect.zero{fill:#e6e0f5}
+.axis{display:flex;justify-content:space-between;font-size:12.5px;color:#444}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;padding:7px 4px;border-bottom:1.5px solid #e6e0f5}
+th{font-weight:600;color:#444;font-size:13px}
+td.n,th.n{text-align:right}
+.wrapx{overflow-x:auto}
+.err{background:var(--ye);border:2.5px solid var(--ink);border-radius:14px;padding:10px 12px;font-weight:600}
+</style>
+</head><body><div class="wrap">
+<div class="top"><a class="logo" href="/"><img src="/email-logo.png" alt="" width="40" height="40">GoodCash</a><a class="open" href="/">Open the app</a></div>
+<div class="card">
+<h1>GoodCash in numbers</h1>
+<p class="sub" id="updated">Loading…</p>
+<div id="error" class="err" hidden></div>
+<div class="tiles">
+<div class="tile"><b id="t-cashouts">–</b><span>cash outs so far</span></div>
+<div class="tile"><b id="t-g">–</b><span>G$ cashed out</span></div>
+<div class="tile"><b id="t-people">–</b><span>different wallets</span></div>
+<div class="tile"><b id="t-usd">–</b><span>paid out, in US dollars</span></div>
+</div>
+<p id="week" class="sub"></p>
+<h2>Cash outs per day (last 90 days)</h2>
+<svg id="chart" class="chart" role="img" aria-label="Cash outs per day for the last 90 days" preserveAspectRatio="none"></svg>
+<div class="axis"><span id="from"></span><span>today</span></div>
+<h2>Latest cash outs</h2>
+<div class="wrapx"><table><thead><tr><th>When (UTC)</th><th>Wallet</th><th class="n">G$</th><th class="n">US dollars</th><th>Receipt</th></tr></thead><tbody id="recent"></tbody></table></div>
+<h2>By contract</h2>
+<div class="wrapx"><table><thead><tr><th>Contract</th><th class="n">Cash outs</th><th class="n">G$</th></tr></thead><tbody id="routers"></tbody></table></div>
+<h2>Where these numbers come from</h2>
+<p>Every number on this page is read from the public cash-out records of our two contracts on the Celo network, the same records anyone can open on the block explorer. We do not use any private customer information, and wallets are shortened. The page refreshes about every 10 minutes. It counts cash outs only, not G$ added with naira.</p>
+</div>
+<nav class="foot"><a href="/about">About</a><a href="/stats">Stats</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://github.com/OtowoSamuel/goodcash">Source code</a></nav>
+</div><script src="/stats.js"></script></body></html>
