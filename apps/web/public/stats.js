@@ -48,6 +48,8 @@
     $('t-g').textContent = nf.format(s.totals.gDollars);
     $('t-people').textContent = nf.format(s.totals.wallets);
     $('t-repeat').textContent = nf.format(s.totals.repeatWallets);
+    $('l-people').textContent = s.totals.wallets === 1 ? 'different wallet' : 'different wallets';
+    $('l-repeat').textContent = s.totals.repeatWallets === 1 ? 'wallet that came back' : 'wallets that came back';
     $('t-usd').textContent = usd.format(s.totals.dollars);
     var w = s.last7Days;
     $('week').textContent = 'Last 7 days: ' + nf.format(w.cashOuts) + (w.cashOuts === 1 ? ' cash out' : ' cash outs') + ' from ' + nf.format(w.wallets) + (w.wallets === 1 ? ' wallet' : ' wallets') + ', ' + nf.format(w.gDollars) + ' G$.';
