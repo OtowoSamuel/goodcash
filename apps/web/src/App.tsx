@@ -503,7 +503,8 @@ export function App({
       return;
     }
     let alive = true;
-    const flow = chooseCashOutFlow(ONE_TAP_ENABLED, oneTapPaused);
+    const picked = chooseCashOutFlow(ONE_TAP_ENABLED, oneTapPaused);
+    const flow = picked === 'paused' ? 'one-tap' : picked;
     const load = () => void getNetworkFeeInfo(walletAddress, flow).then((info) => alive && setNetworkFee(info));
     load();
     const iv = reviewing ? setInterval(load, 20000) : undefined;
@@ -803,9 +804,12 @@ export function App({
       return;
     }
     if (ONE_TAP_ENABLED && !isDemoMode) {
-      // If the one-tap router is paused, fall back to the three-step flow so nobody is locked out
+      // One-tap is the only live path. If its router is paused, nothing is sent (the original router is not used)
       const paused = await isOneTapRouterPaused().catch(() => false);
-      if (chooseCashOutFlow(true, paused) === 'one-tap') return handleConfirmOneTap();
+      const flow = chooseCashOutFlow(true, paused);
+      if (flow === 'one-tap') return handleConfirmOneTap();
+      setSwapError('Cash out is paused right now. Nothing was sent. Please try again later.');
+      return;
     }
     const refundAddress = walletAddress;
     const { amountG, slippageBps } = pendingQuote;
@@ -1855,7 +1859,7 @@ export function App({
                 : null
             }
             usdtEstimate={pendingQuote?.quote ? Number(pendingQuote.quote.usdtOut) / 1e6 : null}
-            oneTap={ONE_TAP_ENABLED && !oneTapPaused}
+            oneTap={ONE_TAP_ENABLED}
             networkFee={networkFee}
             ngnPerUsd={pendingQuote?.ngnPerUsdt ?? liveNgnRate}
             onBack={() => setMobileView('cashout')}

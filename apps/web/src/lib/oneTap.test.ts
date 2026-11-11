@@ -157,11 +157,11 @@ describe('pause check', () => {
 });
 
 describe('which cash-out flow is used', () => {
-  it('uses one tap only when it is switched on and the one-tap router is open; otherwise the three-step flow', async () => {
+  it('uses one tap when it is switched on and open; pauses (never the original router) when it is paused', async () => {
     const { chooseCashOutFlow } = await import('./router');
     expect(chooseCashOutFlow(true, false)).toBe('one-tap');
-    expect(chooseCashOutFlow(true, true)).toBe('three-step'); // paused: customers are not locked out
-    expect(chooseCashOutFlow(false, false)).toBe('three-step'); // not switched on
+    expect(chooseCashOutFlow(true, true)).toBe('paused'); // paused: nothing is sent; the original router is never the fallback
+    expect(chooseCashOutFlow(false, false)).toBe('three-step'); // one-tap not configured at all (development builds only)
     expect(chooseCashOutFlow(false, true)).toBe('three-step');
   });
 });

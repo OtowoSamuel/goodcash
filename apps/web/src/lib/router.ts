@@ -529,11 +529,15 @@ export async function isOneTapRouterPaused(publicClient?: ReturnType<typeof crea
 }
 
 /**
- * Which cash-out path to use. One-tap is used only when it is switched on AND the one-tap router is open; if that
- * router is ever paused, customers fall back to the three-step flow instead of being locked out.
+ * Which cash-out path to use. When one-tap is switched on, it is the only path: if that router is paused, cash out
+ * is paused (nothing is sent) instead of falling back to the original router. The original router needs all its
+ * balances to be exactly zero after every cash out, so anyone sending it a tiny amount could block it until an admin
+ * stepped in. The one-tap router compares against what it held before, so stray balances cannot block it.
+ * The three-step flow remains only for builds where one-tap is not configured at all (local development and tests).
  */
-export function chooseCashOutFlow(oneTapEnabled: boolean, oneTapPaused: boolean): 'one-tap' | 'three-step' {
-  return oneTapEnabled && !oneTapPaused ? 'one-tap' : 'three-step';
+export function chooseCashOutFlow(oneTapEnabled: boolean, oneTapPaused: boolean): 'one-tap' | 'three-step' | 'paused' {
+  if (!oneTapEnabled) return 'three-step';
+  return oneTapPaused ? 'paused' : 'one-tap';
 }
 
 export interface OneTapOrderForSwap {
