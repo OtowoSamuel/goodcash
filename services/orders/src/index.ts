@@ -647,6 +647,8 @@ type SwapRow = { transactionHash: string; data: string; timeStamp: string; v2?: 
  * unavailable we serve the last list we saw.
  */
 const LOG_WINDOW = 5000;
+/** Blocks (about a second each) the scan stays behind the newest one, so every node behind the address has them. */
+const CHAIN_HEAD_LAG = 10;
 
 interface ScanState {
   fwd: number; // next block not yet scanned going forward
@@ -690,7 +692,9 @@ async function scanWalletSwapsViaRpc(wallet: string, env: Env, target: ScanTarge
   const topic1 = `0x${'0'.repeat(24)}${w.slice(2)}`;
   const stateKey = target.stateKey(w);
 
-  const latest = parseInt((await rpcCall(env, 'eth_blockNumber', [])) as string, 16);
+  // Celo's public node is several servers behind one address, and they can be a few blocks apart. Asking for a block the
+  // next server has not seen yet fails with "block is out of range" (seen in the logs on 11 Nov), so stay a few blocks behind.
+  const latest = parseInt((await rpcCall(env, 'eth_blockNumber', [])) as string, 16) - CHAIN_HEAD_LAG;
   const saved = await env.ORDER_STORE.get(stateKey);
   let state: ScanState = saved ? (JSON.parse(saved) as ScanState) : { fwd: latest + 1, back: latest, rows: [] };
   const start = JSON.stringify({ back: state.back, rowsLen: state.rows.length, fwd: state.fwd });
