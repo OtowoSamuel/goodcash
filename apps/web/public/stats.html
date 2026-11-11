@@ -13,13 +13,16 @@
 .tile:last-child{grid-column:1/-1}
 .tile b{display:block;font:800 28px/1.1 'Bricolage Grotesque',sans-serif}
 .tile span{font-size:13.5px;color:#333}
-.chart{width:100%;height:150px;display:block;margin-top:8px}
+.chart{width:100%;height:auto;max-height:260px;display:block;margin-top:8px}
 .chart rect{fill:var(--pu)}.chart rect.zero{fill:#e6e0f5}
 .axis{display:flex;justify-content:space-between;font-size:12.5px;color:#444}
 table{width:100%;border-collapse:collapse;font-size:14.5px}
 th,td{text-align:left;padding:7px 4px;border-bottom:1.5px solid #e6e0f5}
 th{font-weight:600;color:#444;font-size:13px}
 td.n,th.n{text-align:right}
+#recent td:last-child,#recent-head th:last-child{padding-left:14px}
+
+.chart text{font:700 22px Inter,sans-serif;fill:#111;text-anchor:middle}
 .wrapx{overflow-x:auto}
 .err{background:var(--ye);border:2.5px solid var(--ink);border-radius:14px;padding:10px 12px;font-weight:600}
 </style>
@@ -38,10 +41,10 @@ td.n,th.n{text-align:right}
 </div>
 <p id="week" class="sub"></p>
 <h2>Cash outs per week (last 12 weeks)</h2>
-<svg id="chart" class="chart" role="img" aria-label="Cash outs per week for the last 12 weeks" preserveAspectRatio="none"></svg>
+<svg id="chart" class="chart" role="img" aria-label="Cash outs per week for the last 12 weeks"></svg>
 <div class="axis"><span id="from"></span><span>this week</span></div>
 <h2>Latest cash outs</h2>
-<div class="wrapx"><table><thead><tr><th>When (UTC)</th><th>Wallet</th><th class="n">G$</th><th class="n">US dollars</th><th>Receipt</th></tr></thead><tbody id="recent"></tbody></table></div>
+<div class="wrapx"><table><thead id="recent-head"><tr><th>When (UTC)</th><th>Wallet</th><th class="n">G$</th><th class="n">US dollars</th><th>Receipt</th></tr></thead><tbody id="recent"></tbody></table></div>
 <h2>By contract</h2>
 <div class="wrapx"><table><thead><tr><th>Contract</th><th class="n">Cash outs</th><th class="n">G$</th></tr></thead><tbody id="routers"></tbody></table></div>
 <h2>Where these numbers come from</h2>

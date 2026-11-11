@@ -21,20 +21,25 @@
 
   function draw(daily) {
     var svg = $('chart');
-    var W = 900, H = 150, gap = 2, max = Math.max.apply(null, daily.map(function (d) { return d.cashOuts; }).concat([1]));
-    var bw = W / daily.length; gap = 8;
+    var W = 600, H = 170, gap = 2, max = Math.max.apply(null, daily.map(function (d) { return d.cashOuts; }).concat([1]));
+    var bw = W / daily.length; gap = 6;
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     daily.forEach(function (d, i) {
       var r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      var h = d.cashOuts ? Math.max(6, (d.cashOuts / max) * (H - 8)) : 3;
+      var h = d.cashOuts ? Math.max(6, (d.cashOuts / max) * (H - 34)) : 3;
       r.setAttribute('x', String(i * bw + gap / 2)); r.setAttribute('width', String(bw - gap));
       r.setAttribute('y', String(H - h)); r.setAttribute('height', String(h));
       if (!d.cashOuts) r.setAttribute('class', 'zero');
       var t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
       t.textContent = 'Week of ' + d.date + ': ' + d.cashOuts + (d.cashOuts === 1 ? ' cash out, ' : ' cash outs, ') + nf.format(d.gDollars) + ' G$';
       r.appendChild(t); svg.appendChild(r);
+      if (d.cashOuts) {
+        var n = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        n.setAttribute('x', String(i * bw + bw / 2)); n.setAttribute('y', String(H - h - 6)); n.textContent = String(d.cashOuts);
+        svg.appendChild(n);
+      }
     });
-    $('from').textContent = daily[0].date;
+    $('from').textContent = 'Week of ' + new Date(daily[0].date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
   }
 
   function show(s) {
