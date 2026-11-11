@@ -182,7 +182,8 @@ describe('HistoryCard', () => {
     const onItsWayButton = screen.getByRole('button', { name: /On its way/i });
     fireEvent.click(onItsWayButton);
 
-    expect(screen.getByText(/No cash outs yet/i)).toBeInTheDocument();
+    expect(screen.getByText('Nothing is on its way right now.')).toBeInTheDocument();
+    expect(screen.queryByText(/No cash outs yet/i)).not.toBeInTheDocument();
   });
 
   it('renders receipt links that open blockscout', () => {

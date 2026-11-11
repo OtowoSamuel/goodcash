@@ -172,6 +172,15 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
     return true;
   });
 
+  // An empty tab is not "no cash outs yet" when the customer has some, just none on that tab
+  const hasListed = history.some(isListedInHistory);
+  const emptyText =
+    hasListed && currentFilter === 'onItsWay'
+      ? 'Nothing is on its way right now.'
+      : hasListed && currentFilter === 'paid'
+        ? 'No paid cash outs yet.'
+        : t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.';
+
   return (
     <>
       {/* Header & Filter Pills Row — sits directly on page background */}
@@ -206,7 +215,7 @@ export const HistoryCard: React.FC<HistoryCardProps> = ({ history, onCashOutClic
       {filteredHistory.length === 0 ? (
         <div className="border-[2.5px] border-dashed border-[#111] rounded-2xl p-6 text-left">
           <div className="text-xs font-semibold text-[#111]">
-            {t.noCashOutsYet || 'No cash outs yet. Your first one will show up here.'}
+            {emptyText}
           </div>
         </div>
       ) : (

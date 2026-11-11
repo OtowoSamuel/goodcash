@@ -67,10 +67,16 @@ export const MobileHistoryView: React.FC<MobileHistoryViewProps> = ({ history, o
         {visible.length === 0 ? (
           <div className="gc-card gc-card--dashed" style={{ textAlign: 'center' }}>
             <div className="gc-title" style={{ fontSize: 18 }}>
-              {history.length === 0 ? 'No cash outs yet' : 'Nothing here'}
+              {history.length === 0 ? 'No cash outs yet' : filter === 'onItsWay' ? 'Nothing is on its way' : filter === 'paid' ? 'No paid cash outs yet' : 'Nothing here'}
             </div>
             <div className="gc-sm" style={{ marginTop: 4 }}>
-              {history.length === 0 ? 'Your cash outs will show up here.' : 'No cash outs match this filter.'}
+              {history.length === 0
+                ? 'Your cash outs will show up here.'
+                : filter === 'onItsWay'
+                  ? 'Cash outs that are still being paid out will show up here.'
+                  : filter === 'paid'
+                    ? 'Cash outs that have been paid will show up here.'
+                    : 'No cash outs match this filter.'}
             </div>
           </div>
         ) : (
