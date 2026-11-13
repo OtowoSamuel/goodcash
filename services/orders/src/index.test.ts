@@ -5,6 +5,7 @@
  * with mocked Env bindings and a mocked global fetch (to simulate Paycrest).
  */
 
+import { fakeLockNamespace } from './lock.fake';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import worker, { alertSlowPayouts } from './index.js';
 import type { Env } from './index.js';
@@ -2049,6 +2050,36 @@ describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
     expect(res.status).toBe(503);
     expect(executeCalls).toBe(0);
     log.mockRestore();
+  });
+
+  it('R16. two signed answers for one order sent at the same moment: only one reaches the swap service', async () => {
+    const lockEnv = () => ({ ...makeEnv(kv), KEY_LOCK: lockNs });
+    const lockNs = fakeLockNamespace();
+    const exec = (id: string) => worker.fetch(makeRequest('POST', '/relay/execute', { signature: '0x' + '11'.repeat(65), requestId: id, kind: 'eip3009', api: 'swap', orderId: ID }), lockEnv());
+    const q = (id: string) => {
+      reqId = id;
+      return worker.fetch(makeRequest('POST', '/relay/quote', { wallet: WALLET, amount: MAX.toString(), asset: 'g', orderId: ID }), lockEnv());
+    };
+    expect((await q(REQ)).status).toBe(200);
+    expect((await q(REQ2)).status).toBe(200); // two prices exist before either is sent
+    relayStatus = 'pending';
+    // like the real store, a write shows up a moment later, so two requests can both read "nothing yet"
+    const realPut = kv.put.bind(kv);
+    vi.spyOn(kv, 'put').mockImplementation(async (k: string, v: string, o?: unknown) => {
+      await new Promise((r) => setTimeout(r, 15));
+      return realPut(k, v, o as never);
+    });
+    const out = await Promise.all([exec(REQ), exec(REQ2), exec(REQ), exec(REQ2)]);
+    // the same signature may be re-sent (the swap service ignores a repeat); a DIFFERENT one must be turned away
+    expect(out.filter((r) => r.status === 409).length).toBeGreaterThanOrEqual(1);
+    const firstWinner = out.findIndex((r) => r.status === 200);
+    expect(firstWinner).toBeGreaterThanOrEqual(0);
+    const winnerReq = firstWinner % 2 === 0 ? REQ : REQ2;
+    const loserReq = winnerReq === REQ ? REQ2 : REQ;
+    for (let i = 0; i < out.length; i++) {
+      const isLoser = (i % 2 === 0 ? REQ : REQ2) === loserReq;
+      if (isLoser) expect(out[i].status).toBe(409);
+    }
   });
 
   it('R7. the order status tells the app the most it may convert', async () => {

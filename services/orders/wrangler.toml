@@ -46,6 +46,16 @@ type = "ratelimit"
 namespace_id = "1004"
 simple = { limit = 600, period = 60 }
 
+# One-caller-at-a-time locks (a Durable Object per name). They stop two requests that arrive at the same moment from both
+# creating a partner cash out for one Idempotency-Key, or both converting one order's dollars. See src/lock.ts.
+[[durable_objects.bindings]]
+name = "KEY_LOCK"
+class_name = "KeyLock"
+
+[[migrations]]
+tag = "v1-key-lock"
+new_sqlite_classes = ["KeyLock"]
+
 # Every 10 minutes: look for payouts that are taking too long and tell the team,
 # and (when the partner API is on) retry partner webhooks and refresh open partner cash outs
 [triggers]

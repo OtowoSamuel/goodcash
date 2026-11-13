@@ -2,6 +2,7 @@
  * Partner API (/v1) tests: keys and CORS, test mode (never touches the payout partner), cash outs end to end with
  * mocked chain and payout partner, idempotency and fee checks.
  */
+import { fakeLockNamespace } from '../lock.fake';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkCashOutTransaction, decodeOneTapData, decodeTransferAndCall, G_DOLLAR, ROUTER_V2, SELECTORS, CASH_OUT_PAID_TOPIC, BROKER, QUOTER_V2 } from '@goodcash/core';
 import worker from '../index';
@@ -28,6 +29,15 @@ class MockKV {
     const done = start + limit >= all.length;
     return { keys, list_complete: done, ...(done ? {} : { cursor: String(start + limit) }) };
   }
+}
+
+/** Like the real store: a write becomes visible a moment after it is made, so two requests can both read "nothing yet". */
+function slowWrites(store: MockKV, ms = 15) {
+  const realPut = store.put.bind(store);
+  store.put = (async (k: string, v: string) => {
+    await new Promise((r) => setTimeout(r, ms));
+    return realPut(k, v);
+  }) as never;
 }
 
 const WALLET = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
@@ -254,6 +264,29 @@ describe('test mode never touches the payout partner or the chain', () => {
     expect(await kv.get('idem:p_1:test:idem-test-0011')).toBeNull();
     const good = await browser('POST', '/v1/cashouts', { ...CREATE, feePercentShown: 1.5 }, KEYS.pkTest, 'idem-test-0011');
     expect(good.status).toBe(201);
+  });
+
+  it('requests that arrive at the same moment with one key make exactly one cash out (with the lock service)', async () => {
+    env.KEY_LOCK = fakeLockNamespace();
+    slowWrites(kv);
+    for (let round = 0; round < 5; round++) {
+      const key = `idem-race-000${round}`;
+      const out = await Promise.all(Array.from({ length: 6 }, () => browser('POST', '/v1/cashouts', CREATE, KEYS.pkTest, key)));
+      const codes = out.map((r) => r.status);
+      expect(codes.every((c) => c === 201 || c === 409)).toBe(true);
+      const bodies = await Promise.all(out.filter((r) => r.status === 201).map((r) => r.json() as Promise<{ id: string }>));
+      expect(new Set(bodies.map((b) => b.id)).size).toBe(1);
+      for (const r of out.filter((x) => x.status === 409)) expect(((await r.json()) as { error: { code: string } }).error.code).toBe('idempotency_in_progress');
+    }
+    // five keys, five cash outs: never more
+    expect([...kv.store.keys()].filter((k) => k.startsWith('pc:'))).toHaveLength(5);
+  });
+
+  it('a lock service that is down stops the request (and tells the partner to repeat it), rather than risking a duplicate', async () => {
+    env.KEY_LOCK = { idFromName: (n: string) => n, get: () => ({ fetch: async () => new Response('x', { status: 500 }) }) } as unknown as DurableObjectNamespace;
+    const res = await browser('POST', '/v1/cashouts', CREATE, KEYS.pkTest, 'idem-test-0020');
+    expect(res.status).toBe(503);
+    expect([...kv.store.keys()].filter((k) => k.startsWith('pc:'))).toHaveLength(0);
   });
 
   it('refuses when the customer was shown a different fee', async () => {

@@ -21,6 +21,7 @@ import { V1Error } from './http';
 import { clearWorkIfIdle, markWork, shouldList } from './work';
 import { emitCashOutEvent, eventForStatus } from './webhooks';
 import { ethCallVia, feeLines, parseAmountG, priceCashOut } from './pricing';
+import { claimLock } from '../lock';
 import type { AuthContext, CashOutRecord, Env, V1Deps } from './types';
 
 /** Test mode: the transaction is built for real, but with a deadline in 1970 and a burn address, so it can never succeed on chain. */
@@ -124,14 +125,34 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
   const wallet = input.wallet.toLowerCase();
   const { amountG, amountWei } = parseAmountG(input.amountG);
 
-  // Reserve this key BEFORE anything is created at the payout partner, so a repeat or a crash cannot make two orders
-  await env.ORDER_STORE.put(idemKey, JSON.stringify({ hash, pending: true, at: Date.now() }), { expirationTtl: 600 });
+  // Claim this key for ONE caller before anything is created at the payout partner. A second request with the same key
+  // that arrives while the first is being set up is told so; it never makes a second order.
+  let lock: Awaited<ReturnType<typeof claimLock>>;
   try {
-    return await createReserved(env, ctx, deps, { idemKey, hash, input, wallet, amountG, amountWei });
-  } catch (e) {
-    // Nothing was created, so the same key may be used again
-    await env.ORDER_STORE.delete(idemKey).catch(() => undefined);
-    throw e;
+    lock = await claimLock(env, idemKey, 90_000);
+  } catch {
+    throw new V1Error('unavailable', 'Could not reserve this Idempotency-Key. Please repeat the same request in a moment.');
+  }
+  if (!lock.ok) throw new V1Error('idempotency_in_progress');
+  try {
+    // The first request may have finished between our first look and our claim: look again, now that we hold the key
+    const again = await env.ORDER_STORE.get(idemKey);
+    if (again) {
+      const prior = JSON.parse(again) as { hash: string; status?: number; body?: unknown; pending?: boolean };
+      if (prior.hash !== hash) throw new V1Error('idempotency_conflict', 'This Idempotency-Key was used with a different request body.');
+      if (!prior.pending) return { status: prior.status as number, body: prior.body };
+    }
+    // Also leave a marker in storage, for when no lock service is available (local development and tests)
+    await env.ORDER_STORE.put(idemKey, JSON.stringify({ hash, pending: true, at: Date.now() }), { expirationTtl: 600 });
+    try {
+      return await createReserved(env, ctx, deps, { idemKey, hash, input, wallet, amountG, amountWei });
+    } catch (e) {
+      // Nothing was created, so the same key may be used again
+      await env.ORDER_STORE.delete(idemKey).catch(() => undefined);
+      throw e;
+    }
+  } finally {
+    await lock.release();
   }
 }
 

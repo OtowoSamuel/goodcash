@@ -15,6 +15,10 @@ import { z } from 'zod';
 import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
 import { processLiveApprovals } from './v1/liveKeys';
 import { clearWorkIfIdle, markWork, shouldList } from './v1/work';
+import { claimLock } from './lock';
+
+// The lock service (a Durable Object class) must be exported from the worker's entry file
+export { KeyLock } from './lock';
 
 // ---------------------------------------------------------------------------
 // Environment bindings (declared in wrangler.toml or via CF dashboard)
@@ -24,6 +28,7 @@ export interface Env {
   PAYCREST_API_SECRET: string;    // For webhook signature verification
   PAYCREST_BASE_URL: string;      // https://api.paycrest.io
   ORDER_STORE: KVNamespace;       // CF KV for lightweight order state
+  KEY_LOCK?: DurableObjectNamespace; // One-caller-at-a-time locks (Durable Object). Unset in tests and local development
   ALLOWED_ORIGINS?: string;       // Comma-separated browser origins
   CELO_RPC_URL?: string;          // On-chain swap verification RPC
   ROUTER_ADDRESS?: string;        // GoodCashRouter address override
@@ -2352,16 +2357,27 @@ async function handleRelayExecute(request: Request, env: Env): Promise<Response>
     console.error('[relay] execute refused: request id was not quoted for this order');
     return err('Some details were missing or not right. Nothing was taken. Please try again.', 400);
   }
-  // Another attempt on this order that is done or may still be going through blocks this one
-  const held = await conversionHeld(env, orderId, rest.requestId);
-  if (held) return err(held, 409);
-
-  // Reserve the attempt BEFORE the swap service is asked. If it cannot be reserved, do not go on.
+  // Check-and-reserve as ONE step per order: only one caller at a time may look at this order's conversions and
+  // reserve an attempt, so two signatures sent at the same moment cannot both be accepted.
+  let lock: Awaited<ReturnType<typeof claimLock>>;
   try {
+    lock = await claimLock(env, `conv:${orderId}`, 20_000);
+  } catch (e) {
+    console.error('[relay] lock service failed:', e);
+    return err('The swap could not be started. Nothing was taken. Please try again.', 503);
+  }
+  if (!lock.ok) return err(UNCLEAR_MESSAGE, 409);
+  try {
+    // Another attempt on this order that is done or may still be going through blocks this one
+    const held = await conversionHeld(env, orderId, rest.requestId);
+    if (held) return err(held, 409);
+    // Reserve the attempt BEFORE the swap service is asked. If it cannot be reserved, do not go on.
     await env.ORDER_STORE.put(`onrampconv:${orderId}`, JSON.stringify({ requestId: rest.requestId, at: Date.now() } satisfies ConversionMarker), { expirationTtl: 14 * 24 * 3600 });
   } catch (e) {
     console.error('[relay] could not reserve the conversion:', e);
     return err('The swap could not be started. Nothing was taken. Please try again.', 503);
+  } finally {
+    await lock.release();
   }
   try {
     const res = await fetch(`https://api.relay.link/execute/permits?signature=${signature}`, {
