@@ -116,10 +116,12 @@ function queueKey(dueMs: number, eventId: string): string {
   return `whq:${String(dueMs).padStart(13, '0')}:${eventId}`;
 }
 
-async function enqueue(env: Env, item: QueueItem, now = Date.now()): Promise<void> {
+async function enqueue(env: Env, item: QueueItem, now = Date.now()): Promise<string> {
   const minutes = RETRY_MINUTES[Math.min(item.attempt - 1, RETRY_MINUTES.length - 1)];
-  await env.ORDER_STORE.put(queueKey(now + minutes * 60_000, item.event.id), JSON.stringify(item), { expirationTtl: QUEUE_TTL });
+  const key = queueKey(now + minutes * 60_000, item.event.id);
+  await env.ORDER_STORE.put(key, JSON.stringify(item), { expirationTtl: QUEUE_TTL });
   await markWork(env, 'whq', now);
+  return key;
 }
 
 /**
@@ -142,9 +144,12 @@ async function emitEvent(env: Env, subject: { id: string; partnerId: string; mod
   if (!partner?.webhookUrl?.[subject.mode]) return;
   await env.ORDER_STORE.put(once, '1', { expirationTtl: subject.mode === 'test' ? 7 * 86400 : 400 * 86400 });
   const event = buildEvent(type, subject.mode, data);
+  // Write the event to the queue FIRST, then try to deliver it. If the worker stops in between, the schedule still
+  // delivers it. A successful delivery removes it. (A partner may see an event twice, never zero times: they ignore repeated ids.)
+  const queued = await enqueue(env, { partnerId: partner.id, mode: subject.mode, event, attempt: 1 });
   const attempt = async () => {
     const out = await deliver(env, partner, subject.mode, event);
-    if (!out.ok) await enqueue(env, { partnerId: partner.id, mode: subject.mode, event, attempt: 1 });
+    if (out.ok) await env.ORDER_STORE.delete(queued).catch(() => undefined);
   };
   if (waitUntil) waitUntil(attempt());
   else await attempt();
@@ -163,14 +168,15 @@ export async function processWebhookQueue(env: Env, now = Date.now()): Promise<{
     const due = Number(k.name.split(':')[1]);
     if (due > now) break; // keys sort by due time
     const raw = await env.ORDER_STORE.get(k.name);
-    await env.ORDER_STORE.delete(k.name);
     if (!raw) continue;
     const item = JSON.parse(raw) as QueueItem;
     const partner = await loadPartner(env, item.partnerId);
     if (!partner || !partner.enabled) {
       dropped++;
+      await env.ORDER_STORE.delete(k.name);
       continue;
     }
+    // The item stays in the queue until the outcome is known, so a stop in the middle loses nothing
     const out = await deliver(env, partner, item.mode, item.event);
     if (out.ok) {
       delivered++;
@@ -181,6 +187,7 @@ export async function processWebhookQueue(env: Env, now = Date.now()): Promise<{
       retried++;
       await enqueue(env, { ...item, attempt: item.attempt + 1 }, now);
     }
+    await env.ORDER_STORE.delete(k.name);
   }
   return { delivered, retried, dropped };
 }

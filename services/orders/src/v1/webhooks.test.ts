@@ -205,6 +205,57 @@ describe('cash out events', () => {
     hookStatus = 200;
   });
 
+  it('an event is already in the queue when delivery is tried, and leaves it once delivered', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T10:00:00Z'));
+    await setHook();
+    let queuedDuringDelivery = 0;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url) === HOOK) {
+        queuedDuringDelivery = [...kv.store.keys()].filter((k) => k.startsWith('whq:')).length;
+        received.push({ headers: new Headers(init?.headers), body: String(init?.body) });
+        return new Response('ok', { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const c = (await (await create('idem-hook-0006')).json()) as { id: string };
+    await call('POST', `/v1/test/cashouts/${c.id}/simulate`);
+    vi.setSystemTime(new Date('2026-11-10T10:01:00Z'));
+    await call('GET', `/v1/cashouts/${c.id}`);
+    expect(received).toHaveLength(1);
+    // a stop in the middle of delivery would have left this for the schedule to send
+    expect(queuedDuringDelivery).toBe(1);
+    expect([...kv.store.keys()].filter((k) => k.startsWith('whq:'))).toHaveLength(0);
+  });
+
+  it('a queued event is kept until its delivery outcome is known, so a stop in the middle loses nothing', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const t0 = new Date('2026-11-10T10:00:00Z').getTime();
+    vi.setSystemTime(t0);
+    await setHook();
+    hookStatus = 500;
+    const c = (await (await create('idem-hook-0007')).json()) as { id: string };
+    await call('POST', `/v1/test/cashouts/${c.id}/simulate`);
+    vi.setSystemTime(t0 + 60_000);
+    await call('GET', `/v1/cashouts/${c.id}`);
+    const due = t0 + 60_000 + RETRY_MINUTES[0] * 60_000 + 1;
+    vi.setSystemTime(due);
+    let keysDuringDelivery: string[] = [];
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url) === HOOK) {
+        keysDuringDelivery = [...kv.store.keys()].filter((k) => k.startsWith('whq:'));
+        received.push({ headers: new Headers(init?.headers), body: String(init?.body) });
+        throw new Error('the worker stopped here');
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    await processWebhookQueue(env, due);
+    // while the attempt was being made, the item was still in the queue
+    expect(keysDuringDelivery).toHaveLength(1);
+    // and a later schedule run still has something to deliver
+    expect([...kv.store.keys()].filter((k) => k.startsWith('whq:')).length).toBeGreaterThanOrEqual(1);
+  });
+
   it('a partner without a webhook is simply skipped (they poll instead)', async () => {
     const c = (await (await create('idem-hook-0005')).json()) as { id: string };
     await call('POST', `/v1/test/cashouts/${c.id}/simulate`);

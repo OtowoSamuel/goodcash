@@ -28,6 +28,7 @@ export type GoodCashErrorCode =
   | 'test_mode_only'
   | 'not_found'
   | 'idempotency_conflict'
+  | 'idempotency_in_progress'
   | 'webhook_not_configured'
   | 'topups_not_enabled'
   | 'invalid_signature'

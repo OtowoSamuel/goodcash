@@ -559,6 +559,7 @@ with the same fields plus `status` and `requestId`.
 | `pending_confirmation` (SDK) | - | Sent, not confirmed yet | **Do not retry.** Keep watching |
 | `transaction_mismatch` | 400 | Reported transaction is not this cash out | Report the right hash |
 | `idempotency_conflict` | 409 | Same Idempotency-Key, different body | Use a new key per attempt |
+| `idempotency_in_progress` | 409 | The same request is still being set up | Wait a few seconds, then repeat the same request (same key): you get the same cash out, never a second one |
 | `rate_limited` | 429 | Too many requests | Back off |
 | `unauthorized` | 401 | Missing/unknown key | Check the key |
 | `partner_disabled` | 403 | Your account is switched off | Contact GoodCash |
@@ -576,7 +577,7 @@ with the same fields plus `status` and `requestId`.
 
 # Go-live checklist
 
-Got your keys from the [self-serve page](https://pay.goodcash.xyz/docs/get-test-keys/)? Finish the list below, then ask for live access with your **test secret key** from your server: `POST https://api.goodcash.xyz/v1/live-access`. A person at GoodCash reviews it and replies by email.
+Got your keys from the [self-serve page](https://pay.goodcash.xyz/docs/get-test-keys/)? Finish the list below, then ask for live access with your **test secret key** from your server: `POST https://api.goodcash.xyz/v1/live-access`. A person at GoodCash reviews it. When approved, GoodCash emails the address you signed up with a one-time link (valid 24 hours) that shows your live keys once. Nobody sends you keys in a chat.
 
 - [ ] Agreement with GoodCash signed (fees, acceptable use, user checks for server-wallet payouts).
 - [ ] Every site that loads the widget or uses the publishable key is on your allowed list (exact origins).

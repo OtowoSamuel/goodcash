@@ -73,9 +73,23 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     // The browser's own text here ("Failed to fetch", "Load failed") means nothing to a customer
     throw new Error("We couldn't reach GoodCash. Check your internet connection and try again.");
   }
-  const data = (await res.json().catch(() => ({}))) as { error?: string };
-  if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+  const data = (await res.json().catch(() => ({}))) as { error?: string; uncertain?: boolean; requestId?: string };
+  if (!res.ok) {
+    // The server says when it cannot tell whether the signature was taken: the caller must follow it, not retry
+    if (data.uncertain && typeof data.requestId === 'string') throw new UncertainSwapError(data.requestId, data.error);
+    throw new Error(data.error || 'Something went wrong. Please try again.');
+  }
   return data as T;
+}
+
+/** The swap service may or may not have taken the customer's signature. Follow this request; do not ask for another signature. */
+export class UncertainSwapError extends Error {
+  readonly requestId: string;
+  constructor(requestId: string, message?: string) {
+    super(message || 'We could not confirm whether this went through. Please check History before trying again.');
+    this.name = 'UncertainSwapError';
+    this.requestId = requestId;
+  }
 }
 
 export const fetchOnrampQuote = (naira: number, wallet?: string, asset: AddAsset = 'g') =>

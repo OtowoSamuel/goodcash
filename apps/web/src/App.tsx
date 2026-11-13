@@ -805,7 +805,14 @@ export function App({
     }
     if (ONE_TAP_ENABLED && !isDemoMode) {
       // One-tap is the only live path. If its router is paused, nothing is sent (the original router is not used)
-      const paused = await isOneTapRouterPaused().catch(() => false);
+      let paused: boolean;
+      try {
+        paused = await isOneTapRouterPaused();
+      } catch {
+        // If we cannot tell, send nothing: a guess could ask for a transaction that fails and costs the network fee
+        setSwapError("We can't check cash out right now. Nothing was sent. Please try again in a moment.");
+        return;
+      }
       const flow = chooseCashOutFlow(true, paused);
       if (flow === 'one-tap') return handleConfirmOneTap();
       setSwapError('Cash out is paused right now. Nothing was sent. Please try again later.');

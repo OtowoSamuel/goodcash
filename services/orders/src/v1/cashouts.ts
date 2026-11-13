@@ -101,9 +101,12 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
   const idemKey = `idem:${ctx.partner.id}:${ctx.mode}:${idem}`;
   const seen = await env.ORDER_STORE.get(idemKey);
   if (seen) {
-    const prior = JSON.parse(seen) as { hash: string; status: number; body: unknown };
+    const prior = JSON.parse(seen) as { hash: string; status?: number; body?: unknown; pending?: boolean; at?: number };
     if (prior.hash !== hash) throw new V1Error('idempotency_conflict', 'This Idempotency-Key was used with a different request body.');
-    return { status: prior.status, body: prior.body };
+    if (!prior.pending) return { status: prior.status as number, body: prior.body };
+    // The same request is being set up right now: do not start a second payout order for it
+    if (Date.now() - (prior.at ?? 0) < IDEM_PENDING_MS) throw new V1Error('idempotency_in_progress');
+    // Older than that: the first try most likely died. Starting again is allowed (an unused payout order just expires).
   }
 
   let parsedBody: unknown;
@@ -120,6 +123,28 @@ export async function createCashOut(request: Request, env: Env, ctx: AuthContext
   const input = parsed.data;
   const wallet = input.wallet.toLowerCase();
   const { amountG, amountWei } = parseAmountG(input.amountG);
+
+  // Reserve this key BEFORE anything is created at the payout partner, so a repeat or a crash cannot make two orders
+  await env.ORDER_STORE.put(idemKey, JSON.stringify({ hash, pending: true, at: Date.now() }), { expirationTtl: 600 });
+  try {
+    return await createReserved(env, ctx, deps, { idemKey, hash, input, wallet, amountG, amountWei });
+  } catch (e) {
+    // Nothing was created, so the same key may be used again
+    await env.ORDER_STORE.delete(idemKey).catch(() => undefined);
+    throw e;
+  }
+}
+
+/** How long a reserved key blocks a repeat of the same request. */
+const IDEM_PENDING_MS = 2 * 60_000;
+
+async function createReserved(
+  env: Env,
+  ctx: AuthContext,
+  deps: V1Deps,
+  a: { idemKey: string; hash: string; input: z.infer<typeof CreateSchema>; wallet: string; amountG: string; amountWei: bigint }
+): Promise<{ status: number; body: unknown }> {
+  const { idemKey, hash, input, wallet, amountG, amountWei } = a;
 
   // One wallet cannot flood orders (shared limit with the app's per-visitor limiter)
   if (env.RATE_LIMITER) {

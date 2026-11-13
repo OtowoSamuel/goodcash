@@ -1824,10 +1824,14 @@ describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
   const MAX = 3_551_428n;
   let kv: MockKV;
   let relayCalls: number;
+  let executeCalls: number;
+  let executeAnswer: number | 'down';
+  let reqId: string;
   let relayStatus: string;
   let relayTo: string;
+  const REQ2 = '0x' + 'cd'.repeat(32);
   const goodQuote = (amount: string) => ({
-    requestId: REQ,
+    requestId: reqId,
     steps: [
       {
         id: 'authorize1',
@@ -1841,7 +1845,7 @@ describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
                 primaryType: 'ReceiveWithAuthorization',
                 value: { from: WALLET.toLowerCase(), to: relayTo, value: amount, validAfter: 0, validBefore: Math.floor(Date.now() / 1000) + 600, nonce: '0x' + '12'.repeat(32) },
               },
-              post: { endpoint: '/execute/permits', method: 'POST', body: { kind: 'eip3009', requestId: REQ, api: 'swap' } },
+              post: { endpoint: '/execute/permits', method: 'POST', body: { kind: 'eip3009', requestId: reqId, api: 'swap' } },
             },
           },
         ],
@@ -1857,6 +1861,9 @@ describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
   beforeEach(async () => {
     kv = new MockKV();
     relayCalls = 0;
+    executeCalls = 0;
+    executeAnswer = 200;
+    reqId = REQ;
     relayStatus = 'success';
     relayTo = '0xccc88a9d1b4ed6b0eaba998850414b24f1c315be';
     vi.stubGlobal(
@@ -1868,7 +1875,11 @@ describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
           relayCalls++;
           return new Response(JSON.stringify(goodQuote(String(JSON.parse(String(init?.body)).amount))));
         }
-        if (u.includes('api.relay.link/execute')) return new Response(JSON.stringify({ message: 'Transaction submitted' }));
+        if (u.includes('api.relay.link/execute')) {
+          executeCalls++;
+          if (executeAnswer === 'down') throw new Error('network down');
+          return new Response(JSON.stringify({ message: executeAnswer === 200 ? 'Transaction submitted' : 'no' }), { status: executeAnswer });
+        }
         if (u.includes('intents/status')) return new Response(JSON.stringify({ status: relayStatus }));
         if (u.includes('/v2/sender/orders') && init?.method === 'POST') {
           return new Response(JSON.stringify({ data: { id: ID, status: 'initiated', providerAccount: { institution: 'B', accountIdentifier: '9990001111', accountName: 'P', amountToTransfer: '5000', validUntil: '2026-11-08T22:00:00Z' } } }), { status: 201 });
@@ -1917,8 +1928,12 @@ describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
     log.mockRestore();
   });
 
+  const execute = (over: Record<string, unknown> = {}) =>
+    worker.fetch(makeRequest('POST', '/relay/execute', { signature: '0x' + '11'.repeat(65), requestId: reqId, kind: 'eip3009', api: 'swap', orderId: ID, ...over }), makeEnv(kv));
+
   it('R5. once the order has been converted, a second try cannot convert more of the wallet\'s dollars', async () => {
-    const exec = await worker.fetch(makeRequest('POST', '/relay/execute', { signature: '0x' + '11'.repeat(65), requestId: REQ, kind: 'eip3009', api: 'swap', orderId: ID }), makeEnv(kv));
+    expect((await quote()).status).toBe(200);
+    const exec = await execute();
     expect(exec.status).toBe(200);
     relayStatus = 'pending';
     expect((await quote()).status).toBe(409);
@@ -1927,11 +1942,113 @@ describe('Order conversion limits (/relay/quote and /relay/execute)', () => {
   });
 
   it('R6. but if the conversion failed or was refunded, the customer can try again', async () => {
-    await worker.fetch(makeRequest('POST', '/relay/execute', { signature: '0x' + '11'.repeat(65), requestId: REQ, kind: 'eip3009', api: 'swap', orderId: ID }), makeEnv(kv));
+    expect((await quote()).status).toBe(200);
+    expect((await execute()).status).toBe(200);
     relayStatus = 'refund';
     expect((await quote()).status).toBe(200);
     relayStatus = 'failure';
     expect((await quote()).status).toBe(200);
+  });
+
+  it('R9. a signed answer is only taken for a price we quoted: an unknown request id never reaches the swap service', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await execute({ requestId: REQ2 });
+    expect(res.status).toBe(400);
+    expect(executeCalls).toBe(0);
+    log.mockRestore();
+  });
+
+  it('R10. and only for the order it was quoted for', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await quote()).status).toBe(200);
+    const res = await execute({ orderId: OTHER_ID });
+    expect(res.status).toBe(400);
+    expect(executeCalls).toBe(0);
+    // an order id is now required
+    const none = await worker.fetch(makeRequest('POST', '/relay/execute', { signature: '0x' + '11'.repeat(65), requestId: reqId, kind: 'eip3009', api: 'swap' }), makeEnv(kv));
+    expect(none.status).toBe(400);
+    expect(executeCalls).toBe(0);
+    log.mockRestore();
+  });
+
+  it('R11. two prices asked for before either is used: only one can be sent to the swap service', async () => {
+    expect((await quote()).status).toBe(200);
+    reqId = REQ2;
+    expect((await quote()).status).toBe(200); // both quotes exist before either is submitted
+    reqId = REQ;
+    expect((await execute()).status).toBe(200);
+    relayStatus = 'pending';
+    reqId = REQ2;
+    const second = await execute();
+    expect(second.status).toBe(409);
+    expect(executeCalls).toBe(1);
+  });
+
+  it('R12. an unclear answer from the swap service keeps the attempt held, so a retry cannot sign a second spend', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await quote()).status).toBe(200);
+    executeAnswer = 'down';
+    const lost = await execute();
+    expect(lost.status).toBe(503);
+    const body = (await lost.json()) as { uncertain?: boolean; requestId?: string; error: string };
+    expect(body.uncertain).toBe(true);
+    expect(body.requestId).toBe(REQ);
+    expect(body.error).not.toMatch(/nothing was taken/i);
+    // the swap service has no record of it yet: a new price is refused while the first signature could still be used
+    relayStatus = 'unknown';
+    reqId = REQ2;
+    expect((await quote()).status).toBe(409);
+    executeAnswer = 200;
+    // and a signature for a price that was refused above cannot be sent either
+    expect((await execute()).status).toBe(400);
+    expect(executeCalls).toBe(1);
+    log.mockRestore();
+  });
+
+  it('R13. once the signed permit has run out and the swap service never saw it, the customer can start again', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      expect((await quote()).status).toBe(200);
+      executeAnswer = 500;
+      expect((await execute()).status).toBe(502);
+      relayStatus = 'unknown';
+      reqId = REQ2;
+      expect((await quote()).status).toBe(409);
+      vi.setSystemTime(Date.now() + 36 * 60_000);
+      expect((await quote()).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+      log.mockRestore();
+    }
+  });
+
+  it('R14. a clear refusal from the swap service releases the attempt at once', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await quote()).status).toBe(200);
+    executeAnswer = 422;
+    const res = await execute();
+    expect(res.status).toBe(502);
+    expect(((await res.json()) as { error: string }).error).toMatch(/nothing was taken/i);
+    executeAnswer = 200;
+    reqId = REQ2;
+    expect((await quote()).status).toBe(200);
+    expect((await execute()).status).toBe(200);
+    log.mockRestore();
+  });
+
+  it('R15. if the attempt cannot be reserved, the swap service is never asked', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await quote()).status).toBe(200);
+    const realPut = kv.put.bind(kv);
+    vi.spyOn(kv, 'put').mockImplementation(async (k: string, v: string, o?: unknown) => {
+      if (k.startsWith('onrampconv:')) throw new Error('storage down');
+      return realPut(k, v, o as never);
+    });
+    const res = await execute();
+    expect(res.status).toBe(503);
+    expect(executeCalls).toBe(0);
+    log.mockRestore();
   });
 
   it('R7. the order status tells the app the most it may convert', async () => {

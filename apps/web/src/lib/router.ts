@@ -522,10 +522,24 @@ export { encodeOneTapData } from '@goodcash/core/oneTap';
 export async function isOneTapRouterPaused(publicClient?: ReturnType<typeof createPublicClient>): Promise<boolean> {
   if (!ROUTER_V2_ADDRESS) return true;
   const client = publicClient ?? createPublicClient({ chain: celo, transport: http(CELO_RPC_URL) });
-  const paused = await client
-    .readContract({ address: ROUTER_V2_ADDRESS, abi: ROUTER_V2_STATE_ABI, functionName: 'paused' })
-    .catch(() => false);
-  return paused === true;
+  return readRouterPaused(client, ROUTER_V2_ADDRESS);
+}
+
+/**
+ * Reads the router's pause flag. Tries twice, and if the state still cannot be read it THROWS: the caller must stop
+ * (send nothing), because guessing "not paused" could ask the customer to sign a transaction that fails and costs fees.
+ */
+export async function readRouterPaused(client: Pick<ReturnType<typeof createPublicClient>, 'readContract'>, address: Address): Promise<boolean> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const paused = await client.readContract({ address, abi: ROUTER_V2_STATE_ABI, functionName: 'paused' });
+      return paused === true;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Could not read the router state.');
 }
 
 /**

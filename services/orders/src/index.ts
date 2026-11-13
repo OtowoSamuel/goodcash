@@ -2219,17 +2219,8 @@ async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
     return err('Some details were missing or not right. Please try again.');
   }
   // One conversion per order: a second tap must not convert more of the wallet's dollars
-  const done = await env.ORDER_STORE.get(`onrampconv:${parsed.data.orderId}`);
-  if (done && /^0x[0-9a-fA-F]{64}$/.test(done)) {
-    let st = 'unknown';
-    try {
-      const sres = await fetch(`https://api.relay.link/intents/status/v3?requestId=${done}`, { headers: relayHeaders(env) });
-      if (sres.ok) st = String(((await sres.json()) as { status?: string }).status ?? 'unknown');
-    } catch {
-      // unknown counts as not finished
-    }
-    if (st !== 'failure' && st !== 'refund') return err('This order was already converted. Nothing more was taken.', 409);
-  }
+  const held = await conversionHeld(env, parsed.data.orderId);
+  if (held) return err(held, 409);
 
   try {
     const res = await fetch('https://api.relay.link/quote/v2', {
@@ -2259,6 +2250,14 @@ async function handleRelayQuote(request: Request, env: Env): Promise<Response> {
       console.error('[relay] quote refused:', (e as Error).message);
       return err('Could not get a price right now. Please try again.', 502);
     }
+    // Remember which order, wallet, asset and amount this price was for, so the signed answer can only be used for that
+    const quoted = (quote as { requestId?: string }).requestId;
+    if (typeof quoted !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(quoted)) {
+      console.error('[relay] quote had no usable request id');
+      return err('Could not get a price right now. Please try again.', 502);
+    }
+    const binding: QuoteBinding = { orderId: parsed.data.orderId, wallet: parsed.data.wallet.toLowerCase(), asset, amount: amount.toString(), at: Date.now() };
+    await env.ORDER_STORE.put(`onrampq:${quoted.toLowerCase()}`, JSON.stringify(binding), { expirationTtl: 3600 });
     return json(quote);
   } catch (e) {
     console.error('[relay] quote failed:', e);
@@ -2271,8 +2270,62 @@ const RelayExecuteSchema = z.object({
   requestId: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
   kind: z.literal('eip3009'),
   api: z.enum(['swap', 'bridge', 'user-swap']).optional(),
-  orderId: z.string().regex(/^[0-9a-f-]{36}$/).optional(),
+  /** The order this signature is for. Required: it must be the order the price was quoted for. */
+  orderId: z.string().regex(/^[0-9a-f-]{36}$/),
 });
+
+/** What a price was quoted for. Stored at quote time, checked again when the signed answer comes back. */
+interface QuoteBinding {
+  orderId: string;
+  wallet: string;
+  asset: OnrampAsset;
+  amount: string;
+  at: number;
+}
+
+/** A conversion attempt on an order: reserved BEFORE the swap service is asked, kept if its answer is unclear. */
+interface ConversionMarker {
+  requestId: string;
+  at: number;
+}
+
+/** A signed permit stops working within 30 minutes (the guard enforces this); a little longer here for clock drift. */
+const PERMIT_VALID_MS = 35 * 60_000;
+const UNCLEAR_MESSAGE = 'We could not confirm whether this went through. Your money has not been lost. Please wait a few minutes and check History before trying again.';
+
+function parseConversionMarker(raw: string | null): ConversionMarker | null {
+  if (!raw) return null;
+  // The first version stored just the request id
+  if (/^0x[0-9a-fA-F]{64}$/.test(raw)) return { requestId: raw, at: 0 };
+  try {
+    const m = JSON.parse(raw) as Partial<ConversionMarker>;
+    return typeof m.requestId === 'string' && /^0x[0-9a-fA-F]{64}$/.test(m.requestId) ? { requestId: m.requestId, at: Number(m.at) || 0 } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether this order already has a conversion that is done or may still be going through. Null means free to start one.
+ * A previous attempt only stops counting when the swap service says it failed or was refunded, or when it never
+ * showed up and the signed permit has run out (so it can no longer be used).
+ */
+async function conversionHeld(env: Env, orderId: string, sameRequestId?: string): Promise<string | null> {
+  const marker = parseConversionMarker(await env.ORDER_STORE.get(`onrampconv:${orderId}`));
+  if (!marker) return null;
+  if (sameRequestId && marker.requestId.toLowerCase() === sameRequestId.toLowerCase()) return null;
+  let st = 'unknown';
+  try {
+    const sres = await fetch(`https://api.relay.link/intents/status/v3?requestId=${marker.requestId}`, { headers: relayHeaders(env) });
+    if (sres.ok) st = String(((await sres.json()) as { status?: string }).status ?? 'unknown');
+  } catch {
+    // no answer counts as not finished
+  }
+  if (st === 'failure' || st === 'refund') return null;
+  if (st === 'success') return 'This order was already converted. Nothing more was taken.';
+  if (st !== 'pending' && Date.now() - marker.at > PERMIT_VALID_MS) return null;
+  return UNCLEAR_MESSAGE;
+}
 
 async function handleRelayExecute(request: Request, env: Env): Promise<Response> {
   const limited = await checkRateLimit(request, env, 'relay');
@@ -2286,23 +2339,49 @@ async function handleRelayExecute(request: Request, env: Env): Promise<Response>
   const parsed = RelayExecuteSchema.safeParse(body);
   if (!parsed.success) return err('Some details were missing or not right. Please try again.');
   const { signature, orderId, ...rest } = parsed.data;
+
+  // The signed answer must be for a price WE quoted, for this very order
+  const rawBinding = await env.ORDER_STORE.get(`onrampq:${rest.requestId.toLowerCase()}`);
+  let binding: QuoteBinding | null = null;
+  try {
+    binding = rawBinding ? (JSON.parse(rawBinding) as QuoteBinding) : null;
+  } catch {
+    binding = null;
+  }
+  if (!binding || binding.orderId !== orderId) {
+    console.error('[relay] execute refused: request id was not quoted for this order');
+    return err('Some details were missing or not right. Nothing was taken. Please try again.', 400);
+  }
+  // Another attempt on this order that is done or may still be going through blocks this one
+  const held = await conversionHeld(env, orderId, rest.requestId);
+  if (held) return err(held, 409);
+
+  // Reserve the attempt BEFORE the swap service is asked. If it cannot be reserved, do not go on.
+  try {
+    await env.ORDER_STORE.put(`onrampconv:${orderId}`, JSON.stringify({ requestId: rest.requestId, at: Date.now() } satisfies ConversionMarker), { expirationTtl: 14 * 24 * 3600 });
+  } catch (e) {
+    console.error('[relay] could not reserve the conversion:', e);
+    return err('The swap could not be started. Nothing was taken. Please try again.', 503);
+  }
   try {
     const res = await fetch(`https://api.relay.link/execute/permits?signature=${signature}`, {
       method: 'POST',
       headers: relayHeaders(env),
       body: JSON.stringify(rest),
     });
-    if (res.ok && orderId) {
-      await env.ORDER_STORE.put(`onrampconv:${orderId}`, rest.requestId, { expirationTtl: 14 * 24 * 3600 }).catch(() => undefined);
-    }
-    if (!res.ok) {
-      console.error(`[relay] execute ${res.status}`);
+    if (res.ok) return json(await res.json());
+    console.error(`[relay] execute ${res.status}`);
+    if (res.status >= 400 && res.status < 500) {
+      // A clear refusal: nothing was accepted, so the attempt is released
+      await env.ORDER_STORE.delete(`onrampconv:${orderId}`).catch(() => undefined);
       return err('The swap could not be started. Nothing was taken. Please try again.', 502);
     }
-    return json(await res.json());
+    // The swap service failed in a way that does not say whether it took the signature: keep the reservation
+    return json({ error: UNCLEAR_MESSAGE, uncertain: true, requestId: rest.requestId }, 502);
   } catch (e) {
     console.error('[relay] execute failed:', e);
-    return err('The swap could not be started. Nothing was taken. Please try again.', 503);
+    // No answer at all: it may have been accepted. Keep the reservation; the signature stops working on its own.
+    return json({ error: UNCLEAR_MESSAGE, uncertain: true, requestId: rest.requestId }, 503);
   }
 }
 

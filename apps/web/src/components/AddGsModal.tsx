@@ -18,6 +18,7 @@ import {
   convertibleDollars,
   returnToCelo,
   startGasFreeSwap,
+  UncertainSwapError,
   type OnrampOrder,
   type OnrampQuote,
   type OnrampStage,
@@ -262,6 +263,15 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
       setStep('working');
       void follow(r.requestId);
     } catch (e) {
+      if (e instanceof UncertainSwapError) {
+        // The signature may have been taken. Keep the request id and follow it; never offer a second signature meanwhile.
+        reportIssue('addgs_swap_uncertain', { requestId: e.requestId });
+        save({ order: order!, wallet, asset, swapRequestId: e.requestId });
+        saved.current = { order: order!, wallet, asset, swapRequestId: e.requestId };
+        setStep('working');
+        void follow(e.requestId);
+        return;
+      }
       reportIssue('addgs_swap_failed', { message: String((e as Error)?.message ?? e).slice(0, 300) });
       setError(friendlyAddError(e));
     } finally {

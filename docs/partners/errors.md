@@ -25,6 +25,7 @@ with the same fields plus `status` and `requestId`.
 | `pending_confirmation` (SDK) | - | Sent, not confirmed yet | **Do not retry.** Keep watching |
 | `transaction_mismatch` | 400 | Reported transaction is not this cash out | Report the right hash |
 | `idempotency_conflict` | 409 | Same Idempotency-Key, different body | Use a new key per attempt |
+| `idempotency_in_progress` | 409 | The same request is still being set up | Wait a few seconds, then repeat the same request (same key): you get the same cash out, never a second one |
 | `rate_limited` | 429 | Too many requests | Back off |
 | `unauthorized` | 401 | Missing/unknown key | Check the key |
 | `partner_disabled` | 403 | Your account is switched off | Contact GoodCash |

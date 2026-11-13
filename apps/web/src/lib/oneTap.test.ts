@@ -156,6 +156,24 @@ describe('pause check', () => {
   });
 });
 
+describe('reading the pause flag fails closed', () => {
+  const ADDR = '0x546698368a246539Df5e641EdC2b79c5782ea359' as const;
+  it('answers from the router when it can be read, and retries once', async () => {
+    const r = await import('./router');
+    expect(await r.readRouterPaused({ readContract: vi.fn().mockResolvedValue(true) } as never, ADDR)).toBe(true);
+    expect(await r.readRouterPaused({ readContract: vi.fn().mockResolvedValue(false) } as never, ADDR)).toBe(false);
+    const flaky = vi.fn().mockRejectedValueOnce(new Error('rpc down')).mockResolvedValueOnce(false);
+    expect(await r.readRouterPaused({ readContract: flaky } as never, ADDR)).toBe(false);
+    expect(flaky).toHaveBeenCalledTimes(2);
+  });
+  it('throws, and never answers "not paused", when the state cannot be read', async () => {
+    const r = await import('./router');
+    const down = vi.fn().mockRejectedValue(new Error('rpc down'));
+    await expect(r.readRouterPaused({ readContract: down } as never, ADDR)).rejects.toThrow('rpc down');
+    expect(down).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('which cash-out flow is used', () => {
   it('uses one tap when it is switched on and open; pauses (never the original router) when it is paused', async () => {
     const { chooseCashOutFlow } = await import('./router');

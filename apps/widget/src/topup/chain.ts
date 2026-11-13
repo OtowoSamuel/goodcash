@@ -116,7 +116,12 @@ export async function signAndStart(p: Eip1193, wallet: string, amount: bigint, a
   await switchToBase(p); // a wallet must be on Base to sign for Base
   const typed = { types: { EIP712Domain: domainType(sign.domain), ...sign.types }, primaryType: sign.primaryType, domain: sign.domain, message: sign.value };
   const signature = (await p.request({ method: 'eth_signTypedData_v4', params: [wallet, JSON.stringify(typed)] })) as string;
-  await post('/relay/execute', { signature, requestId: quote.requestId, kind: 'eip3009', api: api ?? 'swap', orderId });
+  try {
+    await post('/relay/execute', { signature, requestId: quote.requestId, kind: 'eip3009', api: api ?? 'swap', orderId });
+  } catch (e) {
+    // The answer was lost, so the signature may have been taken. Follow this request; asking again could spend twice.
+    if ((e as { uncertain?: boolean }).uncertain !== true) throw e;
+  }
   return { requestId: quote.requestId };
 }
 

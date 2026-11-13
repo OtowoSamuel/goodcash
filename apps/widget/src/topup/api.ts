@@ -17,8 +17,13 @@ export function makeAppApi(base: string, fetchImpl: typeof fetch = fetch): AppAp
       // The browser's own text ("Failed to fetch") means nothing to a customer
       throw new Error("We couldn't reach GoodCash. Check your internet connection and try again.");
     }
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) throw new Error(typeof data.error === 'string' && data.error ? data.error : 'Something went wrong. Please try again.');
+    const data = (await res.json().catch(() => ({}))) as { error?: string; uncertain?: boolean };
+    if (!res.ok) {
+      const failure = new Error(typeof data.error === 'string' && data.error ? data.error : 'Something went wrong. Please try again.') as Error & { uncertain?: boolean };
+      // GoodCash could not tell whether the signature was taken: the caller must follow it, never sign again
+      if (data.uncertain === true) failure.uncertain = true;
+      throw failure;
+    }
     return data as T;
   }
   return {

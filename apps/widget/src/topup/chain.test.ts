@@ -101,6 +101,26 @@ describe('signing', () => {
     expect((posts[1][1] as { orderId: string }).orderId).toBe(ORDER);
   });
 
+  it('when GoodCash cannot tell whether the signature was taken, it follows that request and never signs again', async () => {
+    const w = wallet(8453);
+    const out = await signAndStart(w, WALLET, AMOUNT, 'g', (async (path: string) => {
+      if (path === '/relay/quote') return quote();
+      throw Object.assign(new Error('We could not confirm whether this went through.'), { uncertain: true });
+    }) as never, ORDER);
+    expect(out.requestId).toBe('0x' + 'cd'.repeat(32));
+    expect(w.calls.filter((c) => c === 'eth_signTypedData_v4')).toHaveLength(1);
+  });
+
+  it('any other failure of the hand-over is still an error', async () => {
+    const w = wallet(8453);
+    await expect(
+      signAndStart(w, WALLET, AMOUNT, 'g', (async (path: string) => {
+        if (path === '/relay/quote') return quote();
+        throw new Error('The swap could not be started. Nothing was taken. Please try again.');
+      }) as never, ORDER)
+    ).rejects.toThrow(/Nothing was taken/);
+  });
+
   it('a wallet that reports Base as a number is not asked to switch', async () => {
     const w = wallet(8453);
     await signAndStart(w, WALLET, AMOUNT, 'g', (async (path: string) => (path === '/relay/quote' ? quote() : {})) as never, ORDER);

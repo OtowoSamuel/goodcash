@@ -234,6 +234,28 @@ describe('test mode never touches the payout partner or the chain', () => {
     expect(none.status).toBe(400);
   });
 
+  it('a repeat of a request that is still being set up is refused, so it cannot make a second order', async () => {
+    const text = JSON.stringify(CREATE);
+    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    const hash = Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+    const key = `idem:p_1:test:idem-test-0010`;
+    await kv.put(key, JSON.stringify({ hash, pending: true, at: Date.now() }));
+    const res = await browser('POST', '/v1/cashouts', CREATE, KEYS.pkTest, 'idem-test-0010');
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('idempotency_in_progress');
+    // a reservation left behind by a crash does not block for ever
+    await kv.put(key, JSON.stringify({ hash, pending: true, at: Date.now() - 5 * 60_000 }));
+    expect((await browser('POST', '/v1/cashouts', CREATE, KEYS.pkTest, 'idem-test-0010')).status).toBe(201);
+  });
+
+  it('a request that is refused frees its key, so the same key can be used again', async () => {
+    const bad = await browser('POST', '/v1/cashouts', { ...CREATE, feePercentShown: 1 }, KEYS.pkTest, 'idem-test-0011');
+    expect(bad.status).toBe(409);
+    expect(await kv.get('idem:p_1:test:idem-test-0011')).toBeNull();
+    const good = await browser('POST', '/v1/cashouts', { ...CREATE, feePercentShown: 1.5 }, KEYS.pkTest, 'idem-test-0011');
+    expect(good.status).toBe(201);
+  });
+
   it('refuses when the customer was shown a different fee', async () => {
     const res = await browser('POST', '/v1/cashouts', { ...CREATE, feePercentShown: 1 }, KEYS.pkTest, 'idem-test-0003');
     expect(res.status).toBe(409);

@@ -263,7 +263,7 @@ components:
     Address: { type: string, pattern: '^0x[0-9a-fA-F]{40}$' }
     ErrorCode:
       type: string
-      enum: [invalid_request, amount_too_small, amount_too_large, insufficient_balance, fee_mismatch, price_unavailable, cashout_paused, bank_account_not_found, unavailable, rate_limited, unauthorized, partner_disabled, forbidden_origin, secret_key_in_browser, secret_key_required, test_mode_only, not_found, idempotency_conflict, transaction_mismatch, webhook_not_configured, topups_not_enabled]
+      enum: [invalid_request, amount_too_small, amount_too_large, insufficient_balance, fee_mismatch, price_unavailable, cashout_paused, bank_account_not_found, unavailable, rate_limited, unauthorized, partner_disabled, forbidden_origin, secret_key_in_browser, secret_key_required, test_mode_only, not_found, idempotency_conflict, idempotency_in_progress, transaction_mismatch, webhook_not_configured, topups_not_enabled]
     Partner:
       type: object
       properties:

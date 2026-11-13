@@ -19,6 +19,7 @@ export type ErrorCode =
   | 'test_mode_only'
   | 'not_found'
   | 'idempotency_conflict'
+  | 'idempotency_in_progress'
   | 'transaction_mismatch'
   | 'webhook_not_configured'
   | 'topups_not_enabled';
@@ -44,6 +45,7 @@ export const ERRORS: Record<ErrorCode, { status: number; message: string }> = {
   test_mode_only: { status: 400, message: SETUP },
   not_found: { status: 404, message: "We couldn't find that cash out." },
   idempotency_conflict: { status: 409, message: 'This request was already used for a different cash out. Please start again.' },
+  idempotency_in_progress: { status: 409, message: 'This cash out is still being set up. Please wait a moment and check it before sending it again.' },
   transaction_mismatch: { status: 400, message: "That transaction doesn't match this cash out." },
   webhook_not_configured: { status: 400, message: SETUP },
   topups_not_enabled: { status: 403, message: SETUP },
