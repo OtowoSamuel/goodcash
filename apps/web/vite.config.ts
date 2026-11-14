@@ -1,7 +1,30 @@
 
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/**
+ * A production build must name the one-tap router (VITE_ROUTER_V2_ADDRESS). Without it the app would quietly fall back to
+ * the original router, which a stray token balance can block. So the build stops instead. Development, test and preview
+ * builds are not affected.
+ */
+function requireOneTapRouter(mode: string): Plugin {
+  return {
+    name: 'goodcash-require-one-tap-router',
+    apply: 'build',
+    config() {
+      if (mode !== 'production') return;
+      const address = loadEnv(mode, process.cwd(), 'VITE_').VITE_ROUTER_V2_ADDRESS;
+      const ok = typeof address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(address) && !/^0x0{40}$/.test(address);
+      if (!ok) {
+        throw new Error(
+          'Production build stopped: VITE_ROUTER_V2_ADDRESS is missing or not a real address. Without it the app would use the original ' +
+            'router, which stray balances can block. Set it in apps/web/.env.production (see services/orders/wrangler.toml for the address).'
+        );
+      }
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => ({
   define:
@@ -9,6 +32,7 @@ export default defineConfig(({ mode }) => ({
       ? { 'import.meta.env.VITE_ENABLE_DEMO': JSON.stringify('false') }
       : {},
   plugins: [
+    requireOneTapRouter(mode),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
