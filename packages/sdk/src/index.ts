@@ -1,4 +1,4 @@
-export { GoodCash, DEFAULT_BASE_URL, SDK_VERSION, TEST_WALLET } from './client';
+export { GoodCash, DEFAULT_BASE_URL, SDK_VERSION, TEST_WALLET, gToWei } from './client';
 export type { GoodCashOptions, CashOutArgs, CashOutStep } from './client';
 export { GoodCashError, isGoodCashError, MESSAGES } from './errors';
 export type { GoodCashErrorCode } from './errors';

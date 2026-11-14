@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWalletClient, custom } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { buildOneTapTransaction, ROUTER_V2, CASH_OUT_PAID_TOPIC } from '../src/core';
-import { GoodCash, GoodCashError, type CreatedCashOut } from '../src';
+import { GoodCash, GoodCashError, gToWei, type CreatedCashOut } from '../src';
 import { verifyWebhook } from '../src/server';
 
 const PK_LIVE = 'gc_pk_live_' + 'a'.repeat(32);
@@ -14,13 +14,13 @@ const ID = '7d0c3a52-1f7e-4c55-9a51-2b7e0a1d9f00';
 const HASH = `0x${'ab'.repeat(32)}`;
 const RECIPIENT = { bankCode: 'GTBINGLA', accountNumber: '0123456789', accountName: 'ADA OBI' };
 
-function created(over: Partial<{ router: `0x${string}`; payTo: `0x${string}`; payAmount: bigint; minOut: bigint; deadlineSec: number; mode: 'live' | 'test' }> = {}): CreatedCashOut {
+function created(over: Partial<{ router: `0x${string}`; payTo: `0x${string}`; payAmount: bigint; minOut: bigint; deadlineSec: number; mode: 'live' | 'test'; amountWei: bigint; amountG: string }> = {}): CreatedCashOut {
   const validUntil = new Date(Date.now() + 30 * 60_000).toISOString();
   const payAmount = over.payAmount ?? 550_000n;
   const minOut = over.minOut ?? 567_000n;
   const tx = buildOneTapTransaction({
     router: over.router ?? ROUTER_V2,
-    amountWei: 5000n * 10n ** 18n,
+    amountWei: over.amountWei ?? 5000n * 10n ** 18n,
     route: 0,
     minOut,
     deadline: BigInt(over.deadlineSec ?? Math.floor(Date.now() / 1000) + 1200),
@@ -29,10 +29,10 @@ function created(over: Partial<{ router: `0x${string}`; payTo: `0x${string}`; pa
     orderId: ID,
   });
   return {
-    id: ID, object: 'cashout', mode: over.mode ?? 'live', status: 'awaiting_signature', wallet: WALLET, amountG: '5000',
+    id: ID, object: 'cashout', mode: over.mode ?? 'live', status: 'awaiting_signature', wallet: WALLET, amountG: over.amountG ?? '5000',
     receive: { naira: 780, minimumNaira: 770 }, feePercent: 1, partnerRef: null, txHash: null, expiresAt: validUntil,
     createdAt: '', updatedAt: '', paidAt: null, fees: [], transaction: tx,
-    order: { router: ROUTER_V2, payTo: PAY_TO, payAmount: '550000', amountWei: (5000n * 10n ** 18n).toString(), minOut: minOut.toString(), validUntil },
+    order: { router: ROUTER_V2, payTo: PAY_TO, payAmount: '550000', amountWei: (over.amountWei ?? 5000n * 10n ** 18n).toString(), minOut: minOut.toString(), validUntil },
   };
 }
 
@@ -115,6 +115,27 @@ describe('the check before signing', () => {
     ['a different pay amount', { payAmount: 1n }],
   ])('refuses %s', (_name, over) => {
     expect(() => gc.assertSafeTransaction(created(over))).toThrow(expect.objectContaining({ code: 'unsafe_transaction' }));
+  });
+  it('works out the amount that leaves the wallet from what was asked for: a response that agrees with itself but debits more is refused', () => {
+    // the label and the order both say 5000, but the order and the transaction debit 50,000 G$, consistently
+    const greedy = created({ amountWei: 50_000n * 10n ** 18n });
+    expect(() => gc.assertSafeTransaction(greedy, { amountG: '5000' })).toThrow(expect.objectContaining({ code: 'unsafe_transaction', detail: expect.stringMatching(/different amount/) }));
+    // and one that debits less than the label claims
+    const stingy = created({ amountWei: 4_000n * 10n ** 18n });
+    expect(() => gc.assertSafeTransaction(stingy, { amountG: '5000' })).toThrow(expect.objectContaining({ code: 'unsafe_transaction' }));
+  });
+  it('accepts a decimal amount whose smallest-unit value matches exactly', () => {
+    const c = created({ amountG: '0.5', amountWei: 5n * 10n ** 17n });
+    expect(() => gc.assertSafeTransaction(c, { amountG: '0.5' })).not.toThrow();
+    // one unit off is refused
+    const off = created({ amountG: '0.5', amountWei: 5n * 10n ** 17n + 1n });
+    expect(() => gc.assertSafeTransaction(off, { amountG: '0.5' })).toThrow(expect.objectContaining({ code: 'unsafe_transaction' }));
+  });
+  it('refuses a requested amount that is not a plain G$ amount', () => {
+    for (const bad of ['1e21', '-5', '0', '5000.1234567', '', ' 5000']) {
+      const c = created({ amountG: bad });
+      expect(() => gc.assertSafeTransaction(c, { amountG: bad })).toThrow(expect.objectContaining({ code: 'unsafe_transaction' }));
+    }
   });
   it('refuses a router other than the GoodCash one, even when the server agrees with itself', () => {
     const evil = '0x2222222222222222222222222222222222222222' as const;
@@ -323,5 +344,17 @@ describe('verifyWebhook', () => {
     await expect(verifyWebhook(body, h, 'whsec_other', { nowSec: now })).rejects.toMatchObject({ code: 'invalid_signature' });
     await expect(verifyWebhook(body, 'nonsense', secret, { nowSec: now })).rejects.toMatchObject({ code: 'invalid_signature' });
     await expect(verifyWebhook(body, h, secret, { nowSec: now + 301 })).rejects.toMatchObject({ code: 'invalid_signature' });
+  });
+});
+
+describe('gToWei', () => {
+  it('turns a typed amount into the smallest unit exactly', () => {
+    expect(gToWei('5000')).toBe(5000n * 10n ** 18n);
+    expect(gToWei('0.000001')).toBe(10n ** 12n);
+    expect(gToWei('12.5')).toBe(125n * 10n ** 17n);
+    expect(gToWei('1000000')).toBe(10n ** 24n);
+  });
+  it('gives null for anything that is not a plain positive amount with at most 6 decimals', () => {
+    for (const bad of ['', '0', '0.0', '-1', '1e3', '1.0000001', ' 1', '1 ', 'abc', '1,000']) expect(gToWei(bad)).toBeNull();
   });
 });

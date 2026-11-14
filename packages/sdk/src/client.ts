@@ -4,7 +4,7 @@ import type { Bank, CashOut, CreatedCashOut, Limits, Mode, NetworkFeeInfo, Page,
 import { findPaymentOnChain, sendTransaction, signerAddress, sleep, type Signer } from './wallet';
 
 export const DEFAULT_BASE_URL = 'https://api.goodcash.xyz';
-export const SDK_VERSION = '0.2.0';
+export const SDK_VERSION = '0.2.1';
 const FINAL: CashOut['status'][] = ['paid', 'failed', 'refunded', 'expired'];
 const TOPUP_FINAL: TopUp['status'][] = ['delivered', 'failed', 'expired'];
 /** Used in test mode when no wallet is connected (test cash outs never touch a wallet). */
@@ -48,6 +48,17 @@ function randomKey(): string {
   const b = new Uint8Array(16);
   globalThis.crypto.getRandomValues(b);
   return `sdk_${Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * A G$ amount as typed ("5000", "0.5", up to 6 decimals) to the token's smallest unit (18 decimals), the same way the
+ * server does it. Null when it is not a plain positive amount.
+ */
+export function gToWei(text: string): bigint | null {
+  if (!/^\d+(\.\d{1,6})?$/.test(text)) return null;
+  const [whole, frac = ''] = text.split('.');
+  const wei = BigInt(whole) * 10n ** 18n + BigInt(frac.padEnd(18, '0'));
+  return wei > 0n ? wei : null;
 }
 
 export class GoodCash {
@@ -160,10 +171,16 @@ export class GoodCash {
   assertSafeTransaction(c: CreatedCashOut, expected: { amountG?: string | number } = {}): void {
     // The router is pinned in the SDK: even a consistent-looking answer may not send money anywhere else
     if (c.order.router.toLowerCase() !== this.router) throw new GoodCashError('unsafe_transaction', { detail: `Unexpected router ${c.order.router}.` });
-    const amountWei = BigInt(c.order.amountWei);
+    let amountWei = BigInt(c.order.amountWei);
     if (expected.amountG !== undefined) {
       const want = String(expected.amountG);
       if (want !== c.amountG) throw new GoodCashError('unsafe_transaction', { detail: `Amount ${c.amountG} differs from requested ${want}.` });
+      // The amount that will leave the wallet is worked out HERE from what was asked for, never taken from the answer.
+      // A server answer that is consistent with itself but debits a different amount is refused.
+      const wantWei = gToWei(want);
+      if (wantWei === null) throw new GoodCashError('unsafe_transaction', { detail: `Requested amount ${want} is not a valid G$ amount.` });
+      if (amountWei !== wantWei) throw new GoodCashError('unsafe_transaction', { detail: 'The order would debit a different amount than requested.' });
+      amountWei = wantWei;
     }
     const problem = checkCashOutTransaction(
       c.transaction,

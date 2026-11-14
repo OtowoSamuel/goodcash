@@ -2,6 +2,12 @@
 
 All notable changes to `@goodcash/sdk`. This package follows [semantic versioning](https://semver.org).
 
+## 0.2.1
+
+- `cashOut()` and `assertSafeTransaction()` now work out the amount that will leave the wallet from the amount you asked for
+  (exported as `gToWei`), and refuse a server answer whose order or transaction debits anything else, even if the answer
+  agrees with itself. Nothing changes for normal use. Amounts must be plain G$ amounts with at most 6 decimals.
+
 ## 0.2.0
 
 Naira in (top-ups). Cash out is unchanged.

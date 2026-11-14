@@ -28,7 +28,7 @@
     "react-dom": ">=18"
   },
   "devDependencies": {
-    "@goodcash/sdk": "0.2.0",
+    "@goodcash/sdk": "0.2.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
     "@types/react": "^18.3.12",
