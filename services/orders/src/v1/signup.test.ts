@@ -128,6 +128,21 @@ describe('asking for test keys', () => {
     expect(mails).toHaveLength(0);
   });
 
+  it('lets the docs page READ the reason when it refuses (otherwise the browser says "could not reach GoodCash")', async () => {
+    const bare = await post('/v1/signup', { ...FORM, origins: ['acme.example'] });
+    expect(bare.status).toBe(400);
+    expect(bare.headers.get('Access-Control-Allow-Origin')).toBe(DOCS);
+    expect(JSON.stringify(await bare.json())).toMatch(/Not a web address: acme\.example/);
+    expect((await post('/v1/signup', { ...FORM, email: 'nope' })).headers.get('Access-Control-Allow-Origin')).toBe(DOCS);
+    limited = true;
+    const slow = await post('/v1/signup', FORM);
+    expect(slow.status).toBe(429);
+    expect(slow.headers.get('Access-Control-Allow-Origin')).toBe(DOCS);
+    // Any other site is still told nothing it can read
+    expect((await post('/v1/signup', FORM, 'https://evil.example')).headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect((await post('/v1/signup/confirm', { token: 'x' }, 'https://evil.example')).headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
   it('allows http://localhost for development', () => {
     expect(checkOrigins(['http://localhost'])).toEqual(['http://localhost']);
     expect(() => checkOrigins(['http://example.com'])).toThrow();

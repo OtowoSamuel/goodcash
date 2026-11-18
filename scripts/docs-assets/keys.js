@@ -19,13 +19,22 @@
     });
   }
 
+  // People type "mygame.example" or "https://mygame.example/": the server wants the exact address (https://mygame.example)
+  function tidyOrigin(raw) {
+    var t = String(raw).trim();
+    if (!t) return '';
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) t = (/^localhost(:|\/|$)/i.test(t) ? 'http://' : 'https://') + t;
+    try { return new URL(t).origin; } catch (e) { return String(raw).trim(); }
+  }
+
   var form = el('gcd-form');
   if (form) {
     var msg = el('gcd-msg');
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
       var btn = el('gcd-submit');
-      var origins = el('gcd-origins').value.split(/[\s,]+/).filter(Boolean);
+      var origins = el('gcd-origins').value.split(/[\s,]+/).filter(Boolean).map(tidyOrigin).filter(function (o, i, all) { return all.indexOf(o) === i; });
+      el('gcd-origins').value = origins.join('\n'); // show what is being sent
       btn.disabled = true;
       show(msg, 'Sending…', 'info');
       post('/v1/signup', { name: el('gcd-name').value, email: el('gcd-email').value, origins: origins })

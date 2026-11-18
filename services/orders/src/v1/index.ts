@@ -3,7 +3,7 @@
  * goodcash.xyz's own endpoints are untouched; this only adds routes.
  */
 import { CELO_CHAIN_ID, fetchCeloUsd, isAddress, networkFeeFrom } from '@goodcash/core';
-import { authenticate } from './auth';
+import { authenticate, widgetOrigins } from './auth';
 import { createCashOut, listCashOuts, loadCashOut, notifyChange, publicCashOut, refreshCashOut, reportTransaction, sweepOpenCashOuts } from './cashouts';
 import { buildEvent, deliver, processWebhookQueue, setWebhook } from './webhooks';
 import { requireSecret } from './auth';
@@ -29,6 +29,12 @@ export function isV1Path(pathname: string): boolean {
   return pathname === '/v1' || pathname.startsWith('/v1/');
 }
 
+/** The GoodCash docs site, if that is who is asking (the only page allowed to use the sign-up and live-key links). */
+function docsSiteOrigin(request: Request, env: Env): string | null {
+  const origin = request.headers.get('Origin');
+  return origin && widgetOrigins(env).includes(origin) ? origin : null;
+}
+
 export async function handleV1(request: Request, env: Env, deps: V1Deps, waitUntil?: (p: Promise<unknown>) => void): Promise<Response> {
   const reqId = requestId();
   if (env.PARTNER_API_ENABLED !== 'true') return withV1Headers(v1Json({ error: { code: 'not_found', message: 'Not found' } }, 404), reqId, null);
@@ -39,9 +45,11 @@ export async function handleV1(request: Request, env: Env, deps: V1Deps, waitUnt
     try {
       return withV1Headers(await handleSignup(request, env, deps), reqId, null);
     } catch (e) {
-      if (e instanceof V1Error) return withV1Headers(v1ErrorResponse(e), reqId, null);
+      // The docs page must be able to READ the reason (a bad website, a rate limit...), or the browser shows "could not reach GoodCash"
+      const cors = docsSiteOrigin(request, env);
+      if (e instanceof V1Error) return withV1Headers(v1ErrorResponse(e), reqId, cors);
       console.error(`[v1] ${reqId} unexpected error:`, (e as Error)?.message ?? e);
-      return withV1Headers(v1ErrorResponse(new V1Error('unavailable')), reqId, null);
+      return withV1Headers(v1ErrorResponse(new V1Error('unavailable')), reqId, cors);
     }
   }
 
@@ -50,9 +58,10 @@ export async function handleV1(request: Request, env: Env, deps: V1Deps, waitUnt
     try {
       return withV1Headers(await handleLiveKeys(request, env, deps), reqId, null);
     } catch (e) {
-      if (e instanceof V1Error) return withV1Headers(v1ErrorResponse(e), reqId, null);
+      const cors = docsSiteOrigin(request, env);
+      if (e instanceof V1Error) return withV1Headers(v1ErrorResponse(e), reqId, cors);
       console.error(`[v1] ${reqId} unexpected error:`, (e as Error)?.message ?? e);
-      return withV1Headers(v1ErrorResponse(new V1Error('unavailable')), reqId, null);
+      return withV1Headers(v1ErrorResponse(new V1Error('unavailable')), reqId, cors);
     }
   }
 
