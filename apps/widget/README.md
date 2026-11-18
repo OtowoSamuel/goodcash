@@ -4,8 +4,11 @@ The hosted cash-out flow that partners open with `widget.js` (pop-up, embedded f
 
 ## Which wallet signs
 In this order:
-1. **The partner's own wallet** (games with embedded wallets): `GoodCash.open({ wallet, signer })`. The widget asks the
-   partner's page to send the one transaction; it never sees a key.
+1. **The partner's own wallet** (games and apps with embedded or email wallets): `GoodCash.open({ wallet, signer })`. The widget asks the
+   partner's page to send the one transaction; it never sees a key. For adding G$/CELO, an EIP-1193 `signer` (or a
+   `signTypedData` function) lets the partner's page sign the one USDC permit instead (`typed=1` in the address), so the
+   connect step is skipped. The widget checks who answered and that the signature came from the named wallet, and
+   `widget.js` only signs a USDC permit on Base from that wallet (`hostWalletProvider` in `src/bridge.ts`).
 2. **A wallet the browser already has** (a desktop extension, or a wallet app's own browser such as MiniPay or MetaMask's).
 3. **Magic's Wallet Kit panel**, loaded only when the customer asks: WalletConnect (phone wallet apps), Coinbase, and
    email login. In a browser with no wallet in it the panel lists only WalletConnect and Coinbase, because MetaMask,

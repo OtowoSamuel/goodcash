@@ -26,6 +26,9 @@ export function Wallet() {
 - `<CashOutButton />` opens the whole flow (amount, bank, review, confirm, tracking) in an accessible dialog
   (focus trap, Escape to close, labelled controls). Phones first.
 - `<CashOutFlow />` is the same flow inline, for your own page or sheet.
+- `<TopUpButton />` lets a customer add G$ or CELO with naira. If your app already has their wallet (an email sign-in
+  wallet, for example), pass `wallet` and `signer` (an EIP-1193 provider) or `signTypedData`, and they are not asked to
+  connect again. On phones use `mode="embed"`. See the top-ups quickstart in the partner docs.
 - Hooks for your own screens: `useQuote`, `useBanks`, `useVerifyAccount`, `useCashOut`, `useCashOutStatus`.
 - Theme: `background`, `surface`, `ink`, `accent`, `accentInk`, `highlight`, `success`, `radius`, `font`,
   `mode: 'light' | 'dark' | 'auto'`. Styles are scoped (`.gcw-*`), so they never touch your CSS. No web fonts are loaded.

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { GoodCash, type Signer } from '@goodcash/sdk';
 import { CashOutFlow, GoodCashProvider, type CashOutEvent } from '@goodcash/react';
 import { checkHost, readParams, type WidgetParams } from './params';
-import { hostSigner, postToHost } from './bridge';
+import { hostSigner, hostWalletProvider, postToHost } from './bridge';
 import { ConnectGate } from './ConnectGate';
 import type { ConnectedWallet } from './wallet';
 import { TopUpFlow, type TopUpEventType } from './topup/TopUpFlow';
@@ -78,9 +78,13 @@ function Widget({ p }: { p: WidgetParams }) {
     if (p.mode === 'redirect' && p.returnUrl) window.location.assign(p.returnUrl);
   };
 
-  // Adding G$/CELO: the customer pays naira, then signs once in THEIR OWN wallet (a host's embedded wallet is not supported yet)
+  // Adding G$/CELO: the customer pays naira, then signs once in THEIR OWN wallet. An app that already has the customer's
+  // wallet (and says it can sign) signs for them, so no connect step is shown; otherwise the customer connects here.
   if (p.flow === 'topup') {
-    if (state.client.mode === 'live' && !conn) {
+    const topUpViaHost = viaHost && p.hostTyped;
+    const hostConn: ConnectedWallet | null = topUpViaHost ? { address: p.wallet as `0x${string}`, provider: hostWalletProvider(p.hostOrigin as string, p.wallet as string) as never } : null;
+    const wallet = conn ?? hostConn;
+    if (state.client.mode === 'live' && !wallet) {
       return <ConnectGate theme={theme} intro="Your G$ or CELO is sent straight to your own wallet." onConnected={setConn} onClose={close} />;
     }
     const onTopUp = (type: TopUpEventType, topUp: unknown) => {
@@ -96,8 +100,8 @@ function Widget({ p }: { p: WidgetParams }) {
       <TopUpFlow
         client={state.client}
         theme={theme}
-        wallet={conn?.address}
-        provider={conn?.provider as never}
+        wallet={wallet?.address}
+        provider={wallet?.provider as never}
         apiBase={API_BASE}
         defaultNaira={p.amountNaira}
         defaultAsset={p.asset}

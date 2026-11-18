@@ -233,7 +233,10 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
     setBusy(true);
     setError(null);
     try {
-      const have = await convertibleDollars(who, () => fetchOrderLimit(api, order.orderId));
+      const limit = await fetchOrderLimit(api, order.orderId);
+      const have = await convertibleDollars(who, async () => limit);
+      // An app that signs for the customer is told this order and its maximum with the signing request
+      (provider as { setOrder?: (o: { orderId: string; maxUsdc: string }) => void }).setOrder?.({ orderId: order.orderId, maxUsdc: limit ?? '' });
       if (have < MIN_DOLLARS_ATOMIC) throw new Error('Your money has not shown up in your wallet yet. Please wait a minute and try again.');
       const { requestId } = await signAndStart(provider, who, have, asset, api.post, order.orderId);
       setStage('working');

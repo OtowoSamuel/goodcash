@@ -19,6 +19,15 @@ describe('widget address', () => {
   });
 });
 
+describe('the app signs the top-up for the customer', () => {
+  const W = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
+  it('is only on when the app says so', () => {
+    expect(p(`?key=${KEY}&flow=topup&wallet=${W}&bridge=1&typed=1`)).toMatchObject({ bridge: true, hostTyped: true, wallet: W });
+    expect(p(`?key=${KEY}&flow=topup&wallet=${W}&bridge=1`).hostTyped).toBe(false);
+    expect(p(`?key=${KEY}&flow=topup`).hostTyped).toBe(false);
+  });
+});
+
 describe('where the widget may run', () => {
   const env = { ancestorOrigin: null, referrerOrigin: null, framed: false };
   it('popup: only for an allowed site', () => {

@@ -25,6 +25,21 @@ describe('<TopUpButton />', () => {
     expect((open.mock.calls[0] as unknown[])[0]).toMatchObject({ publishableKey: KEY, flow: 'topup', mode: 'embed', amountNaira: 5000, asset: 'celo', partnerRef: 'player-1' });
   });
 
+  it('hands your wallet and its signer to the window, so the customer is not asked to connect again', async () => {
+    const open = vi.fn(() => ({ close: () => undefined }));
+    (window as unknown as { GoodCash: unknown }).GoodCash = { open };
+    const signer = { request: vi.fn() };
+    const wallet = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' as const;
+    render(
+      <GoodCashProvider publishableKey={KEY}>
+        <TopUpButton wallet={wallet} signer={signer} mode="embed" />
+      </GoodCashProvider>
+    );
+    await userEvent.click(screen.getByRole('button'));
+    await waitFor(() => expect(open).toHaveBeenCalled());
+    expect((open.mock.calls[0] as unknown[])[0]).toMatchObject({ wallet, signer, flow: 'topup' });
+  });
+
   it('passes the events to your handler', async () => {
     const seen: string[] = [];
     (window as unknown as { GoodCash: unknown }).GoodCash = {

@@ -61,3 +61,6 @@ GoodCash.open({
 ```
 
 Then credit or notify players from your **server webhook** (`cashout.paid`), not from browser events alone.
+
+The same works for **adding G$ with naira**: add `flow: 'topup'` and pass a `signer` that is an EIP-1193 provider (or a
+`signTypedData` function). The player is not asked to connect again. See the [top-ups quickstart](topups.md).

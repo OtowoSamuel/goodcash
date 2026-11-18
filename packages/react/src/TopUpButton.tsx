@@ -16,6 +16,14 @@ export interface TopUpButtonProps {
   partnerRef?: string;
   /** 'popup' (default) opens a window; 'embed' shows a panel over your page */
   mode?: 'popup' | 'embed';
+  /**
+   * The customer's wallet address in YOUR app (for example an email sign-in wallet), and the way your page signs for it:
+   * an EIP-1193 provider (`signer`), or `signTypedData`. With these, the customer is not asked to connect again.
+   */
+  wallet?: `0x${string}`;
+  signer?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+  /** Also receives the order and the most it may convert (6-decimal USDC units): refuse any value above `maxUsdc` */
+  signTypedData?: (typedData: unknown, order: { orderId: string; maxUsdc: string; wallet: string }) => Promise<string>;
   onEvent?: (e: TopUpEvent) => void;
   /** Where the widget script lives (default https://pay.goodcash.xyz/widget.js) */
   widgetUrl?: string;
@@ -44,7 +52,7 @@ function loadWidget(url: string): Promise<GoodCashGlobal> {
  * A button that lets a customer add G$ or CELO with naira. It opens GoodCash's own page (the hosted widget): the
  * customer's ID details are typed there, never in your app, and never reach your page or your servers.
  */
-export function TopUpButton({ label = 'Add G$ with naira', amountNaira, asset, partnerRef, mode = 'popup', onEvent, widgetUrl = 'https://pay.goodcash.xyz/widget.js', className, style }: TopUpButtonProps) {
+export function TopUpButton({ label = 'Add G$ with naira', amountNaira, asset, partnerRef, mode = 'popup', wallet, signer, signTypedData, onEvent, widgetUrl = 'https://pay.goodcash.xyz/widget.js', className, style }: TopUpButtonProps) {
   injectStyles();
   const { publishableKey, theme } = useGoodCash();
   const [busy, setBusy] = useState(false);
@@ -53,7 +61,7 @@ export function TopUpButton({ label = 'Add G$ with naira', amountNaira, asset, p
     setBusy(true);
     try {
       const gc = await loadWidget(widgetUrl);
-      gc.open({ publishableKey, flow: 'topup', mode, amountNaira, asset, partnerRef, theme, onEvent: (e: TopUpEvent) => onEvent?.(e) });
+      gc.open({ publishableKey, flow: 'topup', mode, amountNaira, asset, partnerRef, wallet, signer, signTypedData, theme, onEvent: (e: TopUpEvent) => onEvent?.(e) });
     } catch (e) {
       onEvent?.({ type: 'error', message: (e as Error).message });
     } finally {

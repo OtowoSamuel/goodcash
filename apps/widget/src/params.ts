@@ -17,6 +17,8 @@ export interface WidgetParams {
   /** The host signs (games with embedded wallets): we ask it over postMessage */
   wallet?: `0x${string}`;
   bridge: boolean;
+  /** The host can also sign the one top-up permit (typed data) with the customer's own wallet, so no connect step is shown */
+  hostTyped: boolean;
   appId?: string;
   accent?: string;
   theme?: 'light' | 'dark' | 'auto';
@@ -53,6 +55,7 @@ export function readParams(search: string): WidgetParams | { error: string } {
     returnUrl: q.get('returnUrl') ?? undefined,
     wallet: wallet && /^0x[0-9a-fA-F]{40}$/.test(wallet) ? (wallet as `0x${string}`) : undefined,
     bridge: q.get('bridge') === '1',
+    hostTyped: q.get('typed') === '1',
     appId: q.get('app') ?? undefined,
     accent: accent && /^#[0-9a-fA-F]{3,8}$/.test(accent) ? accent : undefined,
     theme: theme === 'dark' || theme === 'light' || theme === 'auto' ? theme : undefined,

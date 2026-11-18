@@ -16,5 +16,5 @@
     }
   },
   "include": ["src"],
-  "exclude": ["src/docs.test.ts"]
+  "exclude": ["src/docs.test.ts", "src/widgetScript.test.ts"]
 }
