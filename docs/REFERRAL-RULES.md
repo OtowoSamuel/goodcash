@@ -31,22 +31,32 @@ Written 19 November 2026. These match what the code does (services/orders/src/re
 16. A held reward can be paid later, once the wallet is verified with GoodDollar.
 17. Links made to claim rewards over and over are not paid.
 
+## When the campaign stops
+
+18. The campaign ends on 31 December 2026 at 23:59 UTC, or when the budget is used up, whichever comes first.
+19. The budget is G$ 3,500,000 in total, friend bonuses and inviter rewards together. That is about 500 friends, around $365 at the 19 November 2026 price.
+20. What counts is when the friend started their top-up. A top-up started before the end still counts if the bank payment arrives after it.
+21. When the campaign is closed, the app stops promising a reward and the invite screen says the rewards have ended. Rewards already recorded are still paid.
+
 ## What we reserve
 
-18. GoodCash can change or end the campaign, and can refuse any reward that looks like abuse.
+22. GoodCash can change or end the campaign, and can refuse any reward that looks like abuse.
 
 ## Settings in the code
 
 - Friend bonus and inviter reward: `REFERRAL.newG` and `REFERRAL.inviterG` in `services/orders/src/referral.ts`.
 - Minimum first top-up: `REFERRAL.minNaira`.
+- End date and total budget: `REFERRAL.endsAt` and `REFERRAL.budgetG`. Two top-ups settling at the very same moment can overshoot the budget by one reward. That is accepted.
 - Friends one person can be paid for: `REFERRAL.maxPerInviter`, and `MAX_FRIENDS` in `scripts/referral-payouts.mjs`. Keep the two equal.
-- The amounts shown to a friend before they top up: `FRIEND_MIN_NAIRA` and `FRIEND_BONUS_G` in `apps/web/src/lib/referral.ts`. Keep these equal to the server values.
+- The amounts shown to a friend before they top up come from the server, so there is nothing to keep in step.
 
 ## Paying out
 
-Run `cd /Users/admin/Documents/GoodCash/services/orders && node ../../scripts/referral-payouts.mjs` (add `--csv` for a spreadsheet). It reads waiting rewards, asks GoodDollar's Identity contract on Celo who each wallet belongs to, and prints PAY or HOLD for each line with the reason. It never sends anything and never changes storage.
+Run these from `/Users/admin/Documents/GoodCash/services/orders`.
 
-## Not built yet
+1. `node ../../scripts/referral-payouts.mjs --csv > rewards.csv` writes the list. It reads the waiting rewards, asks GoodDollar's Identity contract on Celo who each wallet belongs to, and gives every line PAY, HOLD (with the reason) or PAID.
+2. Send the G$ by hand for the PAY lines only.
+3. `node ../../scripts/referral-payouts.mjs --mark-paid rewards.csv` shows what would be marked as paid. It writes nothing.
+4. `node ../../scripts/referral-payouts.mjs --mark-paid rewards.csv --yes` marks those lines as paid.
 
-- A "mark as paid" step. The list still shows a reward after it has been paid, so keep your own record of who has been paid until this is added.
-- A total budget cap or an end date.
+Use the same file for steps 3 and 4 that you paid from. A line is marked only if it matches a real reward (same wallet, same amount) and is not already marked, so a wrong or old file marks nothing. Paid lines still count toward "one person once" and the 20 friends limit. Listing never changes anything; only `--mark-paid ... --yes` writes.

@@ -30,7 +30,7 @@ export const InviteModal: React.FC<{ wallet: string; onClose: () => void }> = ({
     }
   };
   const share = async () => {
-    const text = info
+    const text = info?.open
       ? `Add money to GoodCash for the first time and get ${g(info.friendBonusG)} free. Use my link:`
       : 'Join me on GoodCash. Use my link:';
     try {
@@ -54,8 +54,12 @@ export const InviteModal: React.FC<{ wallet: string; onClose: () => void }> = ({
         </button>
       }
     >
-      <div className="gc-note" style={{ background: '#8cf0c0' }}>
-        {info ? (
+      <div className="gc-note" style={info && !info.open ? undefined : { background: '#8cf0c0' }}>
+        {info && !info.open ? (
+          <>
+            <b>The invite rewards have ended.</b> Thank you for sharing GoodCash. Your link still works as a normal link.
+          </>
+        ) : info ? (
           <>
             <b>You both get G$.</b> When a friend uses your link and adds at least {naira(info.minNaira)} for the first time, they get{' '}
             <b>{g(info.friendBonusG)}</b> and you get <b>{g(info.perFriendG)}</b>.

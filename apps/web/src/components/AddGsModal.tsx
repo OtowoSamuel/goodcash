@@ -27,7 +27,7 @@ import { reportIssue } from '../lib/diag';
 import { BankPicker } from './BankPicker';
 import { StepBar } from './StepBar';
 import { loadSavedAddGs, saveAddGs, type SavedAddGs } from '../lib/addGsSaved';
-import { FRIEND_BONUS_G, FRIEND_MIN_NAIRA, savedReferral } from '../lib/referral';
+import { fetchReferralSummary, savedReferral, type ReferralSummary } from '../lib/referral';
 
 /**
  * Add G$: pay naira by bank transfer and get G$ in your wallet.
@@ -113,6 +113,18 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A friend's offer is shown only while the campaign is open, with the server's own amounts
+  const [friendOffer, setFriendOffer] = useState<ReferralSummary | null>(null);
+  useEffect(() => {
+    if (!savedReferral(wallet)) return;
+    let alive = true;
+    fetchReferralSummary(wallet)
+      .then((s) => alive && setFriendOffer(s.open ? s : null))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [wallet]);
   const [stage, setStage] = useState<OnrampStage>('waiting');
   const [copied, setCopied] = useState<string | null>(null);
   const bank = useBankAccountVerification('NGN');
@@ -357,9 +369,9 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
   if (step === 'amount') {
     body = (
       <>
-        {savedReferral(wallet) && (
+        {friendOffer && (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
-            <b>A friend invited you.</b> Add at least {formatNaira(FRIEND_MIN_NAIRA)} for the first time and you'll get G$ {FRIEND_BONUS_G.toLocaleString('en-US')} free once your wallet is verified with GoodDollar and we've done a quick check.
+            <b>A friend invited you.</b> Add at least {formatNaira(friendOffer.minNaira)} for the first time and you'll get G$ {friendOffer.friendBonusG.toLocaleString('en-US')} free once your wallet is verified with GoodDollar and we've done a quick check.
           </div>
         )}
         <Field label="What do you want to add?">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import worker from './index.js';
 import type { Env } from './index.js';
-import { inviterFrom, qualifyReferral, REFERRAL, referralSummary } from './referral';
+import { campaignOpen, inviterFrom, qualifyReferral, REFERRAL, referralSummary } from './referral';
 
 class MockKV {
   store = new Map<string, string>();
@@ -133,5 +133,62 @@ describe('referralSummary and GET /referral/me', () => {
     expect(await ok.json()).toMatchObject({ friends: 1, earnedG: REFERRAL.inviterG });
     const bad = await worker.fetch(new Request('https://api.test/referral/me?wallet=nope'), env);
     expect(bad.status).toBe(400);
+  });
+});
+
+describe('end date and budget', () => {
+  const END = Date.parse(REFERRAL.endsAt);
+  const store = (kv: MockKV) => kv as unknown as KVNamespace;
+
+  it('counts an order started before the end even if the bank payment lands after it', async () => {
+    const kv = setup({ createdAt: END - 60_000 });
+    expect((await qualifyReferral(store(kv), ID, END + 3_600_000)).ok).toBe(true);
+  });
+
+  it('counts nothing for an order started after the end', async () => {
+    const kv = setup({ createdAt: END + 1 });
+    expect(await qualifyReferral(store(kv), ID, END + 2)).toEqual({ ok: false, reason: 'ended' });
+    expect(kv.puts).toEqual([]);
+  });
+
+  it('adds each reward to the running total', async () => {
+    const kv = setup();
+    await qualifyReferral(store(kv), ID);
+    expect(kv.store.get('reftotal')).toBe(String(REFERRAL.newG + REFERRAL.inviterG));
+  });
+
+  it('records a reward that exactly fits the budget, then refuses the next one', async () => {
+    const kv = setup();
+    kv.store.set('reftotal', String(REFERRAL.budgetG - REFERRAL.newG - REFERRAL.inviterG));
+    expect((await qualifyReferral(store(kv), ID)).ok).toBe(true);
+    expect(kv.store.get('reftotal')).toBe(String(REFERRAL.budgetG));
+
+    const other = '0x4444444444444444444444444444444444444444';
+    kv.store.set(`onramp:${ID2}`, JSON.stringify({ wallet: other, naira: 5000, ref: INVITER }));
+    kv.store.set(`onramp-wallet:${other}:${ID2}`, JSON.stringify({ naira: 5000, stage: 'done' }));
+    expect(await qualifyReferral(store(kv), ID2)).toEqual({ ok: false, reason: 'budget_full' });
+    expect(kv.store.has(`refq:${other}`)).toBe(false);
+    expect(kv.store.get('reftotal')).toBe(String(REFERRAL.budgetG));
+  });
+
+  it('does not record a half reward when only part of it would fit', async () => {
+    const kv = setup();
+    kv.store.set('reftotal', String(REFERRAL.budgetG - REFERRAL.newG - REFERRAL.inviterG + 1));
+    expect(await qualifyReferral(store(kv), ID)).toEqual({ ok: false, reason: 'budget_full' });
+    expect(kv.store.has(`refq:${FRIEND}`)).toBe(false);
+  });
+
+  it('is open before the end and while the budget lasts, and closed after either stops it', async () => {
+    const kv = new MockKV();
+    expect(await campaignOpen(store(kv), END - 1)).toBe(true);
+    expect(await campaignOpen(store(kv), END + 1)).toBe(false);
+    kv.store.set('reftotal', String(REFERRAL.budgetG));
+    expect(await campaignOpen(store(kv), END - 1)).toBe(false);
+  });
+
+  it('tells the app whether the campaign is open', async () => {
+    const kv = new MockKV();
+    expect(await referralSummary(store(kv), INVITER, END - 1)).toMatchObject({ open: true, endsAt: REFERRAL.endsAt });
+    expect(await referralSummary(store(kv), INVITER, END + 1)).toMatchObject({ open: false });
   });
 });

@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 /**
  * Referral rewards waiting to be paid, checked against GoodDollar, as a list to pay by hand.
- * READ ONLY: it never sends anything and never changes storage. It uses your own signed-in wrangler (no secret) and
- * a public Celo node.
+ * It never sends money. Listing only reads. The one thing that writes is --mark-paid ... --yes, which records
+ * that you paid, so the next list does not show the same reward again. It uses your own signed-in wrangler (no
+ * secret) and a public Celo node.
  *
- *   cd /Users/admin/Documents/GoodCash/services/orders && node ../../scripts/referral-payouts.mjs
- *   ... referral-payouts.mjs --csv > rewards.csv     (spreadsheet)
- *   ... referral-payouts.mjs --file dump.json        (a saved list instead of live storage; the check still runs)
+ *   cd /Users/admin/Documents/GoodCash/services/orders
+ *   node ../../scripts/referral-payouts.mjs                      the list (PAY, HOLD, and PAID for what was marked)
+ *   node ../../scripts/referral-payouts.mjs --csv > rewards.csv  the same, as a spreadsheet
+ *   node ../../scripts/referral-payouts.mjs --mark-paid rewards.csv         shows what would be marked, writes nothing
+ *   node ../../scripts/referral-payouts.mjs --mark-paid rewards.csv --yes   marks the PAY lines in that file as paid
+ *   ... --file dump.json   uses a saved list instead of live storage (for testing; the GoodDollar check still runs)
+ *
+ * Pay first, then mark: use the same CSV you paid from. A line is marked only if it matches a real reward (same
+ * wallet, same amount), so a wrong or old file cannot mark anything by mistake.
  *
  * The check: GoodDollar's Identity contract says which person (the "root") each wallet belongs to. One person has
  * one root however many wallets they connect. So:
@@ -14,8 +21,9 @@
  *   - a friend who is the same person as their inviter is not paid ("same person");
  *   - a person is paid a friend bonus once, the earliest first ("already rewarded");
  *   - one person is paid for at most MAX_FRIENDS friends, counted across all their wallets.
- * Each line is PAY or HOLD with the reason. Rows are never dropped, so nothing is lost; a HELD line can be paid
- * later by running the script again once the wallet is verified.
+ * Each line is PAY or HOLD with the reason, or PAID once marked. Rows are never dropped, so nothing is lost; a HELD
+ * line can be paid later by running the script again once the wallet is verified. A line that was marked paid still
+ * counts toward "one person once" and the 20 friends limit.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -32,9 +40,10 @@ const DAY = 24 * 3600 * 1000;
 /**
  * records: [{ friend, reward: { inviter, orderId, naira, at, newG, inviterG, status } }]
  * roots:   Map of lower-case wallet -> lower-case root ('0x000...0' when GoodDollar has not verified it)
- * Returns one line per payee: { action: 'PAY'|'HOLD', role, wallet, g, orderId, at, reason }
+ * paid:    Set of `${friend}:${role}` already marked paid
+ * Returns one line per payee: { action: 'PAY'|'HOLD'|'PAID', role, friend, wallet, g, orderId, at, reason }
  */
-export function judge(records, roots) {
+export function judge(records, roots, paid = new Set()) {
   const rootOf = (w) => roots.get(w.toLowerCase()) ?? ZERO;
   const ordered = [...records].filter((r) => r.reward.status === 'pending').sort((a, b) => a.reward.at - b.reward.at);
   const friendRootsPaid = new Set();
@@ -46,24 +55,33 @@ export function judge(records, roots) {
   for (const { friend, reward } of ordered) {
     const fRoot = rootOf(friend);
     const iRoot = rootOf(reward.inviter);
-    const base = { orderId: reward.orderId, at: new Date(reward.at).toISOString() };
+    const base = { orderId: reward.orderId, at: new Date(reward.at).toISOString(), friend };
     const notes = [];
     if (byInviter.get(reward.inviter) >= 5) notes.push(`inviter has ${byInviter.get(reward.inviter)} friends`);
     if (ordered.filter((s) => s.reward.inviter === reward.inviter && Math.abs(s.reward.at - reward.at) < DAY).length >= 3) notes.push('3 or more friends of this inviter within a day');
     const look = notes.length ? `; look at: ${notes.join(', ')}` : '';
 
     // The friend's bonus
+    const friendPaid = paid.has(paidKey(friend, 'friend'));
+    if (friendPaid && fRoot !== ZERO) friendRootsPaid.add(fRoot);
     let friendReason = '';
-    if (fRoot === ZERO) friendReason = 'not verified with GoodDollar yet';
+    if (friendPaid) friendReason = '';
+    else if (fRoot === ZERO) friendReason = 'not verified with GoodDollar yet';
     else if (iRoot !== ZERO && fRoot === iRoot) friendReason = 'same person as the inviter';
     else if (friendRootsPaid.has(fRoot)) friendReason = 'this person was already rewarded';
     const friendOk = friendReason === '';
-    if (friendOk) friendRootsPaid.add(fRoot);
-    lines.push({ ...base, role: 'friend', wallet: friend, g: reward.newG, action: friendOk ? 'PAY' : 'HOLD', reason: friendOk ? `verified${look}` : friendReason });
+    if (friendOk && !friendPaid) friendRootsPaid.add(fRoot);
+    lines.push({ ...base, role: 'friend', wallet: friend, g: reward.newG, action: friendPaid ? 'PAID' : friendOk ? 'PAY' : 'HOLD', reason: friendPaid ? 'already paid' : friendOk ? `verified${look}` : friendReason });
 
     // The inviter's share (zero when they were over the cap when it was recorded)
     if (reward.inviterG > 0) {
+      const inviterPaid = paid.has(paidKey(friend, 'inviter'));
       let reason = '';
+      if (inviterPaid) {
+        if (iRoot !== ZERO) friendsPaidFor.set(iRoot, (friendsPaidFor.get(iRoot) ?? 0) + 1);
+        lines.push({ ...base, role: 'inviter', wallet: reward.inviter, g: reward.inviterG, action: 'PAID', reason: 'already paid' });
+        continue;
+      }
       if (iRoot === ZERO) reason = 'inviter not verified with GoodDollar yet';
       else if (fRoot !== ZERO && fRoot === iRoot) reason = 'same person as the friend';
       else if (!friendOk) reason = `friend's bonus is held (${friendReason})`;
@@ -76,9 +94,43 @@ export function judge(records, roots) {
   return lines;
 }
 
+export const paidKey = (friend, role) => `${friend.toLowerCase()}:${role}`;
+
 export function totals(lines) {
   const pay = lines.filter((l) => l.action === 'PAY');
-  return { pay: pay.length, payG: pay.reduce((n, l) => n + l.g, 0), hold: lines.length - pay.length };
+  const paid = lines.filter((l) => l.action === 'PAID');
+  return { pay: pay.length, payG: pay.reduce((n, l) => n + l.g, 0), hold: lines.length - pay.length - paid.length, paid: paid.length };
+}
+
+/** Read back a CSV this script wrote. */
+export function parseCsv(text) {
+  const rows = text.split(/\r?\n/).filter((l) => l.trim() !== '');
+  const cells = (line) => [...line.matchAll(/"((?:[^"]|"")*)"|([^,]+)/g)].map((m) => (m[1] ?? m[2]).replaceAll('""', '"'));
+  const head = rows[0].split(',').map((h) => h.trim());
+  return rows.slice(1).map((line) => Object.fromEntries(cells(line).map((v, i) => [head[i], v])));
+}
+
+/**
+ * The lines of a paid-from CSV to mark as paid. Each must be a PAY line that matches a real reward (same friend,
+ * same wallet, same amount) and not already marked. Anything else throws, so nothing is half-marked.
+ */
+export function marksFromCsv(text, records, paid = new Set()) {
+  const marks = [];
+  for (const row of parseCsv(text)) {
+    if (row.action !== 'PAY') continue;
+    const rec = records.find((r) => r.friend.toLowerCase() === String(row.friend).toLowerCase());
+    if (!rec) throw new Error(`No reward for friend ${row.friend}`);
+    const role = row.role;
+    const expectWallet = role === 'friend' ? rec.friend : role === 'inviter' ? rec.reward.inviter : null;
+    const expectG = role === 'friend' ? rec.reward.newG : rec.reward.inviterG;
+    if (!expectWallet || String(row.wallet).toLowerCase() !== expectWallet.toLowerCase() || Number(row.g) !== expectG) {
+      throw new Error(`Line does not match the reward: ${role} ${row.wallet} G$ ${row.g}`);
+    }
+    const key = paidKey(rec.friend, role);
+    if (paid.has(key)) throw new Error(`Already marked paid: ${role} ${row.wallet}`);
+    if (!marks.some((m) => m.key === key)) marks.push({ key, friend: rec.friend.toLowerCase(), role, wallet: expectWallet.toLowerCase(), g: expectG });
+  }
+  return marks;
 }
 
 // --- live data ---------------------------------------------------------------------------------------------------
@@ -88,11 +140,21 @@ function wrangler(args) {
 }
 
 function loadFromStorage() {
-  const keys = JSON.parse(wrangler(['kv', 'key', 'list', '--namespace-id', NAMESPACE_ID, '--prefix', 'refq:', '--remote']));
+  const keys = JSON.parse(wrangler(['kv', 'key', 'list', '--namespace-id', NAMESPACE_ID, '--prefix', 'refq:']));
   return keys.map((k) => ({
     friend: k.name.slice('refq:'.length),
-    reward: JSON.parse(wrangler(['kv', 'key', 'get', k.name, '--namespace-id', NAMESPACE_ID, '--remote'])),
+    reward: JSON.parse(wrangler(['kv', 'key', 'get', k.name, '--namespace-id', NAMESPACE_ID])),
   }));
+}
+
+function loadPaid() {
+  const keys = JSON.parse(wrangler(['kv', 'key', 'list', '--namespace-id', NAMESPACE_ID, '--prefix', 'refpaid:']));
+  return new Set(keys.map((k) => k.name.slice('refpaid:'.length)));
+}
+
+function writeMark(m) {
+  const value = JSON.stringify({ at: new Date().toISOString(), wallet: m.wallet, g: m.g });
+  wrangler(['kv', 'key', 'put', `refpaid:${m.key}`, value, '--namespace-id', NAMESPACE_ID]);
 }
 
 /** GoodDollar's answer for one wallet. Throws if the node does not answer: a failed check must never look like "verified". */
@@ -122,16 +184,34 @@ export async function lookUpRoots(records, fetchImpl = fetch) {
 const csvCell = (v) => `"${String(v).replaceAll('"', '""')}"`;
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const fileAt = process.argv.indexOf('--file');
-  const records = fileAt > 0 ? JSON.parse(readFileSync(process.argv[fileAt + 1], 'utf8')) : loadFromStorage();
-  const lines = judge(records, await lookUpRoots(records));
-  if (process.argv.includes('--csv')) {
-    const cols = ['action', 'role', 'wallet', 'g', 'reason', 'at', 'orderId'];
-    console.log(cols.join(','));
-    for (const l of lines) console.log(cols.map((c) => csvCell(l[c])).join(','));
+  const arg = (name) => {
+    const at = process.argv.indexOf(name);
+    return at > 0 ? process.argv[at + 1] : null;
+  };
+  const fileArg = arg('--file');
+  const markArg = arg('--mark-paid');
+  const records = fileArg ? JSON.parse(readFileSync(fileArg, 'utf8')) : loadFromStorage();
+  const paid = fileArg ? new Set() : loadPaid();
+
+  if (markArg) {
+    const marks = marksFromCsv(readFileSync(markArg, 'utf8'), records, paid);
+    for (const m of marks) console.log(`${m.role.padEnd(7)} ${m.wallet}  G$ ${String(m.g).padStart(5)}`);
+    if (!process.argv.includes('--yes')) {
+      console.log(`\n${marks.length} lines would be marked as paid. Nothing was written. Add --yes after you have paid them.`);
+    } else {
+      for (const m of marks) writeMark(m);
+      console.log(`\nMarked ${marks.length} lines as paid.`);
+    }
   } else {
-    for (const l of lines) console.log(`${l.action.padEnd(4)} ${l.role.padEnd(7)} ${l.wallet}  G$ ${String(l.g).padStart(5)}  ${l.reason}`);
-    const t = totals(lines);
-    console.log(`\nPAY ${t.pay} lines, G$ ${t.payG.toLocaleString('en-US')} in total. HOLD ${t.hold} lines (not paid).`);
+    const lines = judge(records, await lookUpRoots(records), paid);
+    if (process.argv.includes('--csv')) {
+      const cols = ['action', 'role', 'friend', 'wallet', 'g', 'reason', 'at', 'orderId'];
+      console.log(cols.join(','));
+      for (const l of lines) console.log(cols.map((c) => csvCell(l[c])).join(','));
+    } else {
+      for (const l of lines) console.log(`${l.action.padEnd(4)} ${l.role.padEnd(7)} ${l.wallet}  G$ ${String(l.g).padStart(5)}  ${l.reason}`);
+      const t = totals(lines);
+      console.log(`\nPAY ${t.pay} lines, G$ ${t.payG.toLocaleString('en-US')} in total. HOLD ${t.hold} lines (not paid). Already paid: ${t.paid}.`);
+    }
   }
 }

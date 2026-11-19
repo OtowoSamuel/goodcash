@@ -41,11 +41,10 @@ export function inviteLink(wallet: string): string {
   return `${SITE}/?ref=${wallet.toLowerCase()}`;
 }
 
-/** What a friend is told before they top up. The server decides the real rules; keep these in step with services/orders/src/referral.ts. */
-export const FRIEND_MIN_NAIRA = 2000;
-export const FRIEND_BONUS_G = 3500;
-
 export interface ReferralSummary {
+  /** False once the campaign has ended or its budget is used up */
+  open: boolean;
+  endsAt: string;
   friends: number;
   earnedG: number;
   bonusG: number;
