@@ -75,12 +75,12 @@ export const InviteModal: React.FC<{ wallet: string; onClose: () => void }> = ({
 
       {info && (
         <div className="gc-sm" style={{ marginTop: 14 }} aria-live="polite">
-          <div>
+          <div style={{ marginBottom: 8 }}>
             Friends who have added money: <b>{info.friends}</b>
             {info.friends >= info.maxFriends ? ' (the most we can reward in this round)' : ''}
           </div>
           {info.earnedG > 0 && (
-            <div>
+            <div style={{ marginBottom: 8 }}>
               You have earned <b>{g(info.earnedG)}</b>. We check each reward and send it to your wallet by hand, so it can take a few days.
             </div>
           )}
