@@ -359,7 +359,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
       <>
         {savedReferral(wallet) && (
           <div className="gc-note" style={{ background: '#8cf0c0' }}>
-            <b>A friend invited you.</b> Add at least {formatNaira(FRIEND_MIN_NAIRA)} for the first time and you'll get G$ {FRIEND_BONUS_G.toLocaleString('en-US')} free, after a quick check.
+            <b>A friend invited you.</b> Add at least {formatNaira(FRIEND_MIN_NAIRA)} for the first time and you'll get G$ {FRIEND_BONUS_G.toLocaleString('en-US')} free once your wallet is verified with GoodDollar and we've done a quick check.
           </div>
         )}
         <Field label="What do you want to add?">

@@ -93,7 +93,7 @@ export const InviteModal: React.FC<{ wallet: string; onClose: () => void }> = ({
       )}
       {failed && <div className="gc-sm" style={{ marginTop: 12 }}>We could not load your numbers right now. Your link still works.</div>}
       <div className="gc-sm" style={{ marginTop: 12, opacity: 0.8 }}>
-        Rewards are for real, new customers only. Links made to claim rewards over and over are not paid.
+        Rewards go only to wallets verified with GoodDollar, once per person. Links made to claim rewards over and over are not paid.
       </div>
     </Modal>
   );
