@@ -119,6 +119,29 @@ export async function readBallot(wallet: string, client: ReadClient = publicClie
   };
 }
 
+// --- GoodDollar verification -----------------------------------------------------------------------------------
+
+/** GoodDollar's Identity contract on Celo (GoodProtocol releases/deployment.json, "production-celo") */
+export const GOODDOLLAR_IDENTITY: Address = '0xC361A6E67822a0EDc17D899227dd9FC50BD62F42';
+/** Where a person does the face check. GoodDollar's own site sends people here. */
+export const VERIFY_URL = 'https://wallet.gooddollar.org';
+
+const IDENTITY_ABI = [
+  { type: 'function', name: 'getWhitelistedRoot', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'address' }] },
+] as const;
+
+const ZERO = '0x0000000000000000000000000000000000000000';
+
+/**
+ * Is this wallet verified with GoodDollar? GoodDollar answers with the person's main wallet, or zero when the wallet
+ * is not verified. A wallet connected to a verified person counts too. Throws when the chain cannot be read, so a
+ * failed check is never mistaken for "not verified".
+ */
+export async function readVerified(wallet: string, client: ReadClient = publicClient()): Promise<boolean> {
+  const root = await (client.readContract as (a: unknown) => Promise<string>)({ address: GOODDOLLAR_IDENTITY, abi: IDENTITY_ABI, functionName: 'getWhitelistedRoot', args: [wallet] });
+  return typeof root === 'string' && root.toLowerCase() !== ZERO;
+}
+
 // --- working out the vote --------------------------------------------------------------------------------------
 
 export type VotePlan =

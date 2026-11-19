@@ -6,6 +6,7 @@ import type { Ballot, VoteFee } from '../lib/vote';
 const m = vi.hoisted(() => ({
   readBallot: vi.fn(),
   estimateVoteFee: vi.fn(),
+  readVerified: vi.fn(),
   registerVoter: vi.fn(),
   sendVote: vi.fn(),
   confirmVote: vi.fn(),
@@ -30,6 +31,7 @@ beforeEach(() => {
   m.loadPendingVote.mockReturnValue(null);
   m.readBallot.mockResolvedValue(ballot());
   m.estimateVoteFee.mockResolvedValue(fee());
+  m.readVerified.mockResolvedValue(true);
 });
 afterEach(() => vi.useRealTimers());
 
@@ -93,28 +95,150 @@ describe('VoteModal', () => {
     expect(btn).toBeDisabled();
   });
 
-  it('asks a wallet with no voting points to turn voting on, then shows the slider', async () => {
-    m.readBallot.mockResolvedValueOnce(ballot({ registered: false, power: 0, available: 0 }));
-    m.registerVoter.mockResolvedValue('registered');
-    m.readBallot.mockResolvedValue(ballot());
-    open();
-    fireEvent.click(await screen.findByRole('button', { name: 'Turn on voting' }));
-    await voteButton();
-    expect(m.registerVoter).toHaveBeenCalledWith(WALLET);
+  describe('step 1: verify with GoodDollar', () => {
+    const unregistered = () => ballot({ registered: false, power: 0, available: 0 });
+
+    it('sends a wallet that is not verified to GoodWallet, with a button to check again', async () => {
+      m.readBallot.mockResolvedValue(unregistered());
+      m.readVerified.mockResolvedValue(false);
+      open();
+      const link = await screen.findByRole('link', { name: /verify with gooddollar/i });
+      expect(link).toHaveAttribute('href', 'https://wallet.gooddollar.org');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+      expect(screen.getByRole('button', { name: /i've verified, check again/i })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: /^vote/i })).toBeNull();
+      expect(m.registerVoter).not.toHaveBeenCalled();
+    });
+
+    it('moves on to the Vote button once the voter has verified and taps check again', async () => {
+      m.readBallot.mockResolvedValue(unregistered());
+      m.readVerified.mockResolvedValueOnce(false).mockResolvedValue(true);
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: /i've verified, check again/i }));
+      expect(await screen.findByRole('button', { name: 'Vote' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /verify with gooddollar/i })).toBeNull();
+    });
+
+    it('shows the two steps, with step 1 done for a verified voter', async () => {
+      m.readBallot.mockResolvedValue(unregistered());
+      open();
+      const steps = await screen.findByRole('list', { name: 'Steps' });
+      expect(steps).toHaveTextContent('Verify with GoodDollar (done)');
+      expect(steps).toHaveTextContent('Vote for GoodCash');
+    });
+
+    it('does not ask GoodDollar about a wallet that already has voting points', async () => {
+      open();
+      await voteButton();
+      expect(m.readVerified).not.toHaveBeenCalled();
+    });
+
+    it('lets the voter try again when GoodDollar cannot be reached, and never calls it "not verified"', async () => {
+      m.readBallot.mockResolvedValue(unregistered());
+      m.readVerified.mockRejectedValueOnce(new Error('rpc down')).mockResolvedValue(true);
+      open();
+      expect(await screen.findByText(/could not check voting/)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /verify with gooddollar/i })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(await screen.findByRole('button', { name: 'Vote' })).toBeInTheDocument();
+    });
   });
 
-  it.each([
-    ['not_verified', /has not verified this wallet/],
-    ['other_wallet', /already used its vote from another wallet/],
-    ['busy', /busy right now/],
-    ['error', /could not turn on voting/],
-  ])('explains "%s" in plain words and lets the voter try again', async (outcome, text) => {
-    m.readBallot.mockResolvedValue(ballot({ registered: false, power: 0, available: 0 }));
-    m.registerVoter.mockResolvedValue(outcome);
-    open();
-    fireEvent.click(await screen.findByRole('button', { name: 'Turn on voting' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(text);
-    expect(screen.getByRole('button', { name: 'Turn on voting' })).toBeEnabled();
+  describe('step 2: one Vote button for a first-time voter', () => {
+    const unregistered = () => ballot({ registered: false, power: 0, available: 0 });
+    beforeEach(() => {
+      m.readBallot.mockResolvedValueOnce(unregistered());
+    });
+
+    it('sets up their voting points, then votes with all of them, without a second button', async () => {
+      m.registerVoter.mockResolvedValue('registered');
+      m.readBallot.mockResolvedValue(ballot({ power: 10, available: 10 }));
+      m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
+      m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10, available: 0, allocated: 10 }) });
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      await waitFor(() => expect(screen.getByText(/GoodCash now has 10 points/)).toBeInTheDocument(), { timeout: 8000 });
+      expect(m.registerVoter).toHaveBeenCalledWith(WALLET);
+      expect(m.sendVote).toHaveBeenCalledTimes(1);
+      expect(m.sendVote).toHaveBeenCalledWith(WALLET, 10, 520_000n);
+      // registering comes first
+      expect(m.registerVoter.mock.invocationCallOrder[0]).toBeLessThan(m.sendVote.mock.invocationCallOrder[0]);
+    });
+
+    it('uses all the points the voter was given, not a fixed ten', async () => {
+      m.registerVoter.mockResolvedValue('registered');
+      m.readBallot.mockResolvedValue(ballot({ power: 500, available: 500 }));
+      m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
+      m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 500 }) });
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, 500, 520_000n), { timeout: 8000 });
+    });
+
+    it('stops before the vote when the wallet cannot pay the fee: voting is set up, and it offers to add CELO', async () => {
+      m.registerVoter.mockResolvedValue('registered');
+      m.readBallot.mockResolvedValue(ballot());
+      m.estimateVoteFee.mockResolvedValue(fee({ enough: false, haveCelo: 0 }));
+      const addCelo = vi.fn();
+      open({ onAddCelo: addCelo });
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      expect(await screen.findByText(/Add a little CELO for the network fee/, undefined, { timeout: 8000 })).toBeInTheDocument();
+      expect(m.sendVote).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: /add celo with naira/i }));
+      expect(addCelo).toHaveBeenCalled();
+    });
+
+    it('stops before the vote when the fee cannot be checked, and sends nothing', async () => {
+      m.registerVoter.mockResolvedValue('registered');
+      m.readBallot.mockResolvedValue(ballot());
+      m.estimateVoteFee.mockRejectedValue(new Error('reverted'));
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      expect(await screen.findByText(/cannot send a vote right now/, undefined, { timeout: 8000 })).toBeInTheDocument();
+      expect(m.sendVote).not.toHaveBeenCalled();
+    });
+
+    it('does not vote when the voter cancels the free signature', async () => {
+      m.registerVoter.mockRejectedValue({ code: 4001 });
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(/cancelled/i);
+      expect(m.sendVote).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Vote' })).toBeEnabled();
+    });
+
+    it('waits for a slow node to show the new voting points before carrying on', async () => {
+      m.registerVoter.mockResolvedValue('registered');
+      m.readBallot.mockResolvedValueOnce(unregistered()).mockResolvedValue(ballot());
+      m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
+      m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10 }) });
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, 10, 520_000n), { timeout: 10000 });
+    });
+
+    it.each([
+      ['other_wallet', /already used its vote from another wallet/],
+      ['busy', /busy right now/],
+      ['error', /could not set up your vote/],
+    ])('explains "%s" in plain words, sends no vote, and lets the voter try again', async (outcome, text) => {
+      m.registerVoter.mockResolvedValue(outcome);
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(text);
+      expect(screen.getByRole('button', { name: 'Vote' })).toBeEnabled();
+      expect(m.sendVote).not.toHaveBeenCalled();
+    });
+
+    it('moves back to step 1 when GoodDollar says the wallet is not verified after all', async () => {
+      m.registerVoter.mockResolvedValue('not_verified');
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(/has not verified this wallet/);
+      expect(screen.getByRole('link', { name: /verify with gooddollar/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /i've verified, check again/i })).toBeEnabled();
+    });
   });
 
   it('explains a voter who has spent every point elsewhere, with a link, and offers no vote', async () => {

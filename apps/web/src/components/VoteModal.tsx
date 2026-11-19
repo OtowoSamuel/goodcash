@@ -9,9 +9,11 @@ import {
   loadPendingVote,
   planVote,
   readBallot,
+  readVerified,
   registerVoter,
   savePendingVote,
   sendVote,
+  VERIFY_URL,
   VOTE_CHAIN_ID,
   VOTE_COUNCIL,
   type RegisterOutcome,
@@ -23,21 +25,29 @@ const COUNCIL_PAGE = `https://flowstate.network/flow-councils/${VOTE_CHAIN_ID}/$
 type Phase = 'loading' | 'unavailable' | 'ready' | 'registering' | 'sending' | 'confirming' | 'done' | 'unclear';
 
 const registerMessage: Record<Exclude<RegisterOutcome, 'registered'>, string> = {
-  not_verified: 'GoodDollar has not verified this wallet yet. Finish the verification in the GoodDollar app, then come back and try again.',
+  not_verified: 'GoodDollar has not verified this wallet yet. Finish the face check in GoodWallet, then tap check again.',
   other_wallet: 'This GoodDollar account has already used its vote from another wallet. Please vote from that wallet.',
   busy: 'Voting is busy right now. Please try again in a minute.',
-  error: 'We could not turn on voting just now. Nothing was taken. Please try again.',
+  error: 'We could not set up your vote just now. Nothing was taken. Please try again.',
 };
 
-/** Vote for GoodCash in the GoodBuilders programme without leaving the app. Free: it uses voting points, not G$. */
+/**
+ * Vote for GoodCash in the GoodBuilders programme without leaving the app. Free of G$: it uses voting points.
+ *
+ * Two steps for the customer: 1. be verified with GoodDollar, 2. vote. A first-time voter taps one Vote button;
+ * we set up their voting points in the background (one free signature) and carry straight on to their vote.
+ */
 export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCelo?: () => void }> = ({ wallet, onClose, onAddCelo }) => {
   const [phase, setPhase] = useState<Phase>('loading');
   const [ballot, setBallot] = useState<Ballot | null>(null);
+  const [verified, setVerified] = useState<boolean | null>(null);
   const [points, setPoints] = useState(0);
   // The fee is worked out for one particular vote; it stays valid until the chosen points change
   const [feeState, setFeeState] = useState<{ for: number; fee: VoteFee | null; failed: boolean } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [gave, setGave] = useState(0);
+  // A first-time voter pressed Vote: once their points are set up and the fee is fine, the vote goes on by itself
+  const [continueVote, setContinueVote] = useState(false);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -51,8 +61,11 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
     setPhase('loading');
     try {
       const b = await readBallot(wallet);
+      // A wallet with voting points is verified by definition. Otherwise ask GoodDollar.
+      const v = b.registered ? true : await readVerified(wallet);
       if (!alive.current) return;
       setBallot(b);
+      setVerified(v);
       setPoints(b.available);
       setPhase('ready');
     } catch {
@@ -108,77 +121,106 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
     };
   }, [phase, planned, wallet, feeState]);
 
-  const turnOnVoting = async () => {
-    setNote(null);
-    setPhase('registering');
-    try {
-      const outcome = await registerVoter(wallet);
-      if (outcome !== 'registered') {
-        setNote(registerMessage[outcome]);
-        setPhase('ready');
-        return;
-      }
-      // Flow State has waited for the chain, but a node can be a moment behind: look a few times
-      for (let i = 0; i < 4; i++) {
-        const b = await readBallot(wallet);
+  const castVote = useCallback(
+    async (newTotal: number, gas: bigint) => {
+      setNote(null);
+      setPhase('sending');
+      try {
+        const hash = await sendVote(wallet, newTotal, gas);
         if (!alive.current) return;
-        if (b.registered) {
-          setBallot(b);
-          setPoints(b.available);
+        setPhase('confirming');
+        const r = await confirmVote(hash, newTotal, wallet);
+        if (!alive.current) return;
+        if (r.status === 'done') {
+          savePendingVote(wallet, null);
+          setGave(r.ballot.mine);
+          setBallot(r.ballot);
+          setPhase('done');
+        } else if (r.status === 'failed') {
+          savePendingVote(wallet, null);
+          setNote('That vote did not go through, and nothing was taken. You can try again.');
+          await load();
+        } else {
+          setPhase('unclear');
+        }
+      } catch (e) {
+        if (!alive.current) return;
+        setNote(friendlyVoteError(e));
+        setPhase('ready');
+      }
+    },
+    [wallet, load],
+  );
+
+  // After a first-time voter's points are set up: carry on to the vote, but only when it is safe to. If the wallet
+  // cannot pay the fee, or the fee cannot be checked, stop and show the normal screen so they can fix that first.
+  useEffect(() => {
+    if (!continueVote || phase !== 'ready') return;
+    if (feeFailed || (fee && !fee.enough)) {
+      setContinueVote(false);
+      setNote(fee && !fee.enough ? 'Your voting is set up. Add a little CELO for the network fee, then tap Vote.' : null);
+      return;
+    }
+    if (fee && plan && plan.ok) {
+      setContinueVote(false);
+      void castVote(plan.newTotal, fee.gas);
+    }
+  }, [continueVote, phase, fee, feeFailed, plan, castVote]);
+
+  const vote = async () => {
+    if (!ballot) return;
+    // A first-time voter: set up their voting points first (one free signature), then carry on to the vote with all of them
+    if (!ballot.registered) {
+      setNote(null);
+      setPhase('registering');
+      try {
+        const outcome = await registerVoter(wallet);
+        if (outcome !== 'registered') {
+          setNote(registerMessage[outcome]);
+          if (outcome === 'not_verified') setVerified(false);
           setPhase('ready');
           return;
         }
-        await new Promise((r) => setTimeout(r, 1500));
-      }
-      setNote('Voting is being turned on. Please check again in a minute.');
-      await load();
-    } catch (e) {
-      if (!alive.current) return;
-      setNote(friendlyVoteError(e));
-      setPhase('ready');
-    }
-  };
-
-  const vote = async () => {
-    if (!plan || !plan.ok || !fee || !fee.enough) return;
-    setNote(null);
-    setPhase('sending');
-    try {
-      const hash = await sendVote(wallet, plan.newTotal, fee.gas);
-      if (!alive.current) return;
-      setPhase('confirming');
-      const r = await confirmVote(hash, plan.newTotal, wallet);
-      if (!alive.current) return;
-      if (r.status === 'done') {
-        savePendingVote(wallet, null);
-        setGave(r.ballot.mine);
-        setBallot(r.ballot);
-        setPhase('done');
-      } else if (r.status === 'failed') {
-        savePendingVote(wallet, null);
-        setNote('That vote did not go through, and nothing was taken. You can try again.');
+        // Flow State has waited for the chain, but a node can be a moment behind: look a few times
+        for (let i = 0; i < 4; i++) {
+          const b = await readBallot(wallet);
+          if (!alive.current) return;
+          if (b.registered) {
+            setBallot(b);
+            setPoints(b.available);
+            setFeeState(null);
+            setContinueVote(true);
+            setPhase('ready');
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+        setNote('Your voting is being set up. Please tap Check again in a minute.');
         await load();
-      } else {
-        setPhase('unclear');
+      } catch (e) {
+        if (!alive.current) return;
+        setNote(friendlyVoteError(e));
+        setPhase('ready');
       }
-    } catch (e) {
-      if (!alive.current) return;
-      setNote(friendlyVoteError(e));
-      setPhase('ready');
+      return;
     }
+    if (!plan || !plan.ok || !fee || !fee.enough) return;
+    await castVote(plan.newTotal, fee.gas);
   };
 
-  const busy = phase === 'registering' || phase === 'sending' || phase === 'confirming';
+  const busy = phase === 'registering' || phase === 'sending' || phase === 'confirming' || continueVote;
+  const registered = !!ballot && ballot.registered;
+  const needsVerify = phase === 'ready' && !!ballot && ballot.active && !registered && verified === false;
+  const firstVote = phase === 'ready' && !!ballot && ballot.active && !registered && verified === true;
+  const noPointsLeft = phase === 'ready' && registered && !!ballot && ballot.available < 1;
   const canVote = phase === 'ready' && !!plan && plan.ok && !!fee && fee.enough;
-  const needsRegister = phase === 'ready' && !!ballot && ballot.active && !ballot.registered;
-  const noPointsLeft = phase === 'ready' && !!ballot && ballot.registered && ballot.available < 1;
 
   const primary = (label: string, onClick: () => void, enabled: boolean) => (
     <button type="button" onClick={onClick} disabled={!enabled || busy} className={`gc-btn gc-hit ${enabled && !busy ? '' : 'gc-btn--dis'}`} style={{ height: 46, width: '100%' }}>
       {busy ? (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span className="w-4 h-4 rounded-full border-[3px] border-current border-t-transparent animate-spin" aria-hidden="true" />
-          {phase === 'sending' ? 'Approve in your wallet…' : phase === 'registering' ? 'Turning on voting…' : 'Confirming…'}
+          {phase === 'sending' ? 'Approve in your wallet…' : phase === 'registering' ? 'Setting up your vote…' : 'Confirming…'}
         </span>
       ) : (
         label
@@ -190,10 +232,19 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
   if (phase === 'done') footer = primary('Done', onClose, true);
   else if (phase === 'unclear') footer = primary('Check again', () => void followPending(), true);
   else if (phase === 'unavailable') footer = primary('Try again', () => void load(), true);
-  else if (needsRegister) footer = primary('Turn on voting', () => void turnOnVoting(), true);
+  else if (needsVerify) footer = primary("I've verified, check again", () => void load(), true);
+  else if (firstVote) footer = primary('Vote', () => void vote(), true);
   else if (phase === 'ready' && plan?.ok) footer = primary(`Vote with ${points} ${points === 1 ? 'point' : 'points'}`, () => void vote(), canVote);
   else if (busy) footer = primary('', () => undefined, false);
   else footer = primary('Close', onClose, true);
+
+  const showSteps = phase !== 'loading' && phase !== 'unavailable' && !!ballot && ballot.active;
+  const stepStyle = (done: boolean, active: boolean): React.CSSProperties => ({ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', fontWeight: 800, opacity: done || active ? 1 : 0.55 });
+  const badge = (done: boolean, n: number) => (
+    <span aria-hidden="true" style={{ width: 26, height: 26, borderRadius: 13, border: '2px solid #111', background: done ? '#8cf0c0' : '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flex: '0 0 auto' }}>
+      {done ? '✓' : n}
+    </span>
+  );
 
   return (
     <Modal label="Vote for GoodCash" title="Vote for GoodCash" onClose={busy ? () => undefined : onClose} z={70} tone="white" footer={footer}>
@@ -209,13 +260,37 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
         <div className="gc-note" style={{ marginTop: 12 }}>Voting for GoodCash is not open right now. Please check back soon.</div>
       )}
 
-      {needsRegister && (
-        <div className="gc-sm" style={{ marginTop: 12 }}>
-          To vote, your wallet must be verified with GoodDollar. Tap <b>Turn on voting</b> and sign a free message in your wallet. It costs nothing and sends no money. Then you will get your voting points.
+      {showSteps && (
+        <ol style={{ listStyle: 'none', padding: 0, margin: '12px 0 0' }} aria-label="Steps">
+          <li style={stepStyle(verified === true || registered, needsVerify)}>
+            {badge(verified === true || registered, 1)}
+            <span>Verify with GoodDollar{verified === true || registered ? ' (done)' : ''}</span>
+          </li>
+          <li style={stepStyle(phase === 'done', !needsVerify)}>
+            {badge(phase === 'done', 2)}
+            <span>Vote for GoodCash</span>
+          </li>
+        </ol>
+      )}
+
+      {needsVerify && (
+        <div style={{ marginTop: 8 }}>
+          <div className="gc-sm">
+            To vote, you must be verified with GoodDollar. Open GoodWallet, do the quick face check, then come back here and tap <b>I've verified, check again</b>.
+          </div>
+          <a href={VERIFY_URL} target="_blank" rel="noopener noreferrer" className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%', marginTop: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+            Verify with GoodDollar ↗
+          </a>
         </div>
       )}
 
-      {phase === 'ready' && ballot && ballot.registered && ballot.mine > 0 && (
+      {firstVote && (
+        <div className="gc-sm" style={{ marginTop: 8 }}>
+          You are verified. Tap <b>Vote</b> and we set up your voting points, then vote for GoodCash with all of them. Your wallet will ask you to approve two things: a free message first (no money), then the vote.
+        </div>
+      )}
+
+      {phase === 'ready' && registered && ballot && ballot.mine > 0 && (
         <div className="gc-note" style={{ marginTop: 12 }}>
           <b>You already support GoodCash</b> with {ballot.mine} {ballot.mine === 1 ? 'point' : 'points'}. Thank you!
         </div>
@@ -228,7 +303,7 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
         </div>
       )}
 
-      {phase === 'ready' && ballot && ballot.registered && ballot.available >= 1 && (
+      {phase === 'ready' && registered && ballot && ballot.available >= 1 && (
         <div style={{ marginTop: 14 }}>
           <label htmlFor="gc-vote-points" className="gc-sm" style={{ fontWeight: 800, display: 'block' }}>
             How many points do you want to give? <span style={{ fontSize: 20 }}>{points}</span> of {ballot.available}

@@ -10,9 +10,12 @@ import {
   loadPendingVote,
   planVote,
   readBallot,
+  readVerified,
   registerVoter,
   savePendingVote,
   sendVote,
+  GOODDOLLAR_IDENTITY,
+  VERIFY_URL,
   voteData,
   VOTE_COUNCIL,
   type Ballot,
@@ -268,5 +271,32 @@ describe('pending vote and plain words', () => {
     expect(friendlyVoteError(new Error('insufficient funds for gas'))).toMatch(/CELO/);
     expect(friendlyVoteError(new Error('WRONG_ACCOUNT'))).toMatch(/different account/);
     expect(friendlyVoteError(new Error('boom 0xdeadbeef'))).not.toMatch(/boom|0xdead/);
+  });
+});
+
+describe('readVerified', () => {
+  const answer = (root: string) => ({ readContract: vi.fn(async () => root) }) as never;
+  const ZERO = '0x0000000000000000000000000000000000000000';
+
+  it('is true when GoodDollar names the wallet as its own person', async () => {
+    expect(await readVerified(WALLET, answer(WALLET))).toBe(true);
+  });
+  it('is true for a wallet connected to a verified person (GoodDollar names a different main wallet)', async () => {
+    expect(await readVerified(WALLET, answer('0xf0095e6a66770ff3c85a9173d07a140088a15569'))).toBe(true);
+  });
+  it('is false when GoodDollar answers with the zero address, in any letter case', async () => {
+    expect(await readVerified(WALLET, answer(ZERO))).toBe(false);
+  });
+  it('asks GoodDollar\'s own Identity contract about exactly this wallet', async () => {
+    const c = answer(ZERO) as unknown as { readContract: ReturnType<typeof vi.fn> };
+    await readVerified(WALLET, c as never);
+    expect(c.readContract).toHaveBeenCalledWith(expect.objectContaining({ address: GOODDOLLAR_IDENTITY, functionName: 'getWhitelistedRoot', args: [WALLET] }));
+    expect(GOODDOLLAR_IDENTITY).toBe('0xC361A6E67822a0EDc17D899227dd9FC50BD62F42');
+  });
+  it('throws when the chain cannot be read, so a failed check is never taken for "not verified"', async () => {
+    await expect(readVerified(WALLET, { readContract: vi.fn(async () => { throw new Error('rpc down'); }) } as never)).rejects.toThrow('rpc down');
+  });
+  it('sends people to GoodDollar\'s own wallet to verify', () => {
+    expect(VERIFY_URL).toBe('https://wallet.gooddollar.org');
   });
 });
