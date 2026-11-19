@@ -1560,7 +1560,7 @@ export function App({
               isStale={balanceIsStale}
               ngnPerUsdt={liveNgnRate}
             />
-            <HomeLinks language={language} />
+            <HomeLinks language={language} wallet={walletAddress} />
             </>
           ) : currentTab === 'cashout' ? (
             <>
@@ -2031,7 +2031,7 @@ export function App({
                 isStale={balanceIsStale}
                 ngnPerUsdt={liveNgnRate}
               />
-              <HomeLinks language={language} />
+              <HomeLinks language={language} wallet={walletAddress} />
               <div className="gc-sm" style={{ textAlign: 'center', marginTop: 4 }}>
                 <a href="/about" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>About</a>
                 {' · '}

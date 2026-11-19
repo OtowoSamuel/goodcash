@@ -16,6 +16,7 @@ import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Dep
 import { processLiveApprovals } from './v1/liveKeys';
 import { clearWorkIfIdle, markWork, shouldList } from './v1/work';
 import { claimLock } from './lock';
+import { inviterFrom, isWallet, qualifyReferralSafely, referralSummary } from './referral';
 
 // The lock service (a Durable Object class) must be exported from the worker's entry file
 export { KeyLock } from './lock';
@@ -1456,6 +1457,7 @@ async function handleWebhook(request: Request, env: Env, waitUntil?: (p: Promise
   // Naira-in order delivered: tell the customer even if the app is closed
   if (status === 'settled' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
     await updateOnrampHistory(env, id, { stage: 'done' });
+    await qualifyReferralSafely(env.ORDER_STORE, id);
     await maybeSendOnrampReady(id, env);
     return new Response('OK', { status: 200 });
   }
@@ -2064,6 +2066,8 @@ const OnrampOrderSchema = z.object({
   idType: z.enum(['BVN', 'NIN']),
   idNumber: z.string().regex(/^\d{11}$/),
   asset: z.enum(['g', 'celo']).optional(),
+  /** A friend's wallet from a shared link. Never refuses an order: anything that is not an address is ignored. */
+  ref: z.string().max(64).optional(),
   /** What the app told the customer they would get. Only used to label their History; never affects the order. */
   expectedOut: z.number().positive().max(1_000_000_000_000).optional(),
   /** Dollars the app said would reach the wallet. Only used to label History. */
@@ -2157,7 +2161,14 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
   const createdAt = Date.now();
   await env.ORDER_STORE.put(
     `onramp:${order.id}`,
-    JSON.stringify({ wallet: input.wallet.toLowerCase(), naira: input.naira, asset, createdAt, usdc: maxUsdc.toString() }),
+    JSON.stringify({
+      wallet: input.wallet.toLowerCase(),
+      naira: input.naira,
+      asset,
+      createdAt,
+      usdc: maxUsdc.toString(),
+      ...(inviterFrom(input.ref) ? { ref: inviterFrom(input.ref) } : {}),
+    }),
     { expirationTtl: 14 * 24 * 3600 }
   );
   // History is a convenience. The order already exists at the partner, so a storage hiccup here must never turn into
@@ -2926,7 +2937,10 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
     } catch {
       // History is optional; the order itself is still followed.
     }
-    if (stage === 'done') await maybeSendOnrampReady(orderId, env);
+    if (stage === 'done') {
+      await qualifyReferralSafely(env.ORDER_STORE, orderId);
+      await maybeSendOnrampReady(orderId, env);
+    }
     const cap = await onrampOrderCap(orderId, env).catch(() => null);
     return json({ orderId, status, stage, arrived, ...(txHash ? { txHash } : {}), ...(cap ? { maxUsdc: cap.maxUsdc.toString() } : {}) });
   } catch {
@@ -3024,7 +3038,7 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
   }
 
   // Read-only endpoints share a looser limit (many people sit behind one phone-network address)
-  if (m === 'GET' && (pathname === '/rates' || pathname === '/onramp/quote' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname) || pathname === '/stats')) {
+  if (m === 'GET' && (pathname === '/rates' || pathname === '/onramp/quote' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname) || pathname === '/stats' || pathname === '/referral/me')) {
     const limited = await checkRateLimit(request, env, 'read', 'read');
     if (limited) return limited;
   }
@@ -3047,6 +3061,13 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
     const limitedRead = await checkRateLimit(request, env, 'read', 'read');
     if (limitedRead) return limitedRead;
     return handleGetOnrampOrder(onrampMatch[1], env);
+  }
+
+  // GET /referral/me?wallet=0x... - how many friends this wallet's link has brought in (read-only)
+  if (m === 'GET' && pathname === '/referral/me') {
+    const wallet = url.searchParams.get('wallet') ?? '';
+    if (!isWallet(wallet)) return err('Invalid wallet address', 400);
+    return json(await referralSummary(env.ORDER_STORE, wallet));
   }
 
   if (m === 'POST' && pathname === '/relay/quote') return handleRelayQuote(request, env);

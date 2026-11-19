@@ -1,5 +1,6 @@
 import { checkRelayQuote } from '@goodcash/core';
 import { ORDERS_API_BASE } from './rate';
+import { savedReferral } from './referral';
 import { getWalletProvider, chainIdNumber, activeProviderKind } from './router';
 
 /**
@@ -95,8 +96,10 @@ export class UncertainSwapError extends Error {
 export const fetchOnrampQuote = (naira: number, wallet?: string, asset: AddAsset = 'g') =>
   api<OnrampQuote>(`/onramp/quote?naira=${naira}&asset=${asset}${wallet ? `&wallet=${wallet}` : ''}`);
 
-export const createOnrampOrder = (input: OnrampInput) =>
-  api<OnrampOrder>('/onramp/orders', { method: 'POST', body: JSON.stringify(input) });
+export const createOnrampOrder = (input: OnrampInput) => {
+  const ref = savedReferral(input.wallet);
+  return api<OnrampOrder>('/onramp/orders', { method: 'POST', body: JSON.stringify(ref ? { ...input, ref } : input) });
+};
 
 /** Ask to be emailed when the naira arrives and when the G$ lands. The email is only used for those two messages. */
 export const saveOnrampEmail = (orderId: string, email: string, naira: string) =>

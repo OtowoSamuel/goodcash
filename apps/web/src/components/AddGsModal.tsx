@@ -27,6 +27,7 @@ import { reportIssue } from '../lib/diag';
 import { BankPicker } from './BankPicker';
 import { StepBar } from './StepBar';
 import { loadSavedAddGs, saveAddGs, type SavedAddGs } from '../lib/addGsSaved';
+import { FRIEND_BONUS_G, FRIEND_MIN_NAIRA, savedReferral } from '../lib/referral';
 
 /**
  * Add G$: pay naira by bank transfer and get G$ in your wallet.
@@ -356,6 +357,11 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
   if (step === 'amount') {
     body = (
       <>
+        {savedReferral(wallet) && (
+          <div className="gc-note" style={{ background: '#8cf0c0' }}>
+            <b>A friend invited you.</b> Add at least {formatNaira(FRIEND_MIN_NAIRA)} for the first time and you'll get G$ {FRIEND_BONUS_G.toLocaleString('en-US')} free, after a quick check.
+          </div>
+        )}
         <Field label="What do you want to add?">
           <div className="flex gap-2" role="group" aria-label="What do you want to add?">
             {(['g', 'celo'] as const).map((a) => (

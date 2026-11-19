@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import './styles.css';
+import { captureReferral } from './lib/referral';
+
+// A friend's link: remember it on this device until the first top-up
+captureReferral();
 
 // Look for a new version every minute, so fixes reach people quickly instead of waiting for a restart
 registerSW({
