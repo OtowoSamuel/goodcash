@@ -17,6 +17,7 @@ import { processLiveApprovals } from './v1/liveKeys';
 import { clearWorkIfIdle, markWork, shouldList } from './v1/work';
 import { claimLock } from './lock';
 import { inviterFrom, isWallet, qualifyReferralSafely, referralSummary } from './referral';
+import { parseRegisterBody, registerWithFlowState } from './vote';
 
 // The lock service (a Durable Object class) must be exported from the worker's entry file
 export { KeyLock } from './lock';
@@ -3044,7 +3045,7 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
   }
 
   // Requests that carry free text can't be huge
-  if (m === 'POST' && (['/support', '/diag', '/notify'].includes(pathname) || /^\/onramp\/orders\/[^/]+\/(notify|arrived)$/i.test(pathname))) {
+  if (m === 'POST' && (['/support', '/diag', '/notify', '/vote/register'].includes(pathname) || /^\/onramp\/orders\/[^/]+\/(notify|arrived)$/i.test(pathname))) {
     if (Number(request.headers.get('Content-Length') ?? '0') > 16_384) return err('Request too large', 413);
   }
 
@@ -3068,6 +3069,22 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
     const wallet = url.searchParams.get('wallet') ?? '';
     if (!isWallet(wallet)) return err('Invalid wallet address', 400);
     return json(await referralSummary(env.ORDER_STORE, wallet));
+  }
+
+  // POST /vote/register - pass a customer's signed message to Flow State so their wallet can vote for GoodCash
+  if (m === 'POST' && pathname === '/vote/register') {
+    const limited = await checkRateLimit(request, env, 'vote-register', 'strict');
+    if (limited) return limited;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return err('Invalid JSON body');
+    }
+    const input = parseRegisterBody(body);
+    if (!input) return err('Please try again.', 400);
+    const result = await registerWithFlowState(input);
+    return json(result, result.ok ? 200 : result.reason === 'error' ? 502 : result.reason === 'busy' ? 503 : 200);
   }
 
   if (m === 'POST' && pathname === '/relay/quote') return handleRelayQuote(request, env);
