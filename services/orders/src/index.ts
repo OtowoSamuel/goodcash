@@ -11,6 +11,7 @@
 
 import { checkRelayQuote } from '@goodcash/core';
 import { handleStats } from './stats';
+import { countTopUpSafely } from './topupStats';
 import { z } from 'zod';
 import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
 import { processLiveApprovals } from './v1/liveKeys';
@@ -1458,6 +1459,7 @@ async function handleWebhook(request: Request, env: Env, waitUntil?: (p: Promise
   // Naira-in order delivered: tell the customer even if the app is closed
   if (status === 'settled' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
     await updateOnrampHistory(env, id, { stage: 'done' });
+    await countTopUpSafely(env.ORDER_STORE, id);
     await qualifyReferralSafely(env.ORDER_STORE, id);
     await maybeSendOnrampReady(id, env);
     return new Response('OK', { status: 200 });
@@ -2939,6 +2941,7 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
       // History is optional; the order itself is still followed.
     }
     if (stage === 'done') {
+      await countTopUpSafely(env.ORDER_STORE, orderId);
       await qualifyReferralSafely(env.ORDER_STORE, orderId);
       await maybeSendOnrampReady(orderId, env);
     }

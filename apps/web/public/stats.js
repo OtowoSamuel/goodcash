@@ -19,31 +19,31 @@
     td.colSpan = cols; td.textContent = text; tr.appendChild(td); tbody.appendChild(tr);
   }
 
-  function draw(daily) {
-    var svg = $('chart');
-    var W = 600, H = 170, gap = 2, max = Math.max.apply(null, daily.map(function (d) { return d.cashOuts; }).concat([1]));
+  function draw(daily, svgId, fromId, key, one, many, unit) {
+    var svg = $(svgId);
+    var W = 600, H = 170, gap = 2, max = Math.max.apply(null, daily.map(function (d) { return d[key]; }).concat([1]));
     var bw = W / daily.length; gap = 6;
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     daily.forEach(function (d, i) {
       var r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      var h = d.cashOuts ? Math.max(6, (d.cashOuts / max) * (H - 34)) : 3;
+      var h = d[key] ? Math.max(6, (d[key] / max) * (H - 34)) : 3;
       r.setAttribute('x', String(i * bw + gap / 2)); r.setAttribute('width', String(bw - gap));
       r.setAttribute('y', String(H - h)); r.setAttribute('height', String(h));
-      if (!d.cashOuts) r.setAttribute('class', 'zero');
+      if (!d[key]) r.setAttribute('class', 'zero');
       var t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-      t.textContent = 'Week of ' + d.date + ': ' + d.cashOuts + (d.cashOuts === 1 ? ' cash out, ' : ' cash outs, ') + nf.format(d.gDollars) + ' G$';
+      t.textContent = 'Week of ' + d.date + ': ' + d[key] + (d[key] === 1 ? one : many) + unit(d);
       r.appendChild(t); svg.appendChild(r);
-      if (d.cashOuts) {
+      if (d[key]) {
         var n = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        n.setAttribute('x', String(i * bw + bw / 2)); n.setAttribute('y', String(H - h - 6)); n.textContent = String(d.cashOuts);
+        n.setAttribute('x', String(i * bw + bw / 2)); n.setAttribute('y', String(H - h - 6)); n.textContent = String(d[key]);
         svg.appendChild(n);
       }
     });
-    $('from').textContent = 'Week of ' + new Date(daily[0].date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    $(fromId).textContent = 'Week of ' + new Date(daily[0].date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
   }
 
   function show(s) {
-    $('updated').textContent = 'Read from the Celo network · updated ' + stamp(s.updatedAt) + ' UTC';
+    $('updated').textContent = 'Cash outs read from the Celo network, top-ups counted as they settle · updated ' + stamp(s.updatedAt) + ' UTC';
     $('t-cashouts').textContent = nf.format(s.totals.cashOuts);
     $('t-g').textContent = nf.format(s.totals.gDollars);
     $('t-people').textContent = nf.format(s.totals.wallets);
@@ -53,7 +53,18 @@
     $('t-usd').textContent = usd.format(s.totals.dollars);
     var w = s.last7Days;
     $('week').textContent = 'Last 7 days: ' + nf.format(w.cashOuts) + (w.cashOuts === 1 ? ' cash out' : ' cash outs') + ' from ' + nf.format(w.wallets) + (w.wallets === 1 ? ' wallet' : ' wallets') + ', ' + nf.format(w.gDollars) + ' G$.';
-    draw(s.weekly);
+    draw(s.weekly, 'chart', 'from', 'cashOuts', ' cash out, ', ' cash outs, ', function (d) { return nf.format(d.gDollars) + ' G$'; });
+    var u = s.topUps;
+    if (u) {
+      var naira = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 });
+      $('u-topups').textContent = nf.format(u.topUps);
+      $('u-naira').textContent = naira.format(u.naira);
+      $('u-people').textContent = nf.format(u.wallets);
+      $('ul-people').textContent = u.wallets === 1 ? 'person' : 'different people';
+      $('u-week').textContent = nf.format(u.thisWeek.topUps);
+      $('uweek').textContent = u.topUps ? 'This week: ' + nf.format(u.thisWeek.topUps) + (u.thisWeek.topUps === 1 ? ' top-up, ' : ' top-ups, ') + naira.format(u.thisWeek.naira) + '.' : 'No top-ups counted yet.';
+      draw(u.weekly, 'uchart', 'ufrom', 'topUps', ' top-up, ', ' top-ups, ', function (d) { return naira.format(d.naira); });
+    }
     var rec = $('recent');
     if (!s.recent.length) empty(rec, 5, 'No cash outs yet.');
     s.recent.forEach(function (r) {

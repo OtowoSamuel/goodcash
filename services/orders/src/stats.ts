@@ -1,11 +1,14 @@
 /**
  * Public numbers for the stats page (GET /stats).
  *
- * Everything here comes from the chain, the same cash-out records anyone can read on the block explorer: no
- * customer, bank or order data is touched, and wallets are shortened. The indexer's log list is read at most once
+ * Cash-out numbers come from the chain, the same records anyone can read on the block explorer. Top-up numbers
+ * (naira added) are running totals kept as top-ups settle (see topupStats.ts). No customer, bank or order detail
+ * is shown, and wallets are shortened. The indexer's log list is read at most once
  * every 10 minutes (edge cache). The last good answer is kept in one KV value, written only when the numbers
  * change, so an indexer hiccup serves the previous numbers instead of an error.
  */
+
+import { readTopUpTotals, summariseTopUps, type TopUpSummary } from './topupStats';
 
 export interface StatsEnv {
   ORDER_STORE: KVNamespace;
@@ -56,6 +59,8 @@ export interface Stats {
   daily: Array<{ date: string; cashOuts: number; gDollars: number; dollars: number }>;
   /** Last 12 weeks, each starting on a Monday (UTC) */
   weekly: Array<{ date: string; cashOuts: number; gDollars: number; dollars: number }>;
+  /** Naira top-ups (running totals kept as top-ups settle) */
+  topUps?: TopUpSummary;
   recent: Array<{ wallet: string; time: string; gDollars: number; dollars: number; tx: string }>;
 }
 
@@ -231,7 +236,8 @@ export async function handleStats(env: StatsEnv): Promise<Response> {
   }
   if (!stats) return new Response(JSON.stringify({ error: 'Numbers are not available right now. Please try again shortly.' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
 
-  const response = new Response(JSON.stringify(stats), { status: 200, headers });
+  const topUps = summariseTopUps(await readTopUpTotals(env.ORDER_STORE).catch(() => ({ topUps: 0, wallets: 0, naira: 0, firstAt: null, weeks: {} })));
+  const response = new Response(JSON.stringify({ ...stats, topUps }), { status: 200, headers });
   await edge?.put(cacheKey, response.clone());
   return response;
 }
