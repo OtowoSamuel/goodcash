@@ -714,7 +714,7 @@ describe('only GoodDollar-verified people can add G$ or cash out', () => {
   });
 });
 
-describe('the Add G$ button follows the wallet's GoodDollar verification', () => {
+describe('the Add G$ button follows GoodDollar verification', () => {
   const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
   const loadApp = async () => {
     vi.resetModules();
