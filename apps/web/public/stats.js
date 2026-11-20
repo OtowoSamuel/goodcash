@@ -65,6 +65,14 @@
       draw(u.weekly, 'uchart', 'ufrom', 'topUps', ' top-up, ', ' top-ups, ', function (d) { return naira.format(d.naira); });
     }
 
+    if (s.partners) {
+      $('p-signed').textContent = nf.format(s.partners.signedUp);
+      $('p-live').textContent = nf.format(s.partners.live);
+      $('pl-signed').textContent = plural(s.partners.signedUp, 'partner signed up', 'partners signed up');
+      $('pl-live').textContent = plural(s.partners.live, 'given live access', 'given live access');
+      $('partners').hidden = false;
+    }
+
     $('t-cashouts').textContent = nf.format(s.totals.cashOuts);
     $('t-g').textContent = nf.format(s.totals.gDollars);
     $('t-usd').textContent = usd.format(s.totals.dollars);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeCashOut, summarise, type CashOutRow } from './stats';
+import { countPartners, decodeCashOut, summarise, type CashOutRow } from './stats';
 
 const word = (n: bigint) => n.toString(16).padStart(64, '0');
 const topic = (a: string) => `0x${'0'.repeat(24)}${a.slice(2)}`;
@@ -102,5 +102,41 @@ describe('the team\'s own wallets', () => {
     const s = summarise(rows, now, null);
     expect(s.totals.cashOuts).toBe(3);
     expect(s.excluded).toEqual({ cashOuts: 0, gDollars: 0 });
+  });
+});
+
+describe('countPartners', () => {
+  const store = (records: Record<string, unknown>) =>
+    ({
+    async get(k: string) {
+      return k in records ? (typeof records[k] === 'string' ? (records[k] as string) : JSON.stringify(records[k])) : null;
+    },
+    async list(opts: { prefix?: string; limit?: number } = {}) {
+      return { keys: Object.keys(records).filter((k) => k.startsWith(opts.prefix ?? '')).slice(0, opts.limit ?? 1000).map((name) => ({ name })), list_complete: true };
+    },
+  }) as unknown as Pick<KVNamespace, 'get' | 'list'>;
+
+  it('counts switched-on partners, and how many have live keys', async () => {
+    const n = await countPartners(
+      store({
+        'partner:a': { enabled: true },
+        'partner:b': { enabled: true, liveApprovedAt: 1 },
+        'partner:c': { enabled: false, liveApprovedAt: 1 },
+        'partner:d': { enabled: true, selfServe: true },
+        'key:xyz': { enabled: true },
+      }),
+    );
+    expect(n).toEqual({ signedUp: 3, live: 1 });
+  });
+  it('ignores a record it cannot read', async () => {
+    expect(await countPartners(store({ 'partner:a': 'not json', 'partner:b': { enabled: true } }))).toEqual({ signedUp: 1, live: 0 });
+  });
+  it('shows no number rather than a wrong one when there are too many to read one by one', async () => {
+    const many = Object.fromEntries(Array.from({ length: 46 }, (_, i) => [`partner:${i}`, { enabled: true }]));
+    expect(await countPartners(store(many))).toBeNull();
+  });
+  it('carries no name, email or site', async () => {
+    const n = await countPartners(store({ 'partner:a': { enabled: true, name: 'Secret Co', contactEmail: 'a@b.co', allowedOrigins: ['https://x.example'] } }));
+    expect(JSON.stringify(n)).not.toMatch(/Secret|@|example/);
   });
 });

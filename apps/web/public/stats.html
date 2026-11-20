@@ -65,8 +65,16 @@ h3{font:600 15px Inter,sans-serif;margin:20px 0 4px;color:#333}
 <div class="wrapx"><table><thead id="recent-head"><tr><th>When (UTC)</th><th>Wallet</th><th class="n">G$</th><th class="n">US dollars</th><th>Receipt</th></tr></thead><tbody id="recent"></tbody></table></div>
 <h3>By contract (technical detail)</h3>
 <div class="wrapx"><table><thead><tr><th>Contract</th><th class="n">Cash outs</th><th class="n">G$</th></tr></thead><tbody id="routers"></tbody></table></div>
+<div id="partners" hidden>
+<h2>Partners</h2>
+<p class="def">A partner is a company or app that has signed up to build with the GoodCash SDK. Their customers' top-ups and cash outs are counted in the numbers above.</p>
+<div class="tiles">
+<div class="tile"><b id="p-signed">–</b><span id="pl-signed">partners signed up</span></div>
+<div class="tile"><b id="p-live">–</b><span id="pl-live">given live access</span></div>
+</div>
+</div>
 <h2>Where these numbers come from</h2>
-<p><b>Cash outs</b> are read from the public records of our two contracts on the Celo network, the same records anyone can open on the block explorer. <b>Top-ups</b> are a running count we keep: each confirmed naira payment is added once, as a count and an amount in naira. No name, bank detail or wallet is kept in that count or shown here. Weeks start on Monday (UTC). Wallets are shortened. Test activity from our own wallets is left out of every number above. The page refreshes about every 10 minutes.</p>
+<p><b>Cash outs</b> are read from the public records of our two contracts on the Celo network, the same records anyone can open on the block explorer. <b>Top-ups</b> are a running count we keep: each confirmed naira payment is added once, as a count and an amount in naira. No name, bank detail or wallet is kept in that count or shown here. Partner numbers are counts only; no partner is named. Weeks start on Monday (UTC). Wallets are shortened. Test activity from our own wallets is left out of every number above. The page refreshes about every 10 minutes.</p>
 <p><a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/topupStats.ts" rel="noopener noreferrer" target="_blank">How top-ups are counted</a> · <a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/stats.ts" rel="noopener noreferrer" target="_blank">How cash outs are counted</a></p>
 </div>
 <nav class="foot"><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>

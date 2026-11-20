@@ -53,6 +53,43 @@ export interface CashOutRow {
   router: 'v1' | 'v2';
 }
 
+export interface PartnerCounts {
+  /** Partners that are switched on (signed up and not disabled) */
+  signedUp: number;
+  /** Partners given live keys */
+  live: number;
+}
+
+/**
+ * How many partners use the SDK. Counts only: no names, emails or sites. Reads each partner record once (they are
+ * few); if there are ever more than MAX_PARTNER_READS this returns null and the page leaves the number out until it
+ * is switched to a stored counter, rather than showing a wrong one.
+ */
+const MAX_PARTNER_READS = 45;
+export async function countPartners(store: Pick<KVNamespace, 'get' | 'list'>): Promise<PartnerCounts | null> {
+  const listed = await store.list({ prefix: 'partner:', limit: MAX_PARTNER_READS + 1 });
+  if (listed.keys.length > MAX_PARTNER_READS) {
+    console.error('[stats] more partners than the stats page can count one by one; switch to a counter');
+    return null;
+  }
+  let signedUp = 0;
+  let live = 0;
+  for (const k of listed.keys) {
+    const raw = await store.get(k.name);
+    if (!raw) continue;
+    let p: { enabled?: boolean; liveApprovedAt?: number };
+    try {
+      p = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (p.enabled !== true) continue;
+    signedUp++;
+    if (typeof p.liveApprovedAt === 'number') live++;
+  }
+  return { signedUp, live };
+}
+
 export interface Stats {
   updatedAt: string;
   /** The team's own test cash outs, left out of every number below and shown openly instead */
@@ -65,6 +102,8 @@ export interface Stats {
   weekly: Array<{ date: string; cashOuts: number; gDollars: number; dollars: number }>;
   /** Naira top-ups (running totals kept as top-ups settle) */
   topUps?: TopUpSummary;
+  /** Partners using the SDK (counts only) */
+  partners?: PartnerCounts | null;
   recent: Array<{ wallet: string; time: string; gDollars: number; dollars: number; tx: string }>;
 }
 
@@ -244,7 +283,8 @@ export async function handleStats(env: StatsEnv): Promise<Response> {
   if (!stats) return new Response(JSON.stringify({ error: 'Numbers are not available right now. Please try again shortly.' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
 
   const topUps = summariseTopUps(await readTopUpTotals(env.ORDER_STORE).catch(() => ({ topUps: 0, wallets: 0, naira: 0, firstAt: null, weeks: {} })));
-  const response = new Response(JSON.stringify({ ...stats, topUps }), { status: 200, headers });
+  const partners = await countPartners(env.ORDER_STORE).catch(() => null);
+  const response = new Response(JSON.stringify({ ...stats, topUps, partners }), { status: 200, headers });
   await edge?.put(cacheKey, response.clone());
   return response;
 }
