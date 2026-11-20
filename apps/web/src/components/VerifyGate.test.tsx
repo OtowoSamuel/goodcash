@@ -14,11 +14,13 @@ describe('VerifyGate', () => {
     expect(screen.getByText(/quick, free, and only needs to be done once/i)).toBeInTheDocument();
   });
 
-  it('closes by itself once the check says verified', async () => {
+  it('carries on by itself once the check says verified', async () => {
     const onClose = vi.fn();
-    render(<VerifyGate onClose={onClose} onRecheck={async () => 'verified'} />);
+    const onVerified = vi.fn();
+    render(<VerifyGate onClose={onClose} onVerified={onVerified} onRecheck={async () => 'verified'} />);
     fireEvent.click(screen.getByRole('button', { name: /I've verified, check again/i }));
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() => expect(onVerified).toHaveBeenCalled());
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('says it is not shown yet, without closing', async () => {

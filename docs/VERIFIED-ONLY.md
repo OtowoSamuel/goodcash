@@ -18,8 +18,11 @@ a "no" is never remembered.
 **What is not blocked.** Finishing something already paid for: an Add G$ order in progress, a payout whose swap is done,
 status checks, History. Only starting something new is gated.
 
-**The app.** `GET /verified?wallet=0x…` feeds a "Verify with GoodDollar." notice and a pop-up before the Add G$ and
-cash-out screens. If the check cannot be made the screens let the person go on; the server decides.
+**The app.** Verifying is a step inside adding G$ and cashing out, not a banner or a warning. `GET /verified?wallet=0x…`
+tells the app whether to show it. A verified person never sees it. Someone who is not verified sees "One quick step:
+verify" when they start, and the app carries on with what they were doing by itself once GoodDollar shows them as
+verified (it asks again when they return to the tab). If the check cannot be made the screens let the person go on;
+the server decides.
 
 **Switch.** `REQUIRE_VERIFIED` in `services/orders/wrangler.toml` (`"true"` = on). Set it to `"false"` and deploy to switch
 the rule off at once. Unset (tests, local development) means off.

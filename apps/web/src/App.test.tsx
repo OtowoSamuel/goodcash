@@ -672,88 +672,81 @@ describe('History keeps one row per swap', () => {
   });
 });
 
-describe('only GoodDollar-verified people can add G$ or cash out', () => {
+describe('verifying is a step inside adding G$, not a banner', () => {
   const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
-  const stubVerified = (body: unknown | 'down') =>
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes('/verified')) {
-          if (body === 'down') return { ok: false, json: async () => ({}) };
-          return { ok: true, json: async () => body };
-        }
-        if (url.includes('/institutions/')) return { ok: true, json: async () => ({ institutions: [] }) };
-        return { ok: true, json: async () => ({ data: { sell: { rate: 1500 } } }) };
-      })
-    );
-  beforeEach(() => storageMock.clear());
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('shows a Verify with GoodDollar notice that opens the explainer', async () => {
-    stubVerified({ required: true, verified: false });
-    render(<App walletAddress={WALLET} />);
-    const notices = await screen.findAllByText('Verify with GoodDollar.');
-    fireEvent.click(notices[0]);
-    expect(await screen.findByRole('dialog', { name: /Verify with GoodDollar/i })).toBeInTheDocument();
-  });
-
-  it('shows nothing for a verified wallet, or when the check cannot be made', async () => {
-    stubVerified({ required: true, verified: true });
-    const first = render(<App walletAddress={WALLET} />);
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryAllByText('Verify with GoodDollar.')).toHaveLength(0);
-    first.unmount();
-
-    stubVerified('down');
-    render(<App walletAddress={WALLET} />);
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryAllByText('Verify with GoodDollar.')).toHaveLength(0);
-  });
-});
-
-describe('the Add G$ button follows GoodDollar verification', () => {
-  const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
+  let verifiedNow = false;
   const loadApp = async () => {
     vi.resetModules();
     vi.stubEnv('VITE_ADDG_ENABLED', 'true');
     return (await import('./App')).App;
   };
-  const stub = (verified: boolean) =>
+  beforeEach(() => {
+    storageMock.clear();
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes('/verified')) return { ok: true, json: async () => ({ required: true, verified }) };
+        if (url.includes('/verified')) return { ok: true, json: async () => ({ required: true, verified: verifiedNow }) };
         if (url.includes('/institutions/')) return { ok: true, json: async () => ({ institutions: [] }) };
         return { ok: true, json: async () => ({ data: { sell: { rate: 1500 } } }) };
       })
     );
-  beforeEach(() => storageMock.clear());
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+  const tapAdd = async () => fireEvent.click((await screen.findAllByRole('button', { name: /Add G\$/i }))[0]);
 
-  it('opens the verify pop-up, not the Add G$ form', async () => {
-    stub(false);
-    const AppWithAdd = await loadApp();
-    render(<AppWithAdd walletAddress={WALLET} />);
-    await screen.findAllByText('Verify with GoodDollar.'); // the check has finished
-    fireEvent.click((await screen.findAllByRole('button', { name: /Add G\$/i }))[0]);
-    expect(await screen.findByRole('dialog', { name: /Verify with GoodDollar/i })).toBeInTheDocument();
-    expect(screen.queryByRole('dialog', { name: /Add G\$/i })).toBeNull();
-  });
-
-  it('a verified wallet gets the Add G$ form', async () => {
-    stub(true);
+  it('shows no banner or warning, even to someone who is not verified', async () => {
+    verifiedNow = false;
     const AppWithAdd = await loadApp();
     render(<AppWithAdd walletAddress={WALLET} />);
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
-    await new Promise((r) => setTimeout(r, 50));
-    fireEvent.click((await screen.findAllByRole('button', { name: /Add G\$/i }))[0]);
+    await settle();
+    expect(screen.queryAllByText(/verify with gooddollar/i)).toHaveLength(0);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('tapping Add G$ shows the verify step, and carries on to Add G$ by itself once they are verified', async () => {
+    verifiedNow = false;
+    const AppWithAdd = await loadApp();
+    render(<AppWithAdd walletAddress={WALLET} />);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
+    await settle();
+    await tapAdd();
+    expect(await screen.findByRole('dialog', { name: /Verify with GoodDollar/i })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /Add G\$/i })).toBeNull();
+
+    verifiedNow = true;
+    fireEvent.click(screen.getByRole('button', { name: /I've verified, check again/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Verify with GoodDollar/i })).toBeNull());
+    expect(await screen.findByRole('dialog', { name: /Add G\$/i })).toBeInTheDocument();
+  });
+
+  it('a verified person goes straight to Add G$ and never sees the step', async () => {
+    verifiedNow = true;
+    const AppWithAdd = await loadApp();
+    render(<AppWithAdd walletAddress={WALLET} />);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
+    await settle();
+    await tapAdd();
+    expect(await screen.findByRole('dialog', { name: /Add G\$/i })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: /Verify with GoodDollar/i })).toBeNull();
+  });
+
+  it('if the check cannot be made, they are let through (the server still decides)', async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/verified')) return { ok: false, json: async () => ({}) };
+      if (url.includes('/institutions/')) return { ok: true, json: async () => ({ institutions: [] }) };
+      return { ok: true, json: async () => ({ data: { sell: { rate: 1500 } } }) };
+    });
+    const AppWithAdd = await loadApp();
+    render(<AppWithAdd walletAddress={WALLET} />);
+    await settle();
+    await tapAdd();
+    expect(await screen.findByRole('dialog', { name: /Add G\$/i })).toBeInTheDocument();
   });
 });

@@ -519,11 +519,29 @@ export function App({
   const verified = useVerified(walletAddress && !isDemoMode ? walletAddress : null);
   const [verifyGateOpen, setVerifyGateOpen] = useState(false);
   /** Only GoodDollar-verified people can add G$ with naira or cash out. True when we stopped them and showed why. */
-  const needsVerifying = () => {
-    if (!walletAddress || isDemoMode || verified.status !== 'not_verified') return false;
+  const verifiedStatus = useRef(verified.status);
+  verifiedStatus.current = verified.status;
+  const afterVerify = useRef<(() => void) | null>(null);
+  /**
+   * Verifying is a step inside adding G$ and cashing out, shown only to someone who still needs it (a verified
+   * person never sees it). `then` is what they were doing: it runs by itself once they are verified.
+   */
+  const needsVerifying = (then: () => void) => {
+    if (!walletAddress || isDemoMode || verifiedStatus.current !== 'not_verified') return false;
+    afterVerify.current = then;
     setVerifyGateOpen(true);
     return true;
   };
+  const continueAfterVerify = () => {
+    setVerifyGateOpen(false);
+    const go = afterVerify.current;
+    afterVerify.current = null;
+    go?.();
+  };
+  useEffect(() => {
+    if (verifyGateOpen && verified.status === 'verified') continueAfterVerify();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifyGateOpen, verified.status]);
   const [addAsset, setAddAsset] = useState<'g' | 'celo'>('g');
   const handleAddClick = (asset: 'g' | 'celo' = 'g') => {
     if (isDemoMode) {
@@ -535,7 +553,7 @@ export function App({
       return;
     }
     // An order already paid for or in progress is always let through to finish
-    if (!loadSavedAddGs(walletAddress) && needsVerifying()) return;
+    if (!loadSavedAddGs(walletAddress) && needsVerifying(() => handleAddClick(asset))) return;
     setAddAsset(asset);
     setAddOpen(true);
   };
@@ -676,7 +694,7 @@ export function App({
     ngnPerUsdt?: number | null,
     bankCode?: string
   ) => {
-    if (needsVerifying()) return;
+    if (needsVerifying(() => handleInitiateCashOut(quote, amountG, slippageBps, bankName, accountNumber, accountHolderName, ngnPerUsdt, bankCode))) return;
     setPendingQuote({ quote, amountG, slippageBps, bankName, accountNumber, accountHolderName, ngnPerUsdt, bankCode });
     emitAnalyticsEvent('quote_shown', {
       amount: amountG,
@@ -1439,11 +1457,6 @@ export function App({
       text: addPhase === 'working' ? 'Keep this tab open. Tap to watch.' : 'Keep this tab open. Tap to see where it is.',
       onClick: () => setAddOpen(true),
     },
-    !!walletAddress && verified.status === 'not_verified' && {
-      id: 'verify', tone: 'warn', title: 'Verify with GoodDollar.',
-      text: 'You need to be verified to add G$ or cash out. Tap to see how.',
-      onClick: () => setVerifyGateOpen(true),
-    },
     networkFee && !networkFee.enough && {
       id: 'top-up', tone: 'warn', title: 'Top up CELO to cash out.',
       text: `You need about ${celoText(networkFee.needCelo)} CELO in your wallet for the network fee. G$ can't pay it. Tap to add some with naira.`,
@@ -1471,7 +1484,7 @@ export function App({
         </React.Suspense>
       )}
 
-      {verifyGateOpen && <VerifyGate onClose={() => setVerifyGateOpen(false)} onRecheck={verified.recheck} />}
+      {verifyGateOpen && <VerifyGate onClose={() => { afterVerify.current = null; setVerifyGateOpen(false); }} onVerified={continueAfterVerify} onRecheck={verified.recheck} />}
       {addOpen && walletAddress && (
         <React.Suspense fallback={null}>
           <AddGsModal
@@ -1853,8 +1866,8 @@ export function App({
             balanceG={balanceG}
             ngnPerUsdt={liveNgnRate ?? pendingQuote?.ngnPerUsdt ?? 1452.6}
             onClose={() => setMobileView('home')}
-            onReview={async (amountG: number, nairaEstimate: number | null, usdtEstimate: number) => {
-              if (needsVerifying()) return;
+            onReview={async function review(amountG: number, nairaEstimate: number | null, usdtEstimate: number): Promise<void> {
+              if (needsVerifying(() => void review(amountG, nairaEstimate, usdtEstimate))) return;
               // Create quote (live on-chain prices in production) and go to the review view
               let quote: QuoteResult;
               try {
