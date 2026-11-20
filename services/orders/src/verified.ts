@@ -73,3 +73,38 @@ export async function handleVerified(env: VerifiedEnv, wallet: string): Promise<
   if (v === null) return new Response(JSON.stringify({ error: CHECK_FAILED_MESSAGE, code: 'verification_unavailable' }), { status: 503, headers });
   return new Response(JSON.stringify({ required: verificationRequired(env), verified: v, verifyUrl: VERIFY_URL }), { status: 200, headers });
 }
+
+const BATCH = 100;
+const MAX_BATCHES = 5;
+
+/**
+ * GoodDollar identity ("root") of many wallets at once, in as few requests as possible. A wallet GoodDollar has not
+ * verified maps to the zero address. Returns null if any part could not be read, so a count built from it is left
+ * out rather than shown wrong. More than BATCH * MAX_BATCHES wallets is not attempted.
+ */
+export async function rootsOf(env: VerifiedEnv, wallets: string[]): Promise<Map<string, string> | null> {
+  const list = [...new Set(wallets.map((w) => w.toLowerCase()).filter((w) => /^0x[0-9a-f]{40}$/.test(w)))];
+  if (list.length > BATCH * MAX_BATCHES) return null;
+  const out = new Map<string, string>();
+  try {
+    for (let i = 0; i < list.length; i += BATCH) {
+      const chunk = list.slice(i, i + BATCH);
+      const res = await fetch(env.CELO_RPC_URL || RPC_FALLBACK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(chunk.map((w, n) => ({ jsonrpc: '2.0', id: n, method: 'eth_call', params: [{ to: GOODDOLLAR_IDENTITY, data: `${GET_WHITELISTED_ROOT}${'0'.repeat(24)}${w.slice(2)}` }, 'latest'] }))),
+      });
+      const body = (await res.json().catch(() => null)) as Array<{ id: number; result?: unknown; error?: unknown }> | null;
+      if (!res.ok || !Array.isArray(body) || body.length !== chunk.length) return null;
+      for (const r of body) {
+        if (r.error || typeof r.result !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(r.result) || !chunk[r.id]) return null;
+        out.set(chunk[r.id], `0x${r.result.slice(-40).toLowerCase()}`);
+      }
+    }
+  } catch {
+    return null;
+  }
+  return out;
+}
+
+export const isZero = (root: string) => root === ZERO;

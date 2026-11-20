@@ -8,6 +8,8 @@
  * change, so an indexer hiccup serves the previous numbers instead of an error.
  */
 
+import { countActivePartners } from './partnerActive';
+import { summarisePeople, type PeopleSummary } from './people';
 import { excludedWallets, readTopUpTotals, summariseTopUps, type TopUpSummary } from './topupStats';
 
 export interface StatsEnv {
@@ -16,6 +18,7 @@ export interface StatsEnv {
   ROUTER_ADDRESS?: string;
   ROUTER_V2_ADDRESS?: string;
   ROUTER_V2_DEPLOY_BLOCK?: string;
+  CELO_RPC_URL?: string;
   /** Comma list of the team's own wallets (testing). Their cash outs are left out and counted separately. */
   STATS_EXCLUDE_WALLETS?: string;
 }
@@ -53,45 +56,10 @@ export interface CashOutRow {
   router: 'v1' | 'v2';
 }
 
-export interface PartnerCounts {
-  /** Partners that are switched on (signed up and not disabled) */
-  signedUp: number;
-  /** Partners given live keys */
-  live: number;
-}
-
-/**
- * How many partners use the SDK. Counts only: no names, emails or sites. Reads each partner record once (they are
- * few); if there are ever more than MAX_PARTNER_READS this returns null and the page leaves the number out until it
- * is switched to a stored counter, rather than showing a wrong one.
- */
-const MAX_PARTNER_READS = 45;
-export async function countPartners(store: Pick<KVNamespace, 'get' | 'list'>): Promise<PartnerCounts | null> {
-  const listed = await store.list({ prefix: 'partner:', limit: MAX_PARTNER_READS + 1 });
-  if (listed.keys.length > MAX_PARTNER_READS) {
-    console.error('[stats] more partners than the stats page can count one by one; switch to a counter');
-    return null;
-  }
-  let signedUp = 0;
-  let live = 0;
-  for (const k of listed.keys) {
-    const raw = await store.get(k.name);
-    if (!raw) continue;
-    let p: { enabled?: boolean; liveApprovedAt?: number };
-    try {
-      p = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    if (p.enabled !== true) continue;
-    signedUp++;
-    if (typeof p.liveApprovedAt === 'number') live++;
-  }
-  return { signedUp, live };
-}
-
 export interface Stats {
   updatedAt: string;
+  /** Different wallets that used GoodCash and how many verified people are behind them (counts only) */
+  people?: PeopleSummary | null;
   /** The team's own test cash outs, left out of every number below and shown openly instead */
   excluded: { cashOuts: number; gDollars: number };
   totals: { cashOuts: number; wallets: number; repeatWallets: number; gDollars: number; dollars: number; firstAt: string | null; lastAt: string | null };
@@ -102,8 +70,8 @@ export interface Stats {
   weekly: Array<{ date: string; cashOuts: number; gDollars: number; dollars: number }>;
   /** Naira top-ups (running totals kept as top-ups settle) */
   topUps?: TopUpSummary;
-  /** Partners using the SDK (counts only) */
-  partners?: PartnerCounts | null;
+  /** Partners with at least one real (live) paid cash out or delivered top-up. Counts only: no names. */
+  partners?: { active: number } | null;
   recent: Array<{ wallet: string; time: string; gDollars: number; dollars: number; tx: string }>;
 }
 
@@ -255,7 +223,12 @@ export async function buildStats(env: StatsEnv, now = new Date()): Promise<Stats
     ...logs1.map((l) => decodeCashOut(l, 'v1')),
     ...logs2.map((l) => decodeCashOut(l, 'v2')),
   ].filter((r): r is CashOutRow => r !== null);
-  return summarise(rows, now, v2, excludedWallets(env.STATS_EXCLUDE_WALLETS));
+  const exclude = excludedWallets(env.STATS_EXCLUDE_WALLETS);
+  const stats = summarise(rows, now, v2, exclude);
+  // Everyone who has used GoodCash: wallets with a cash out, and wallets with a counted top-up
+  const topUpWallets = (await env.ORDER_STORE.list({ prefix: 'topupwallet:', limit: 1000 }).catch(() => ({ keys: [] as Array<{ name: string }> }))).keys.map((k) => k.name.slice('topupwallet:'.length));
+  const users = [...rows.map((r) => r.wallet), ...topUpWallets].filter((w) => !exclude.has(w.toLowerCase()));
+  return { ...stats, people: await summarisePeople(env, users) };
 }
 
 /** GET /stats */
@@ -283,7 +256,7 @@ export async function handleStats(env: StatsEnv): Promise<Response> {
   if (!stats) return new Response(JSON.stringify({ error: 'Numbers are not available right now. Please try again shortly.' }), { status: 503, headers: { 'Content-Type': 'application/json' } });
 
   const topUps = summariseTopUps(await readTopUpTotals(env.ORDER_STORE).catch(() => ({ topUps: 0, wallets: 0, naira: 0, firstAt: null, weeks: {} })));
-  const partners = await countPartners(env.ORDER_STORE).catch(() => null);
+  const partners = await countActivePartners(env.ORDER_STORE).then((active) => ({ active })).catch(() => null);
   const response = new Response(JSON.stringify({ ...stats, topUps, partners }), { status: 200, headers });
   await edge?.put(cacheKey, response.clone());
   return response;

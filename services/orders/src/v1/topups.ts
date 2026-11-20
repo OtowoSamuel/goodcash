@@ -13,6 +13,7 @@
  * Off unless PARTNER_ONRAMP_ENABLED is "true". In live mode a partner also needs `topupEnabled` (set when GoodCash approves live keys, or with partners.mjs update --topups).
  * Test mode is simulated end to end (no payout partner, no chain).
  */
+import { markPartnerActive } from '../partnerActive';
 import { isAddress } from '@goodcash/core';
 import { V1Error, v1Json } from './http';
 import { clearWorkIfIdle, markWork, shouldList } from './work';
@@ -267,6 +268,7 @@ const EVENT_FOR: Partial<Record<TopUpStatus, EventType>> = {
 };
 
 export async function notifyTopUp(env: Env, rec: TopUpRecord, changed: boolean, waitUntil?: (p: Promise<unknown>) => void): Promise<void> {
+  if (changed && rec.mode === 'live' && rec.status === 'delivered') await markPartnerActive(env.ORDER_STORE, rec.partnerId);
   if (changed) {
     const type = EVENT_FOR[rec.status];
     if (type) {

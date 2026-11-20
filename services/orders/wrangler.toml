@@ -71,8 +71,8 @@ RESEND_FROM = "GoodCash <hello@goodcash.xyz>"
 # Only GoodDollar-verified wallets can add G$ with naira or cash out (checked on the server, see src/verified.ts).
 # Set to "false" to switch it off at once (nothing else changes).
 REQUIRE_VERIFIED = "true"
-# GoodCash's own wallets (testing). Their cash outs and top-ups are not counted in the public numbers.
-STATS_EXCLUDE_WALLETS = "0xafdeebb89cda1669361117ea2eae3411f1228cb6"
+# Wallets left out of the public stats numbers (a comma list). Empty: every transaction on the platform is counted.
+STATS_EXCLUDE_WALLETS = ""
 # Partner API (/v1). On since 9 Nov 2026. Set to "false" to switch it off at once (nothing else changes).
 PARTNER_API_ENABLED = "true"
 # Naira in for partners (top-ups). Set to "false" to switch it off at once. Live mode also needs each partner switched on.

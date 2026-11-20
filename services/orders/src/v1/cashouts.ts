@@ -18,6 +18,7 @@ import {
   type Hex,
 } from '@goodcash/core';
 import { isVerified, verificationRequired } from '../verified';
+import { markPartnerActive } from '../partnerActive';
 import { V1Error } from './http';
 import { clearWorkIfIdle, markWork, shouldList } from './work';
 import { emitCashOutEvent, eventForStatus } from './webhooks';
@@ -422,6 +423,7 @@ export async function notifyChange(
   delayed: boolean,
   waitUntil?: (p: Promise<unknown>) => void
 ): Promise<void> {
+  if (changed && rec.mode === 'live' && rec.status === 'paid') await markPartnerActive(env.ORDER_STORE, rec.partnerId);
   if (changed) {
     const type = eventForStatus(rec.status);
     if (type) await emitCashOutEvent(env, rec, type, publicCashOut(rec), waitUntil);

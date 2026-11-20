@@ -65,11 +65,19 @@
       draw(u.weekly, 'uchart', 'ufrom', 'topUps', ' top-up, ', ' top-ups, ', function (d) { return naira.format(d.naira); });
     }
 
-    if (s.partners) {
-      $('p-signed').textContent = nf.format(s.partners.signedUp);
-      $('p-live').textContent = nf.format(s.partners.live);
-      $('pl-signed').textContent = plural(s.partners.signedUp, 'partner signed up', 'partners signed up');
-      $('pl-live').textContent = plural(s.partners.live, 'given live access', 'given live access');
+    if (s.people && s.people.wallets > 0) {
+      var pe = s.people;
+      $('pe-people').textContent = nf.format(pe.verifiedPeople);
+      $('ple-people').textContent = plural(pe.verifiedPeople, 'verified person has used GoodCash', 'verified people have used GoodCash');
+      $('pe-wallets').textContent = nf.format(pe.wallets);
+      $('ple-wallets').textContent = plural(pe.wallets, 'wallet in total', 'different wallets in total');
+      $('pe-not').textContent = nf.format(pe.wallets - pe.verifiedWallets);
+      $('ple-not').textContent = plural(pe.wallets - pe.verifiedWallets, 'wallet not verified yet', 'wallets not verified yet');
+      $('people').hidden = false;
+    }
+    if (s.partners && s.partners.active > 0) {
+      $('p-active').textContent = nf.format(s.partners.active);
+      $('pl-active').textContent = plural(s.partners.active, 'partner using the SDK', 'partners using the SDK');
       $('partners').hidden = false;
     }
 
