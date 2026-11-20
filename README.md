@@ -26,6 +26,5 @@ npm run contracts:test
 GoodCash keeps analytics wallet-level only and never sends names, phone numbers, bank details, or raw partner payloads to tracking tools.
 
 - Privacy notice: wallet addresses are pseudonymous personal data; analytics remain wallet-level only.
-- Public dashboard placeholder: https://goodcash.xyz/stats
 - Source-of-truth metrics: `CashOut` contract events, with app-level funnel events for conversion and retention.
 
