@@ -349,13 +349,17 @@ const word = (v: bigint) => v.toString(16).padStart(64, '0');
 const ORDER_ID = '7d0c3a52-1f7e-4c55-9a51-2b7e0a1d9f00';
 const RECEIVE = '0x9999999999999999999999999999999999999999';
 
-function liveChain(opts: { paused?: boolean; balance?: bigint; orderBody?: (b: Record<string, unknown>) => void; partnerStatus?: string } = {}) {
+function liveChain(opts: { verified?: boolean | 'down'; paused?: boolean; balance?: bigint; orderBody?: (b: Record<string, unknown>) => void; partnerStatus?: string } = {}) {
   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     const u = String(url);
     if (u.includes('forno.celo.org')) {
       const { method, params } = JSON.parse(String(init?.body)) as { method: string; params: Array<{ to: string; data: string }> };
       if (method === 'eth_call') {
         const { to, data } = params[0];
+        if (data.startsWith('0x2d0e9b46')) {
+          if (opts.verified === 'down') return Response.json({ error: { message: 'node down' } }, { status: 500 });
+          return Response.json({ result: `0x${word(opts.verified === false ? 0n : BigInt(WALLET))}` });
+        }
         if (data.startsWith(SELECTORS.paused)) return Response.json({ result: `0x${word(opts.paused ? 1n : 0n)}` });
         if (data.startsWith(SELECTORS.balanceOf)) return Response.json({ result: `0x${word(opts.balance ?? 10n ** 24n)}` });
         if (to === BROKER) return Response.json({ result: `0x${word(570n * 10n ** 15n)}` });
@@ -398,6 +402,47 @@ function liveChain(opts: { paused?: boolean; balance?: bigint; orderBody?: (b: R
 }
 
 describe('live cash out', () => {
+  describe('only verified people', () => {
+    it('V1. a wallet GoodDollar has not verified gets a plain refusal and nothing is created at the payout partner', async () => {
+      env.REQUIRE_VERIFIED = 'true';
+      let created = false;
+      liveChain({ verified: false, orderBody: () => (created = true) });
+      const res = await browser('POST', '/v1/cashouts', CREATE, KEYS.pkLive, 'idem-ver-0001');
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string; message: string } };
+      expect(body.error.code).toBe('not_verified');
+      expect(body.error.message).toMatch(/verify with GoodDollar/i);
+      expect(created).toBe(false);
+    });
+
+    it('V2. a verified wallet cashes out as normal', async () => {
+      env.REQUIRE_VERIFIED = 'true';
+      liveChain({ verified: true });
+      expect((await browser('POST', '/v1/cashouts', CREATE, KEYS.pkLive, 'idem-ver-0002')).status).toBe(201);
+    });
+
+    it('V3. if the chain cannot be read it says try again, and creates nothing', async () => {
+      env.REQUIRE_VERIFIED = 'true';
+      let created = false;
+      liveChain({ verified: 'down', orderBody: () => (created = true) });
+      const res = await browser('POST', '/v1/cashouts', CREATE, KEYS.pkLive, 'idem-ver-0003');
+      expect(res.status).toBe(503);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe('verification_unavailable');
+      expect(created).toBe(false);
+    });
+
+    it('V4. with the rule off, nothing is checked', async () => {
+      liveChain({ verified: false });
+      expect((await browser('POST', '/v1/cashouts', CREATE, KEYS.pkLive, 'idem-ver-0004')).status).toBe(201);
+    });
+
+    it('V5. test keys are never checked (sandbox wallets are made up)', async () => {
+      env.REQUIRE_VERIFIED = 'true';
+      liveChain({ verified: false });
+      expect((await browser('POST', '/v1/cashouts', CREATE, KEYS.pkTest, 'idem-ver-0005')).status).toBe(201);
+    });
+  });
+
   it('prices from the chain, charges exactly the fee shown, and returns a transaction that passes the safety check', async () => {
     let sent: Record<string, unknown> = {};
     liveChain({ orderBody: (b) => (sent = b) });

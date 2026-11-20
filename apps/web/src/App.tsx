@@ -4,6 +4,8 @@ import { loadSavedAddGs, saveAddGs, findStuckOnramp, savedFromStuckOnramp } from
 import { useAddGsWatcher, type AddGsPhase } from './lib/useAddGsWatcher';
 import { gToWei, nairaFromUsdt, GOODCASH_FEE_PERCENT } from './lib/units';
 import { Modal } from './components/Modal';
+import { VerifyGate } from './components/VerifyGate';
+import { useVerified } from './lib/verified';
 import { getWalletLink, openWalletApp } from './lib/walletLink';
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
@@ -514,6 +516,14 @@ export function App({
     };
   }, [isDemoMode, walletAddress, oneTapPaused, reviewing]);
   const [addOpen, setAddOpen] = useState(false);
+  const verified = useVerified(walletAddress && !isDemoMode ? walletAddress : null);
+  const [verifyGateOpen, setVerifyGateOpen] = useState(false);
+  /** Only GoodDollar-verified people can add G$ with naira or cash out. True when we stopped them and showed why. */
+  const needsVerifying = () => {
+    if (!walletAddress || isDemoMode || verified.status !== 'not_verified') return false;
+    setVerifyGateOpen(true);
+    return true;
+  };
   const [addAsset, setAddAsset] = useState<'g' | 'celo'>('g');
   const handleAddClick = (asset: 'g' | 'celo' = 'g') => {
     if (isDemoMode) {
@@ -524,6 +534,8 @@ export function App({
       handleConnectWallet();
       return;
     }
+    // An order already paid for or in progress is always let through to finish
+    if (!loadSavedAddGs(walletAddress) && needsVerifying()) return;
     setAddAsset(asset);
     setAddOpen(true);
   };
@@ -664,6 +676,7 @@ export function App({
     ngnPerUsdt?: number | null,
     bankCode?: string
   ) => {
+    if (needsVerifying()) return;
     setPendingQuote({ quote, amountG, slippageBps, bankName, accountNumber, accountHolderName, ngnPerUsdt, bankCode });
     emitAnalyticsEvent('quote_shown', {
       amount: amountG,
@@ -1426,6 +1439,11 @@ export function App({
       text: addPhase === 'working' ? 'Keep this tab open. Tap to watch.' : 'Keep this tab open. Tap to see where it is.',
       onClick: () => setAddOpen(true),
     },
+    !!walletAddress && verified.status === 'not_verified' && {
+      id: 'verify', tone: 'warn', title: 'Verify with GoodDollar.',
+      text: 'You need to be verified to add G$ or cash out. Tap to see how.',
+      onClick: () => setVerifyGateOpen(true),
+    },
     networkFee && !networkFee.enough && {
       id: 'top-up', tone: 'warn', title: 'Top up CELO to cash out.',
       text: `You need about ${celoText(networkFee.needCelo)} CELO in your wallet for the network fee. G$ can't pay it. Tap to add some with naira.`,
@@ -1453,6 +1471,7 @@ export function App({
         </React.Suspense>
       )}
 
+      {verifyGateOpen && <VerifyGate onClose={() => setVerifyGateOpen(false)} onRecheck={verified.recheck} />}
       {addOpen && walletAddress && (
         <React.Suspense fallback={null}>
           <AddGsModal
@@ -1835,6 +1854,7 @@ export function App({
             ngnPerUsdt={liveNgnRate ?? pendingQuote?.ngnPerUsdt ?? 1452.6}
             onClose={() => setMobileView('home')}
             onReview={async (amountG: number, nairaEstimate: number | null, usdtEstimate: number) => {
+              if (needsVerifying()) return;
               // Create quote (live on-chain prices in production) and go to the review view
               let quote: QuoteResult;
               try {

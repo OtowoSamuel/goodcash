@@ -17,6 +17,7 @@ import {
   type CashOutTransaction,
   type Hex,
 } from '@goodcash/core';
+import { isVerified, verificationRequired } from '../verified';
 import { V1Error } from './http';
 import { clearWorkIfIdle, markWork, shouldList } from './work';
 import { emitCashOutEvent, eventForStatus } from './webhooks';
@@ -166,6 +167,13 @@ async function createReserved(
   a: { idemKey: string; hash: string; input: z.infer<typeof CreateSchema>; wallet: string; amountG: string; amountWei: bigint }
 ): Promise<{ status: number; body: unknown }> {
   const { idemKey, hash, input, wallet, amountG, amountWei } = a;
+
+  // Only GoodDollar-verified people may cash out. Checked before anything is created at the payout partner.
+  if (ctx.mode === 'live' && verificationRequired(env)) {
+    const verified = await isVerified(env, wallet);
+    if (verified === false) throw new V1Error('not_verified', 'This wallet is not verified with GoodDollar. The customer must verify at https://wallet.gooddollar.org first.');
+    if (verified === null) throw new V1Error('verification_unavailable', 'Could not read GoodDollar verification on Celo.');
+  }
 
   // One wallet cannot flood orders (shared limit with the app's per-visitor limiter)
   if (env.RATE_LIMITER) {

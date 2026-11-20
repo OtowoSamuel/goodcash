@@ -11,6 +11,7 @@
 
 import { checkRelayQuote } from '@goodcash/core';
 import { handleStats } from './stats';
+import { handleVerified, verifiedGate } from './verified';
 import { z } from 'zod';
 import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Deps } from './v1';
 import { processLiveApprovals } from './v1/liveKeys';
@@ -34,6 +35,7 @@ export interface Env {
   ALLOWED_ORIGINS?: string;       // Comma-separated browser origins
   CELO_RPC_URL?: string;          // On-chain swap verification RPC
   ROUTER_ADDRESS?: string;        // GoodCashRouter address override
+  REQUIRE_VERIFIED?: string;      // "true": only GoodDollar-verified wallets can add G$ or cash out (see verified.ts)
   ROUTER_V2_ADDRESS?: string;     // One-tap router (GoodCashRouterV2). Unset means the one-tap flow is off
   ROUTER_V2_DEPLOY_BLOCK?: string; // Block the one-tap router was deployed in (where history scanning starts)
   SENDER_FEE?: string;            // Optional GoodCash fee in USDT (needs SENDER_FEE_ADDRESS)
@@ -1283,6 +1285,8 @@ async function handleCreateOrder(request: Request, env: Env): Promise<Response> 
   if (!parsed.success) {
     return invalidRequest(parsed.error.issues, 'orders');
   }
+  const notVerified = await verifiedGate(env, parsed.data.refundAddress);
+  if (notVerified) return notVerified;
 
   const swapCheck = await verifySwapOnChain(
     parsed.data.swapTxHash,
@@ -1793,6 +1797,8 @@ async function handleCreateOneTapOrder(request: Request, env: Env): Promise<Resp
   const parsed = OneTapOrderSchema.safeParse(body);
   if (!parsed.success) return invalidRequest(parsed.error.issues, 'orders-v2');
   const input = parsed.data;
+  const notVerified = await verifiedGate(env, input.refundAddress);
+  if (notVerified) return notVerified;
 
   // Only people who really hold the G$ can ask for an order (keeps junk orders out)
   try {
@@ -2105,6 +2111,8 @@ async function handleCreateOnrampOrder(request: Request, env: Env): Promise<Resp
   if (!parsed.success) return err('Please check your details and try again.');
   const input = parsed.data;
   if (!isAdult(input.birthDate)) return err('You must be 18 or older to use this.', 400);
+  const notVerified = await verifiedGate(env, input.wallet);
+  if (notVerified) return notVerified;
 
   // The most this order's conversion may ever use: what the order is expected to deliver (see /relay/quote)
   const orderRate = await fetchOnrampRate(input.naira, env);
@@ -3039,7 +3047,7 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
   }
 
   // Read-only endpoints share a looser limit (many people sit behind one phone-network address)
-  if (m === 'GET' && (pathname === '/rates' || pathname === '/onramp/quote' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname) || pathname === '/stats' || pathname === '/referral/me')) {
+  if (m === 'GET' && (pathname === '/rates' || pathname === '/onramp/quote' || /^\/(institutions|orders|swaps\/0x)/i.test(pathname) || pathname === '/stats' || pathname === '/referral/me' || pathname === '/verified')) {
     const limited = await checkRateLimit(request, env, 'read', 'read');
     if (limited) return limited;
   }
@@ -3063,6 +3071,9 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
     if (limitedRead) return limitedRead;
     return handleGetOnrampOrder(onrampMatch[1], env);
   }
+
+  // GET /verified?wallet=0x... - is this wallet GoodDollar-verified (read-only; the app asks before showing the screens)
+  if (m === 'GET' && pathname === '/verified') return handleVerified(env, url.searchParams.get('wallet') ?? '');
 
   // GET /referral/me?wallet=0x... - how many friends this wallet's link has brought in (read-only)
   if (m === 'GET' && pathname === '/referral/me') {
