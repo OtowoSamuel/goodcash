@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Store } from './referral';
-import { countTopUp, readTopUpTotals, summariseTopUps, weekStart } from './topupStats';
+import { countTopUp, excludedWallets, readTopUpTotals, summariseTopUps, weekStart } from './topupStats';
 
 class MockKV {
   store = new Map<string, string>();
@@ -89,5 +89,22 @@ describe('top-up totals', () => {
   it('weekStart is the Monday', () => {
     expect(weekStart(at('2026-11-22T23:59:00Z'))).toBe('2026-11-16');
     expect(weekStart(at('2026-11-16T00:00:00Z'))).toBe('2026-11-16');
+  });
+});
+
+describe('the team\'s own wallets', () => {
+  it('are not counted, and nothing is written for them', async () => {
+    const kv = new MockKV();
+    order(kv, 'o1', A, 5000, at('2026-11-18T10:00:00Z'));
+    order(kv, 'o2', B, 2000, at('2026-11-18T11:00:00Z'));
+    const exclude = excludedWallets(` ${A.toUpperCase().replace('0X', '0x')} , not-a-wallet `);
+    expect(await countTopUp(kv as unknown as Store, 'o1', Date.now(), exclude)).toBe(false);
+    expect(kv.puts).toEqual([]);
+    expect(await countTopUp(kv as unknown as Store, 'o2', Date.now(), exclude)).toBe(true);
+    expect(await readTopUpTotals(kv as unknown as Store)).toMatchObject({ topUps: 1, wallets: 1, naira: 2000 });
+  });
+  it('excludedWallets keeps only real addresses, lower-cased', () => {
+    expect([...excludedWallets(`${A}, junk,,${B.toUpperCase().replace('0X', '0x')}`)]).toEqual([A.toLowerCase(), B.toLowerCase()]);
+    expect(excludedWallets(undefined).size).toBe(0);
   });
 });

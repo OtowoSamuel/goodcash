@@ -25,6 +25,7 @@ td.n,th.n{text-align:right}
 .chart text{font:700 22px Inter,sans-serif;fill:#111;text-anchor:middle}
 .wrapx{overflow-x:auto}
 h3{font:600 15px Inter,sans-serif;margin:20px 0 4px;color:#333}
+.def{font-size:14px;color:#333;margin:2px 0 4px}
 .err{background:var(--ye);border:2.5px solid var(--ink);border-radius:14px;padding:10px 12px;font-weight:600}
 </style>
 </head><body><div class="wrap">
@@ -32,35 +33,40 @@ h3{font:600 15px Inter,sans-serif;margin:20px 0 4px;color:#333}
 <div class="card">
 <h1>GoodCash in numbers</h1>
 <p class="sub" id="updated">Loading…</p>
+<p class="sub" id="excluded"></p>
 <div id="error" class="err" hidden></div>
 <h2>Added with naira</h2>
+<p class="def">A top-up is a naira bank transfer that was confirmed and turned into G$. Each one is counted once, when it is confirmed. <span id="since"></span></p>
 <div class="tiles">
 <div class="tile"><b id="u-topups">–</b><span>top-ups so far</span></div>
 <div class="tile"><b id="u-naira">–</b><span>naira added in total</span></div>
-<div class="tile"><b id="u-people">–</b><span id="ul-people">different people</span></div>
-<div class="tile"><b id="u-week">–</b><span>top-ups this week</span></div>
+<div class="tile"><b id="u-people">–</b><span id="ul-people">different wallets</span></div>
+<div class="tile"><b id="u-avg">–</b><span>average top-up</span></div>
 </div>
 <p id="uweek" class="sub"></p>
+<h3>Top-ups per week (last 12 weeks)</h3>
 <svg id="uchart" class="chart" role="img" aria-label="Top-ups per week for the last 12 weeks"></svg>
-<div class="axis"><span id="ufrom"></span><span>this week</span></div>
+<div class="axis"><span id="ufrom"></span><span>this week so far</span></div>
 <h2>Cashed out</h2>
+<p class="def">A cash out is G$ swapped to US dollars by our contracts and paid to a bank in naira. These are read from the public record on the Celo network.</p>
 <div class="tiles">
 <div class="tile"><b id="t-cashouts">–</b><span>cash outs so far</span></div>
 <div class="tile"><b id="t-g">–</b><span>G$ cashed out</span></div>
+<div class="tile"><b id="t-usd">–</b><span>worth in US dollars</span></div>
+<div class="tile"><b id="t-avg">–</b><span>average cash out, in US dollars</span></div>
 <div class="tile"><b id="t-people">–</b><span id="l-people">different wallets</span></div>
 <div class="tile"><b id="t-repeat">–</b><span id="l-repeat">wallets that came back</span></div>
-<div class="tile"><b id="t-usd">–</b><span>paid out, in US dollars</span></div>
 </div>
 <p id="week" class="sub"></p>
 <h3>Cash outs per week (last 12 weeks)</h3>
 <svg id="chart" class="chart" role="img" aria-label="Cash outs per week for the last 12 weeks"></svg>
-<div class="axis"><span id="from"></span><span>this week</span></div>
+<div class="axis"><span id="from"></span><span>this week so far</span></div>
 <h2>Latest cash outs</h2>
 <div class="wrapx"><table><thead id="recent-head"><tr><th>When (UTC)</th><th>Wallet</th><th class="n">G$</th><th class="n">US dollars</th><th>Receipt</th></tr></thead><tbody id="recent"></tbody></table></div>
-<h2>By contract</h2>
+<h3>By contract (technical detail)</h3>
 <div class="wrapx"><table><thead><tr><th>Contract</th><th class="n">Cash outs</th><th class="n">G$</th></tr></thead><tbody id="routers"></tbody></table></div>
 <h2>Where these numbers come from</h2>
-<p><b>Cash outs</b> are read from the public cash-out records of our two contracts on the Celo network, the same records anyone can open on the block explorer. <b>Top-ups</b> are a running count we keep: each time a naira payment is confirmed it is added once, as a number of top-ups and an amount in naira. No name, bank detail or wallet is kept in that count or shown here. The top-up count is ours, not read from a public record, so you can check how it works in our public code. The page refreshes about every 10 minutes.</p>
+<p><b>Cash outs</b> are read from the public records of our two contracts on the Celo network, the same records anyone can open on the block explorer. <b>Top-ups</b> are a running count we keep: each confirmed naira payment is added once, as a count and an amount in naira. No name, bank detail or wallet is kept in that count or shown here. Weeks start on Monday (UTC). Wallets are shortened. Test activity from our own wallets is left out of every number above. The page refreshes about every 10 minutes.</p>
 <p><a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/topupStats.ts" rel="noopener noreferrer" target="_blank">How top-ups are counted</a> · <a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/stats.ts" rel="noopener noreferrer" target="_blank">How cash outs are counted</a></p>
 </div>
 <nav class="foot"><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>

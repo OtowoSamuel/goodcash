@@ -7,6 +7,8 @@
  *   cd /Users/admin/Documents/GoodCash/services/orders
  *   node ../../scripts/topup-stats-backfill.mjs            shows the totals it would write, writes nothing
  *   node ../../scripts/topup-stats-backfill.mjs --yes      writes them (only if no totals exist yet)
+ *   node ../../scripts/topup-stats-backfill.mjs --rebuild --yes   rewrites ONLY the totals value from the history (to correct it); writes no markers
+ *   add --exclude 0xabc...,0xdef...   to leave the team's own wallets out (keep in step with STATS_EXCLUDE_WALLETS in wrangler.toml)
  *
  * Run it once, BEFORE deploying the Worker that keeps the counters. Each order it counts gets the same "already
  * counted" marker the Worker uses, so that order is never counted twice later. If totals already exist it stops,
@@ -22,9 +24,15 @@ export const weekStart = (ms) => {
   return day(d.getTime() - ((d.getUTCDay() + 6) % 7) * 86400000);
 };
 
-/** rows: [{ orderId, wallet, naira, at, stage, arrived }] -> the totals value the Worker keeps, plus which orders it counted */
-export function build(rows) {
-  const done = rows.filter((r) => (r.stage === 'done' || r.arrived === true) && typeof r.naira === 'number' && r.naira > 0);
+/**
+ * rows: [{ orderId, wallet, naira, at, stage, arrived }] -> the totals value the Worker keeps, plus which orders it counted.
+ * `at` is what the order history stores: SECONDS since 1970 (the Worker's own counter uses milliseconds).
+ * `exclude` is a Set of lower-case wallets (the team's own) that are left out.
+ */
+export function build(rows, exclude = new Set()) {
+  const done = rows
+    .filter((r) => (r.stage === 'done' || r.arrived === true) && typeof r.naira === 'number' && r.naira > 0 && !exclude.has(r.wallet.toLowerCase()))
+    .map((r) => ({ ...r, at: r.at * 1000 }));
   const totals = { topUps: 0, wallets: 0, naira: 0, firstAt: null, weeks: {} };
   const wallets = new Set();
   for (const r of done) {
@@ -57,21 +65,31 @@ function readRows() {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const yes = process.argv.includes('--yes');
+  const rebuild = process.argv.includes('--rebuild');
+  const exArg = process.argv.indexOf('--exclude');
+  const exclude = new Set(exArg > 0 ? process.argv[exArg + 1].split(',').map((w) => w.trim().toLowerCase()).filter(Boolean) : []);
   const existing = JSON.parse(kv('list', '--prefix', 'stats:topups'));
-  if (existing.length) {
-    console.log('Totals already exist (stats:topups). Nothing to do; this script only runs once.');
+  if (existing.length && !rebuild) {
+    console.log('Totals already exist (stats:topups). Nothing to do; this script only runs once. To correct them, use --rebuild.');
     process.exit(0);
   }
-  const { totals, orders, wallets } = build(readRows());
-  console.log(`Would count ${totals.topUps} finished top-ups from ${totals.wallets} wallets, ₦${totals.naira.toLocaleString('en-US')}.`);
-  console.log(`That is ${orders.length + wallets.length + 1} storage writes.`);
+  if (rebuild && !existing.length) {
+    console.log('There are no totals to rebuild yet. Run without --rebuild first.');
+    process.exit(0);
+  }
+  const { totals, orders, wallets } = build(readRows(), exclude);
+  console.log(`${rebuild ? 'Would set the totals to' : 'Would count'} ${totals.topUps} finished top-ups from ${totals.wallets} wallets, ₦${totals.naira.toLocaleString('en-US')}, first on ${totals.firstAt}.`);
+  if (exclude.size) console.log(`Left out ${exclude.size} team wallet(s).`);
+  console.log(rebuild ? 'That is 1 storage write.' : `That is ${orders.length + wallets.length + 1} storage writes.`);
   if (!yes) {
     console.log('Nothing written. Run again with --yes to write.');
     process.exit(0);
   }
-  const ttl = String(60 * 60 * 24 * 400);
-  for (const id of orders) kv('put', `topupcounted:${id}`, '1', '--ttl', ttl);
-  for (const w of wallets) kv('put', `topupwallet:${w}`, '1');
+  if (!rebuild) {
+    const ttl = String(60 * 60 * 24 * 400);
+    for (const id of orders) kv('put', `topupcounted:${id}`, '1', '--ttl', ttl);
+    for (const w of wallets) kv('put', `topupwallet:${w}`, '1');
+  }
   kv('put', 'stats:topups', JSON.stringify(totals));
   console.log('Written.');
 }

@@ -42,29 +42,40 @@
     $(fromId).textContent = 'Week of ' + new Date(daily[0].date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
   }
 
+  function plural(n, one, many) { return n === 1 ? one : many; }
+  function longDate(iso) { return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }); }
+
   function show(s) {
-    $('updated').textContent = 'Cash outs read from the Celo network, top-ups counted as they settle · updated ' + stamp(s.updatedAt) + ' UTC';
-    $('t-cashouts').textContent = nf.format(s.totals.cashOuts);
-    $('t-g').textContent = nf.format(s.totals.gDollars);
-    $('t-people').textContent = nf.format(s.totals.wallets);
-    $('t-repeat').textContent = nf.format(s.totals.repeatWallets);
-    $('l-people').textContent = s.totals.wallets === 1 ? 'different wallet' : 'different wallets';
-    $('l-repeat').textContent = s.totals.repeatWallets === 1 ? 'wallet that came back' : 'wallets that came back';
-    $('t-usd').textContent = usd.format(s.totals.dollars);
-    var w = s.last7Days;
-    $('week').textContent = 'Last 7 days: ' + nf.format(w.cashOuts) + (w.cashOuts === 1 ? ' cash out' : ' cash outs') + ' from ' + nf.format(w.wallets) + (w.wallets === 1 ? ' wallet' : ' wallets') + ', ' + nf.format(w.gDollars) + ' G$.';
-    draw(s.weekly, 'chart', 'from', 'cashOuts', ' cash out, ', ' cash outs, ', function (d) { return nf.format(d.gDollars) + ' G$'; });
+    $('updated').textContent = 'Updated ' + stamp(s.updatedAt) + ' UTC';
+    if (s.excluded && s.excluded.cashOuts) {
+      $('excluded').textContent = 'Not counted: ' + nf.format(s.excluded.cashOuts) + ' test ' + plural(s.excluded.cashOuts, 'cash out', 'cash outs') + ' from our own wallets.';
+    }
+    var naira = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 });
+
     var u = s.topUps;
     if (u) {
-      var naira = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 });
       $('u-topups').textContent = nf.format(u.topUps);
       $('u-naira').textContent = naira.format(u.naira);
       $('u-people').textContent = nf.format(u.wallets);
-      $('ul-people').textContent = u.wallets === 1 ? 'person' : 'different people';
-      $('u-week').textContent = nf.format(u.thisWeek.topUps);
-      $('uweek').textContent = u.topUps ? 'This week: ' + nf.format(u.thisWeek.topUps) + (u.thisWeek.topUps === 1 ? ' top-up, ' : ' top-ups, ') + naira.format(u.thisWeek.naira) + '.' : 'No top-ups counted yet.';
+      $('ul-people').textContent = plural(u.wallets, 'wallet', 'different wallets');
+      $('u-avg').textContent = u.topUps ? naira.format(u.naira / u.topUps) : '–';
+      if (u.firstAt) $('since').textContent = 'Counted since ' + longDate(u.firstAt) + '.';
+      var uw = u.weekly[u.weekly.length - 1];
+      $('uweek').textContent = u.topUps ? 'This week so far: ' + nf.format(uw.topUps) + plural(uw.topUps, ' top-up', ' top-ups') + (uw.topUps ? ', ' + naira.format(uw.naira) : '') + '.' : 'No top-ups counted yet.';
       draw(u.weekly, 'uchart', 'ufrom', 'topUps', ' top-up, ', ' top-ups, ', function (d) { return naira.format(d.naira); });
     }
+
+    $('t-cashouts').textContent = nf.format(s.totals.cashOuts);
+    $('t-g').textContent = nf.format(s.totals.gDollars);
+    $('t-usd').textContent = usd.format(s.totals.dollars);
+    $('t-avg').textContent = s.totals.cashOuts ? usd.format(s.totals.dollars / s.totals.cashOuts) : '–';
+    $('t-people').textContent = nf.format(s.totals.wallets);
+    $('t-repeat').textContent = nf.format(s.totals.repeatWallets);
+    $('l-people').textContent = plural(s.totals.wallets, 'wallet', 'different wallets');
+    $('l-repeat').textContent = plural(s.totals.repeatWallets, 'wallet that came back', 'wallets that came back');
+    var w = s.weekly[s.weekly.length - 1];
+    $('week').textContent = s.totals.cashOuts ? 'This week so far: ' + nf.format(w.cashOuts) + plural(w.cashOuts, ' cash out', ' cash outs') + (w.cashOuts ? ', ' + nf.format(w.gDollars) + ' G$' : '') + '.' : 'No cash outs yet.';
+    draw(s.weekly, 'chart', 'from', 'cashOuts', ' cash out, ', ' cash outs, ', function (d) { return nf.format(d.gDollars) + ' G$'; });
     var rec = $('recent');
     if (!s.recent.length) empty(rec, 5, 'No cash outs yet.');
     s.recent.forEach(function (r) {

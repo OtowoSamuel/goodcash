@@ -36,6 +36,7 @@ export interface Env {
   ALLOWED_ORIGINS?: string;       // Comma-separated browser origins
   CELO_RPC_URL?: string;          // On-chain swap verification RPC
   ROUTER_ADDRESS?: string;        // GoodCashRouter address override
+  STATS_EXCLUDE_WALLETS?: string; // Comma list of the team's own wallets: their test cash outs and top-ups are left out of the public numbers
   REQUIRE_VERIFIED?: string;      // "true": only GoodDollar-verified wallets can add G$ or cash out (see verified.ts)
   ROUTER_V2_ADDRESS?: string;     // One-tap router (GoodCashRouterV2). Unset means the one-tap flow is off
   ROUTER_V2_DEPLOY_BLOCK?: string; // Block the one-tap router was deployed in (where history scanning starts)
@@ -1463,7 +1464,7 @@ async function handleWebhook(request: Request, env: Env, waitUntil?: (p: Promise
   // Naira-in order delivered: tell the customer even if the app is closed
   if (status === 'settled' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
     await updateOnrampHistory(env, id, { stage: 'done' });
-    await countTopUpSafely(env.ORDER_STORE, id);
+    await countTopUpSafely(env.ORDER_STORE, id, env.STATS_EXCLUDE_WALLETS);
     await qualifyReferralSafely(env.ORDER_STORE, id);
     await maybeSendOnrampReady(id, env);
     return new Response('OK', { status: 200 });
@@ -2949,7 +2950,7 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
       // History is optional; the order itself is still followed.
     }
     if (stage === 'done') {
-      await countTopUpSafely(env.ORDER_STORE, orderId);
+      await countTopUpSafely(env.ORDER_STORE, orderId, env.STATS_EXCLUDE_WALLETS);
       await qualifyReferralSafely(env.ORDER_STORE, orderId);
       await maybeSendOnrampReady(orderId, env);
     }

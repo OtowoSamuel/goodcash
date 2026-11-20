@@ -21,6 +21,11 @@ export interface TopUpTotals {
   weeks: Record<string, { topUps: number; naira: number }>;
 }
 
+/** Wallets whose activity is the team's own (testing). Lower-case set from a comma list. */
+export function excludedWallets(list: string | undefined): Set<string> {
+  return new Set((list ?? '').split(',').map((w) => w.trim().toLowerCase()).filter((w) => /^0x[0-9a-f]{40}$/.test(w)));
+}
+
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 export function weekStart(ms: number): string {
   const d = new Date(Math.floor(ms / 86400000) * 86400000);
@@ -40,13 +45,14 @@ export async function readTopUpTotals(store: Pick<Store, 'get'>): Promise<TopUpT
 }
 
 /** A naira top-up has settled: add it to the totals once. */
-export async function countTopUp(store: Store, orderId: string, now = Date.now()): Promise<boolean> {
+export async function countTopUp(store: Store, orderId: string, now = Date.now(), exclude: Set<string> = new Set()): Promise<boolean> {
   if ((await store.get(`topupcounted:${orderId}`)) !== null) return false;
   const rawOrder = await store.get(`onramp:${orderId}`);
   if (!rawOrder) return false;
   const order = JSON.parse(rawOrder) as { wallet?: string; naira?: number; createdAt?: number };
   if (typeof order.naira !== 'number' || !(order.naira > 0) || typeof order.wallet !== 'string') return false;
   const wallet = order.wallet.toLowerCase();
+  if (exclude.has(wallet)) return false; // the team's own test top-ups are not customers
 
   const totals = await readTopUpTotals(store);
   const isNewWallet = (await store.get(`topupwallet:${wallet}`)) === null;
@@ -69,9 +75,9 @@ export async function countTopUp(store: Store, orderId: string, now = Date.now()
   return true;
 }
 
-export async function countTopUpSafely(store: Store, orderId: string): Promise<void> {
+export async function countTopUpSafely(store: Store, orderId: string, excludeList?: string): Promise<void> {
   try {
-    await countTopUp(store, orderId);
+    await countTopUp(store, orderId, Date.now(), excludedWallets(excludeList));
   } catch (e) {
     console.error('[stats] could not count a top-up:', (e as Error)?.message);
   }

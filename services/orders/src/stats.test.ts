@@ -79,3 +79,28 @@ describe('summarise', () => {
     expect(s.recent).toEqual([]);
   });
 });
+
+describe('the team\'s own wallets', () => {
+  const now = new Date('2026-11-11T12:00:00Z');
+  const t = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
+  const TEAM = '0xafdeebb89cda1669361117ea2eae3411f1228cb6';
+  const rows: CashOutRow[] = [
+    { tx: '0x1', wallet: TEAM, time: t('2026-11-09T10:00:00Z'), g: 5000, usd: 0.6, router: 'v1' },
+    { tx: '0x2', wallet: TEAM, time: t('2026-11-10T10:00:00Z'), g: 6000, usd: 0.7, router: 'v2' },
+    { tx: '0x3', wallet: '0x1111111111111111111111111111111111111111', time: t('2026-11-10T11:00:00Z'), g: 1000, usd: 0.11, router: 'v2' },
+  ];
+  it('are left out of every number and counted openly instead', () => {
+    const s = summarise(rows, now, '0x546698368a246539df5e641edc2b79c5782ea359', new Set([TEAM]));
+    expect(s.totals).toMatchObject({ cashOuts: 1, wallets: 1, repeatWallets: 0, gDollars: 1000, dollars: 0.11 });
+    expect(s.excluded).toEqual({ cashOuts: 2, gDollars: 11000 });
+    expect(s.routers.map((r) => r.cashOuts)).toEqual([0, 1]);
+    expect(s.weekly.reduce((n, w) => n + w.cashOuts, 0)).toBe(1);
+    expect(s.recent).toHaveLength(1);
+    expect(JSON.stringify(s)).not.toContain('afdeeb');
+  });
+  it('count as normal when no list is given', () => {
+    const s = summarise(rows, now, null);
+    expect(s.totals.cashOuts).toBe(3);
+    expect(s.excluded).toEqual({ cashOuts: 0, gDollars: 0 });
+  });
+});

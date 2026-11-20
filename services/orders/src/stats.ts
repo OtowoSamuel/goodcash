@@ -8,7 +8,7 @@
  * change, so an indexer hiccup serves the previous numbers instead of an error.
  */
 
-import { readTopUpTotals, summariseTopUps, type TopUpSummary } from './topupStats';
+import { excludedWallets, readTopUpTotals, summariseTopUps, type TopUpSummary } from './topupStats';
 
 export interface StatsEnv {
   ORDER_STORE: KVNamespace;
@@ -16,6 +16,8 @@ export interface StatsEnv {
   ROUTER_ADDRESS?: string;
   ROUTER_V2_ADDRESS?: string;
   ROUTER_V2_DEPLOY_BLOCK?: string;
+  /** Comma list of the team's own wallets (testing). Their cash outs are left out and counted separately. */
+  STATS_EXCLUDE_WALLETS?: string;
 }
 
 const V1_ROUTER = '0xa4338586d4b2f0e1641c54b8cf0d53cd06b5c407';
@@ -53,6 +55,8 @@ export interface CashOutRow {
 
 export interface Stats {
   updatedAt: string;
+  /** The team's own test cash outs, left out of every number below and shown openly instead */
+  excluded: { cashOuts: number; gDollars: number };
   totals: { cashOuts: number; wallets: number; repeatWallets: number; gDollars: number; dollars: number; firstAt: string | null; lastAt: string | null };
   last7Days: { cashOuts: number; wallets: number; gDollars: number; dollars: number };
   routers: Array<{ name: string; address: string; cashOuts: number; gDollars: number }>;
@@ -122,7 +126,9 @@ const day = (sec: number) => new Date(sec * 1000).toISOString().slice(0, 10);
 const round = (n: number, places = 2) => Math.round(n * 10 ** places) / 10 ** places;
 const shorten = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-export function summarise(rows: CashOutRow[], now: Date, v2Address: string | null): Stats {
+export function summarise(allRows: CashOutRow[], now: Date, v2Address: string | null, exclude: Set<string> = new Set()): Stats {
+  const rows = allRows.filter((r) => !exclude.has(r.wallet));
+  const own = allRows.filter((r) => exclude.has(r.wallet));
   const sorted = [...rows].sort((a, b) => a.time - b.time);
   const sum = (list: CashOutRow[]) => ({
     cashOuts: list.length,
@@ -176,6 +182,7 @@ export function summarise(rows: CashOutRow[], now: Date, v2Address: string | nul
   const v2 = sorted.filter((r) => r.router === 'v2');
   return {
     updatedAt: now.toISOString(),
+    excluded: { cashOuts: own.length, gDollars: round(own.reduce((t, r) => t + r.g, 0), 0) },
     totals: {
       ...sum(sorted),
       repeatWallets,
@@ -209,7 +216,7 @@ export async function buildStats(env: StatsEnv, now = new Date()): Promise<Stats
     ...logs1.map((l) => decodeCashOut(l, 'v1')),
     ...logs2.map((l) => decodeCashOut(l, 'v2')),
   ].filter((r): r is CashOutRow => r !== null);
-  return summarise(rows, now, v2);
+  return summarise(rows, now, v2, excludedWallets(env.STATS_EXCLUDE_WALLETS));
 }
 
 /** GET /stats */
