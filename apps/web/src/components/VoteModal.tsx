@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
+import { startGoodDollarVerification, verifyStartError } from '../lib/goodid';
 import { celoText } from '../lib/router';
 import {
   type Ballot,
@@ -13,7 +14,6 @@ import {
   registerVoter,
   savePendingVote,
   sendVote,
-  VERIFY_URL,
   VOTE_CHAIN_ID,
   VOTE_COUNCIL,
   type RegisterOutcome,
@@ -48,6 +48,19 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
   const [gave, setGave] = useState(0);
   // A first-time voter pressed Vote: once their points are set up and the fee is fine, the vote goes on by itself
   const [continueVote, setContinueVote] = useState(false);
+  // Verifying signs with this same wallet on our site, then GoodDollar's face check, then back here
+  const [verifying, setVerifying] = useState(false);
+  const [verifyProblem, setVerifyProblem] = useState<string | null>(null);
+  const verifyNow = async () => {
+    setVerifying(true);
+    setVerifyProblem(null);
+    try {
+      await startGoodDollarVerification(wallet, 'vote');
+    } catch (e) {
+      setVerifyProblem(verifyStartError(e));
+      setVerifying(false);
+    }
+  };
   const alive = useRef(true);
 
   useEffect(() => {
@@ -276,11 +289,12 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
       {needsVerify && (
         <div style={{ marginTop: 8 }}>
           <div className="gc-sm">
-            To vote, you must be verified with GoodDollar. Open GoodWallet, do the quick face check, then come back here and tap <b>I've verified, check again</b>.
+            To vote, you must be verified with GoodDollar. Your wallet approves a free message (no money), GoodDollar opens for a short face check, then brings you back here to vote.
           </div>
-          <a href={VERIFY_URL} target="_blank" rel="noopener noreferrer" className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%', marginTop: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
-            Verify with GoodDollar ↗
-          </a>
+          <button type="button" onClick={() => void verifyNow()} disabled={verifying} className="gc-btn gc-btn--white gc-hit" style={{ height: 46, width: '100%', marginTop: 10 }}>
+            {verifying ? 'Check your wallet…' : 'Verify with GoodDollar'}
+          </button>
+          {verifyProblem && <div className="gc-sm" role="status" style={{ marginTop: 8, fontWeight: 600 }}>{verifyProblem}</div>}
         </div>
       )}
 

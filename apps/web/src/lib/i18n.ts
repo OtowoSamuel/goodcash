@@ -81,7 +81,6 @@ export interface Translations {
   comeBackLater: string;
   nextClaimIn: string;
   verificationNeeded: string;
-  verifyAtGoodDollar: string;
   couldNotLoadClaim: string;
   retry: string;
   cashOutOpensAt: string;
@@ -249,7 +248,6 @@ export const translations: Record<Language, Partial<Translations>> = {
     comeBackLater: 'Come back later',
     nextClaimIn: 'Next claim in {time}',
     verificationNeeded: 'Verification needed',
-    verifyAtGoodDollar: 'Verify at wallet.gooddollar.org ↗',
     couldNotLoadClaim: "Couldn't load your claim. Try again.",
     retry: 'Retry',
     cashOutOpensAt: 'Cash out opens at {n} G$',

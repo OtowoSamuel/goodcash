@@ -15,6 +15,8 @@ const m = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/router', () => ({ celoText: (v: number) => (Math.ceil(v * 100) / 100).toFixed(2) }));
+const startVerify = vi.fn(async (..._a: unknown[]) => undefined);
+vi.mock('../lib/goodid', async () => ({ ...(await vi.importActual<typeof import('../lib/goodid')>('../lib/goodid')), startGoodDollarVerification: (...a: unknown[]) => startVerify(...a) }));
 vi.mock('../lib/vote', async () => {
   const real = await vi.importActual<typeof import('../lib/vote')>('../lib/vote');
   return { ...real, ...m };
@@ -98,14 +100,14 @@ describe('VoteModal', () => {
   describe('step 1: verify with GoodDollar', () => {
     const unregistered = () => ballot({ registered: false, power: 0, available: 0 });
 
-    it('sends a wallet that is not verified to GoodWallet, with a button to check again', async () => {
+    it('verifies with the wallet already connected (no new login), with a button to check again', async () => {
       m.readBallot.mockResolvedValue(unregistered());
       m.readVerified.mockResolvedValue(false);
+      startVerify.mockClear();
       open();
-      const link = await screen.findByRole('link', { name: /verify with gooddollar/i });
-      expect(link).toHaveAttribute('href', 'https://wallet.gooddollar.org');
-      expect(link).toHaveAttribute('target', '_blank');
-      expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+      fireEvent.click(await screen.findByRole('button', { name: /^verify with gooddollar$/i }));
+      await waitFor(() => expect(startVerify).toHaveBeenCalledWith(expect.stringMatching(/^0x/i), 'vote'));
+      expect(screen.queryByRole('button', { name: /^verify with gooddollar$/i })).toBeNull();
       expect(screen.getByRole('button', { name: /i've verified, check again/i })).toBeEnabled();
       expect(screen.queryByRole('button', { name: /^vote/i })).toBeNull();
       expect(m.registerVoter).not.toHaveBeenCalled();
@@ -117,7 +119,7 @@ describe('VoteModal', () => {
       open();
       fireEvent.click(await screen.findByRole('button', { name: /i've verified, check again/i }));
       expect(await screen.findByRole('button', { name: 'Vote' })).toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: /verify with gooddollar/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^verify with gooddollar$/i })).toBeNull();
     });
 
     it('shows the two steps, with step 1 done for a verified voter', async () => {
@@ -139,7 +141,7 @@ describe('VoteModal', () => {
       m.readVerified.mockRejectedValueOnce(new Error('rpc down')).mockResolvedValue(true);
       open();
       expect(await screen.findByText(/could not check voting/)).toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: /verify with gooddollar/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^verify with gooddollar$/i })).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(await screen.findByRole('button', { name: 'Vote' })).toBeInTheDocument();
     });
@@ -236,7 +238,7 @@ describe('VoteModal', () => {
       open();
       fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
       expect(await screen.findByRole('alert')).toHaveTextContent(/has not verified this wallet/);
-      expect(screen.getByRole('link', { name: /verify with gooddollar/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^verify with gooddollar$/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /i've verified, check again/i })).toBeEnabled();
     });
   });

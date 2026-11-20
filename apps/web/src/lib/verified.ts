@@ -6,7 +6,6 @@ import { ORDERS_API_BASE } from './rate';
  * created; this is the friendly front door, so a person learns it up front instead of at the end of a form.
  * If the check cannot be made, the screen lets them go on: the server still decides.
  */
-export const GOODDOLLAR_VERIFY_URL = 'https://wallet.gooddollar.org';
 
 export type VerifiedStatus = 'checking' | 'verified' | 'not_verified' | 'unknown';
 

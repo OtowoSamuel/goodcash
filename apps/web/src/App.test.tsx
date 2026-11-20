@@ -720,7 +720,7 @@ describe('verifying is a step inside adding G$, not a banner', () => {
     expect(screen.queryByRole('dialog', { name: /Add G\$/i })).toBeNull();
 
     verifiedNow = true;
-    fireEvent.click(screen.getByRole('button', { name: /I've verified, check again/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^I've verified$/i }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Verify with GoodDollar/i })).toBeNull());
     expect(await screen.findByRole('dialog', { name: /Add G\$/i })).toBeInTheDocument();
   });
@@ -748,5 +748,54 @@ describe('verifying is a step inside adding G$, not a banner', () => {
     await settle();
     await tapAdd();
     expect(await screen.findByRole('dialog', { name: /Add G\$/i })).toBeInTheDocument();
+  });
+});
+
+describe('coming back from GoodDollar face verification', () => {
+  const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
+  const loadApp = async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_ADDG_ENABLED', 'true');
+    return (await import('./App')).App;
+  };
+  let verifiedNow = true;
+  beforeEach(() => {
+    storageMock.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/verified')) return { ok: true, json: async () => ({ required: true, verified: verifiedNow }) };
+        if (url.includes('/institutions/')) return { ok: true, json: async () => ({ institutions: [] }) };
+        return { ok: true, json: async () => ({ data: { sell: { rate: 1500 } } }) };
+      })
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('checks the chain, then takes them straight back to adding G$, and tidies the address bar', async () => {
+    verifiedNow = true;
+    storageMock.setItem('goodcash_verify_pending', JSON.stringify({ wallet: WALLET, intent: 'add-g', at: Date.now() }));
+    window.history.replaceState({}, '', '/?gdverify=1&verified=true');
+    const AppWithAdd = await loadApp();
+    render(<AppWithAdd walletAddress={WALLET} />);
+    expect(await screen.findByRole('dialog', { name: /Add G\$/i }, { timeout: 4000 })).toBeInTheDocument();
+    expect(window.location.search).toBe('');
+    expect(storageMock.getItem('goodcash_verify_pending')).toBeNull();
+  });
+
+  it('does not take ?verified=true on trust: while the chain says no, it keeps checking and opens nothing', async () => {
+    verifiedNow = false;
+    storageMock.setItem('goodcash_verify_pending', JSON.stringify({ wallet: WALLET, intent: 'add-g', at: Date.now() }));
+    window.history.replaceState({}, '', '/?gdverify=1&verified=true');
+    const AppWithAdd = await loadApp();
+    render(<AppWithAdd walletAddress={WALLET} />);
+    expect(await screen.findByRole('dialog', { name: /Checking your verification/i })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByRole('dialog', { name: /Add G\$/i })).toBeNull();
   });
 });

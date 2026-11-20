@@ -6,6 +6,9 @@ import { gToWei, nairaFromUsdt, GOODCASH_FEE_PERCENT } from './lib/units';
 import { Modal } from './components/Modal';
 import { VerifyGate } from './components/VerifyGate';
 import { useVerified } from './lib/verified';
+import { VerifyReturn } from './components/VerifyReturn';
+import { VoteModal } from './components/VoteModal';
+import { takeVerifyReturn, type PendingVerify, type VerifyIntent } from './lib/goodid';
 import { getWalletLink, openWalletApp } from './lib/walletLink';
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
@@ -526,9 +529,11 @@ export function App({
    * Verifying is a step inside adding G$ and cashing out, shown only to someone who still needs it (a verified
    * person never sees it). `then` is what they were doing: it runs by itself once they are verified.
    */
-  const needsVerifying = (then: () => void) => {
+  const [verifyIntent, setVerifyIntent] = useState<VerifyIntent>('cashout');
+  const needsVerifying = (then: () => void, intent: VerifyIntent) => {
     if (!walletAddress || isDemoMode || verifiedStatus.current !== 'not_verified') return false;
     afterVerify.current = then;
+    setVerifyIntent(intent);
     setVerifyGateOpen(true);
     return true;
   };
@@ -537,6 +542,28 @@ export function App({
     const go = afterVerify.current;
     afterVerify.current = null;
     go?.();
+  };
+  // Back from GoodDollar's face check: check until verified, offer the optional vote, then carry on
+  const [verifyReturn, setVerifyReturn] = useState<PendingVerify | null>(null);
+  const [appVoteOpen, setAppVoteOpen] = useState(false);
+  const afterVote = useRef<VerifyIntent | null>(null);
+  const returnChecked = useRef(false);
+  useEffect(() => {
+    if (!walletAddress || isDemoMode || returnChecked.current) return;
+    returnChecked.current = true;
+    const back = takeVerifyReturn(walletAddress);
+    if (back) setVerifyReturn(back);
+  }, [walletAddress, isDemoMode]);
+  /** Take a newly verified customer to what they were doing before they left for GoodDollar. */
+  const continueIntent = (intent: VerifyIntent) => {
+    if (intent === 'vote') return setAppVoteOpen(true);
+    if (intent === 'cashout') {
+      setCurrentTab('cashout');
+      setMobileView('cashout');
+      return;
+    }
+    setAddAsset(intent === 'add-celo' ? 'celo' : 'g');
+    setAddOpen(true);
   };
   useEffect(() => {
     if (verifyGateOpen && verified.status === 'verified') continueAfterVerify();
@@ -553,7 +580,7 @@ export function App({
       return;
     }
     // An order already paid for or in progress is always let through to finish
-    if (!loadSavedAddGs(walletAddress) && needsVerifying(() => handleAddClick(asset))) return;
+    if (!loadSavedAddGs(walletAddress) && needsVerifying(() => handleAddClick(asset), asset === 'celo' ? 'add-celo' : 'add-g')) return;
     setAddAsset(asset);
     setAddOpen(true);
   };
@@ -694,7 +721,7 @@ export function App({
     ngnPerUsdt?: number | null,
     bankCode?: string
   ) => {
-    if (needsVerifying(() => handleInitiateCashOut(quote, amountG, slippageBps, bankName, accountNumber, accountHolderName, ngnPerUsdt, bankCode))) return;
+    if (needsVerifying(() => handleInitiateCashOut(quote, amountG, slippageBps, bankName, accountNumber, accountHolderName, ngnPerUsdt, bankCode), 'cashout')) return;
     setPendingQuote({ quote, amountG, slippageBps, bankName, accountNumber, accountHolderName, ngnPerUsdt, bankCode });
     emitAnalyticsEvent('quote_shown', {
       amount: amountG,
@@ -1484,7 +1511,24 @@ export function App({
         </React.Suspense>
       )}
 
-      {verifyGateOpen && <VerifyGate onClose={() => { afterVerify.current = null; setVerifyGateOpen(false); }} onVerified={continueAfterVerify} onRecheck={verified.recheck} />}
+      {verifyGateOpen && walletAddress && <VerifyGate wallet={walletAddress} intent={verifyIntent} onClose={() => { afterVerify.current = null; setVerifyGateOpen(false); }} onVerified={continueAfterVerify} onRecheck={verified.recheck} />}
+      {verifyReturn && walletAddress && (
+        <VerifyReturn
+          wallet={walletAddress}
+          intent={verifyReturn.intent}
+          recheck={verified.recheck}
+          onClose={() => setVerifyReturn(null)}
+          onVote={() => { afterVote.current = verifyReturn.intent; setVerifyReturn(null); setAppVoteOpen(true); }}
+          onDone={() => { const intent = verifyReturn.intent; setVerifyReturn(null); continueIntent(intent); }}
+        />
+      )}
+      {appVoteOpen && walletAddress && (
+        <VoteModal
+          wallet={walletAddress}
+          onAddCelo={ADDG_ENABLED ? () => { setAppVoteOpen(false); handleAddClick('celo'); } : undefined}
+          onClose={() => { setAppVoteOpen(false); const next = afterVote.current; afterVote.current = null; if (next && next !== 'vote') continueIntent(next); }}
+        />
+      )}
       {addOpen && walletAddress && (
         <React.Suspense fallback={null}>
           <AddGsModal
@@ -1867,7 +1911,7 @@ export function App({
             ngnPerUsdt={liveNgnRate ?? pendingQuote?.ngnPerUsdt ?? 1452.6}
             onClose={() => setMobileView('home')}
             onReview={async function review(amountG: number, nairaEstimate: number | null, usdtEstimate: number): Promise<void> {
-              if (needsVerifying(() => void review(amountG, nairaEstimate, usdtEstimate))) return;
+              if (needsVerifying(() => void review(amountG, nairaEstimate, usdtEstimate), 'cashout')) return;
               // Create quote (live on-chain prices in production) and go to the review view
               let quote: QuoteResult;
               try {

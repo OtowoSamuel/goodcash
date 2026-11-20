@@ -123,8 +123,6 @@ export async function readBallot(wallet: string, client: ReadClient = publicClie
 
 /** GoodDollar's Identity contract on Celo (GoodProtocol releases/deployment.json, "production-celo") */
 export const GOODDOLLAR_IDENTITY: Address = '0xC361A6E67822a0EDc17D899227dd9FC50BD62F42';
-/** Where a person does the face check. GoodDollar's own site sends people here. */
-export const VERIFY_URL = 'https://wallet.gooddollar.org';
 
 const IDENTITY_ABI = [
   { type: 'function', name: 'getWhitelistedRoot', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'address' }] },

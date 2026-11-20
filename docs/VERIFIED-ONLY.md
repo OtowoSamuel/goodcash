@@ -24,5 +24,13 @@ verify" when they start, and the app carries on with what they were doing by its
 verified (it asks again when they return to the tab). If the check cannot be made the screens let the person go on;
 the server decides.
 
+**Verifying from the app (no second login).** "Verify with GoodDollar" follows GoodDollar's documented Identity SDK flow
+(`@goodsdks/citizen-sdk` 1.2.8, `generateFVLink`), reimplemented in `apps/web/src/lib/goodid.ts`: the wallet the customer is
+already signed in with signs GoodDollar's fixed message on our site, then they go to `goodid.gooddollar.org` with that
+signature, do the face check, and come back to `?gdverify=1&verified=true`. The app never trusts `verified=true`: it asks the
+chain every 10 seconds (about 3 minutes, then offers Try again). Once verified it offers the optional vote for GoodCash
+(skipped for anyone who already voted), then returns them to what they were doing (Add G$ or cash out). If GoodDollar ever
+changes the message or the link format, update `goodid.ts` from the SDK source.
+
 **Switch.** `REQUIRE_VERIFIED` in `services/orders/wrangler.toml` (`"true"` = on). Set it to `"false"` and deploy to switch
 the rule off at once. Unset (tests, local development) means off.

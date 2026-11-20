@@ -15,7 +15,6 @@ import {
   savePendingVote,
   sendVote,
   GOODDOLLAR_IDENTITY,
-  VERIFY_URL,
   voteData,
   VOTE_COUNCIL,
   type Ballot,
@@ -295,8 +294,5 @@ describe('readVerified', () => {
   });
   it('throws when the chain cannot be read, so a failed check is never taken for "not verified"', async () => {
     await expect(readVerified(WALLET, { readContract: vi.fn(async () => { throw new Error('rpc down'); }) } as never)).rejects.toThrow('rpc down');
-  });
-  it('sends people to GoodDollar\'s own wallet to verify', () => {
-    expect(VERIFY_URL).toBe('https://wallet.gooddollar.org');
   });
 });
