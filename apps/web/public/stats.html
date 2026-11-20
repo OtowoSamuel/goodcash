@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stats · GoodCash</title>
-<meta name="description" content="Live numbers for GoodCash cash outs, read straight from the Celo network">
+<meta name="description" content="Live numbers for GoodCash: G$ added with naira and G$ cashed out">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/legal.css">
@@ -10,7 +10,7 @@
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:16px 0}
 .tile{border:2.5px solid var(--ink);border-radius:14px;padding:12px 14px;background:#fff}
 .tile:nth-child(1){background:var(--mi)}.tile:nth-child(2){background:var(--ye)}
-.tile:last-child{grid-column:1/-1}
+.tile:last-child:nth-child(odd){grid-column:1/-1}
 .tile b{display:block;font:800 28px/1.1 'Bricolage Grotesque',sans-serif}
 .tile span{font-size:13.5px;color:#333}
 .chart{width:100%;height:auto;max-height:260px;display:block;margin-top:8px}
@@ -24,6 +24,7 @@ td.n,th.n{text-align:right}
 
 .chart text{font:700 22px Inter,sans-serif;fill:#111;text-anchor:middle}
 .wrapx{overflow-x:auto}
+h3{font:600 15px Inter,sans-serif;margin:20px 0 4px;color:#333}
 .err{background:var(--ye);border:2.5px solid var(--ink);border-radius:14px;padding:10px 12px;font-weight:600}
 </style>
 </head><body><div class="wrap">
@@ -32,6 +33,17 @@ td.n,th.n{text-align:right}
 <h1>GoodCash in numbers</h1>
 <p class="sub" id="updated">Loading…</p>
 <div id="error" class="err" hidden></div>
+<h2>Added with naira</h2>
+<div class="tiles">
+<div class="tile"><b id="u-topups">–</b><span>top-ups so far</span></div>
+<div class="tile"><b id="u-naira">–</b><span>naira added in total</span></div>
+<div class="tile"><b id="u-people">–</b><span id="ul-people">different people</span></div>
+<div class="tile"><b id="u-week">–</b><span>top-ups this week</span></div>
+</div>
+<p id="uweek" class="sub"></p>
+<svg id="uchart" class="chart" role="img" aria-label="Top-ups per week for the last 12 weeks"></svg>
+<div class="axis"><span id="ufrom"></span><span>this week</span></div>
+<h2>Cashed out</h2>
 <div class="tiles">
 <div class="tile"><b id="t-cashouts">–</b><span>cash outs so far</span></div>
 <div class="tile"><b id="t-g">–</b><span>G$ cashed out</span></div>
@@ -40,7 +52,7 @@ td.n,th.n{text-align:right}
 <div class="tile"><b id="t-usd">–</b><span>paid out, in US dollars</span></div>
 </div>
 <p id="week" class="sub"></p>
-<h2>Cash outs per week (last 12 weeks)</h2>
+<h3>Cash outs per week (last 12 weeks)</h3>
 <svg id="chart" class="chart" role="img" aria-label="Cash outs per week for the last 12 weeks"></svg>
 <div class="axis"><span id="from"></span><span>this week</span></div>
 <h2>Latest cash outs</h2>
@@ -48,7 +60,8 @@ td.n,th.n{text-align:right}
 <h2>By contract</h2>
 <div class="wrapx"><table><thead><tr><th>Contract</th><th class="n">Cash outs</th><th class="n">G$</th></tr></thead><tbody id="routers"></tbody></table></div>
 <h2>Where these numbers come from</h2>
-<p>Every number on this page is read from the public cash-out records of our two contracts on the Celo network, the same records anyone can open on the block explorer. We do not use any private customer information, and wallets are shortened. The page refreshes about every 10 minutes. It counts cash outs only, not G$ added with naira.</p>
+<p><b>Cash outs</b> are read from the public cash-out records of our two contracts on the Celo network, the same records anyone can open on the block explorer. <b>Top-ups</b> are a running count we keep: each time a naira payment is confirmed it is added once, as a number of top-ups and an amount in naira. No name, bank detail or wallet is kept in that count or shown here. The top-up count is ours, not read from a public record, so you can check how it works in our public code. The page refreshes about every 10 minutes.</p>
+<p><a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/topupStats.ts" rel="noopener noreferrer" target="_blank">How top-ups are counted</a> · <a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/stats.ts" rel="noopener noreferrer" target="_blank">How cash outs are counted</a></p>
 </div>
 <nav class="foot"><a href="/about">About</a><a href="/stats">Stats</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
 </div><script src="/stats.js"></script></body></html>
