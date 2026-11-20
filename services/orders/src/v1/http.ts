@@ -22,7 +22,11 @@ export type ErrorCode =
   | 'idempotency_in_progress'
   | 'transaction_mismatch'
   | 'webhook_not_configured'
-  | 'topups_not_enabled';
+  | 'topups_not_enabled'
+  | 'not_verified'
+  | 'verification_unavailable';
+
+import { CHECK_FAILED_MESSAGE, NOT_VERIFIED_MESSAGE } from '../verified';
 
 const SETUP = "This app isn't set up correctly for cash out. Please contact the app's support.";
 
@@ -49,6 +53,8 @@ export const ERRORS: Record<ErrorCode, { status: number; message: string }> = {
   transaction_mismatch: { status: 400, message: "That transaction doesn't match this cash out." },
   webhook_not_configured: { status: 400, message: SETUP },
   topups_not_enabled: { status: 403, message: SETUP },
+  not_verified: { status: 403, message: NOT_VERIFIED_MESSAGE },
+  verification_unavailable: { status: 503, message: CHECK_FAILED_MESSAGE },
 };
 
 export class V1Error extends Error {

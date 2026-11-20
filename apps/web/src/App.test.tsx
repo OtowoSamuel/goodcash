@@ -671,3 +671,89 @@ describe('History keeps one row per swap', () => {
     expect(within(rows[0]).getByText('Paid')).toBeInTheDocument();
   });
 });
+
+describe('only GoodDollar-verified people can add G$ or cash out', () => {
+  const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
+  const stubVerified = (body: unknown | 'down') =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/verified')) {
+          if (body === 'down') return { ok: false, json: async () => ({}) };
+          return { ok: true, json: async () => body };
+        }
+        if (url.includes('/institutions/')) return { ok: true, json: async () => ({ institutions: [] }) };
+        return { ok: true, json: async () => ({ data: { sell: { rate: 1500 } } }) };
+      })
+    );
+  beforeEach(() => storageMock.clear());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows a Verify with GoodDollar notice that opens the explainer', async () => {
+    stubVerified({ required: true, verified: false });
+    render(<App walletAddress={WALLET} />);
+    const notices = await screen.findAllByText('Verify with GoodDollar.');
+    fireEvent.click(notices[0]);
+    expect(await screen.findByRole('dialog', { name: /Verify with GoodDollar/i })).toBeInTheDocument();
+  });
+
+  it('shows nothing for a verified wallet, or when the check cannot be made', async () => {
+    stubVerified({ required: true, verified: true });
+    const first = render(<App walletAddress={WALLET} />);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryAllByText('Verify with GoodDollar.')).toHaveLength(0);
+    first.unmount();
+
+    stubVerified('down');
+    render(<App walletAddress={WALLET} />);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryAllByText('Verify with GoodDollar.')).toHaveLength(0);
+  });
+});
+
+describe('the Add G$ button follows the wallet's GoodDollar verification', () => {
+  const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
+  const loadApp = async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_ADDG_ENABLED', 'true');
+    return (await import('./App')).App;
+  };
+  const stub = (verified: boolean) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/verified')) return { ok: true, json: async () => ({ required: true, verified }) };
+        if (url.includes('/institutions/')) return { ok: true, json: async () => ({ institutions: [] }) };
+        return { ok: true, json: async () => ({ data: { sell: { rate: 1500 } } }) };
+      })
+    );
+  beforeEach(() => storageMock.clear());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('opens the verify pop-up, not the Add G$ form', async () => {
+    stub(false);
+    const AppWithAdd = await loadApp();
+    render(<AppWithAdd walletAddress={WALLET} />);
+    await screen.findAllByText('Verify with GoodDollar.'); // the check has finished
+    fireEvent.click((await screen.findAllByRole('button', { name: /Add G\$/i }))[0]);
+    expect(await screen.findByRole('dialog', { name: /Verify with GoodDollar/i })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /Add G\$/i })).toBeNull();
+  });
+
+  it('a verified wallet gets the Add G$ form', async () => {
+    stub(true);
+    const AppWithAdd = await loadApp();
+    render(<AppWithAdd walletAddress={WALLET} />);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/verified?wallet=')));
+    await new Promise((r) => setTimeout(r, 50));
+    fireEvent.click((await screen.findAllByRole('button', { name: /Add G\$/i }))[0]);
+    expect(screen.queryByRole('dialog', { name: /Verify with GoodDollar/i })).toBeNull();
+  });
+});

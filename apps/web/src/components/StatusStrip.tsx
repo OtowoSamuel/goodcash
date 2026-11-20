@@ -6,7 +6,7 @@ import React from 'react';
  */
 export interface StatusNotice {
   /** Which notice this is; used to keep the order of importance in one place */
-  id: 'money-ready' | 'unfinished-cashout' | 'add-order' | 'add-problem' | 'top-up';
+  id: 'money-ready' | 'unfinished-cashout' | 'add-order' | 'add-problem' | 'top-up' | 'verify';
   tone: 'good' | 'warn' | 'bad';
   title: string;
   text: string;
@@ -17,7 +17,7 @@ export interface StatusNotice {
 const TONE: Record<StatusNotice['tone'], string> = { good: '#8cf0c0', warn: '#ffd23f', bad: '#ffd6d6' };
 
 /** Most urgent first. */
-const ORDER: StatusNotice['id'][] = ['money-ready', 'add-problem', 'unfinished-cashout', 'add-order', 'top-up'];
+const ORDER: StatusNotice['id'][] = ['money-ready', 'add-problem', 'unfinished-cashout', 'add-order', 'verify', 'top-up'];
 
 export function pickNotice(notices: Array<StatusNotice | null | undefined | false>): StatusNotice | null {
   const real = notices.filter((n): n is StatusNotice => !!n);
