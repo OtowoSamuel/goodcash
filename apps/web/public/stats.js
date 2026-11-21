@@ -65,20 +65,35 @@
       draw(u.weekly, 'uchart', 'ufrom', 'topUps', ' top-up, ', ' top-ups, ', function (d) { return naira.format(d.naira); });
     }
 
-    if (s.people && s.people.wallets > 0) {
+    var us = s.usage;
+    if (us && us.wallets > 0) {
       var pe = s.people;
-      $('pe-people').textContent = nf.format(pe.verifiedPeople);
-      $('ple-people').textContent = plural(pe.verifiedPeople, 'verified person has used GoodCash', 'verified people have used GoodCash');
-      $('pe-wallets').textContent = nf.format(pe.wallets);
-      $('ple-wallets').textContent = plural(pe.wallets, 'wallet in total', 'different wallets in total');
-      $('pe-not').textContent = nf.format(pe.wallets - pe.verifiedWallets);
-      $('ple-not').textContent = plural(pe.wallets - pe.verifiedWallets, 'wallet not verified yet', 'wallets not verified yet');
-      $('people').hidden = false;
-    }
-    if (s.partners && s.partners.active > 0) {
-      $('p-active').textContent = nf.format(s.partners.active);
-      $('pl-active').textContent = plural(s.partners.active, 'partner using the SDK', 'partners using the SDK');
-      $('partners').hidden = false;
+      $('us-people').textContent = pe ? nf.format(pe.verifiedPeople) : '–';
+      $('usl-people').textContent = pe ? plural(pe.verifiedPeople, 'verified person', 'verified people') : 'verified people (not available right now)';
+      $('us-wallets').textContent = nf.format(us.wallets);
+      $('usl-wallets').textContent = plural(us.wallets, 'wallet in total', 'different wallets in total');
+      $('us-back').textContent = nf.format(us.cameBack);
+      $('usl-back').textContent = plural(us.cameBack, 'wallet that came back', 'wallets that came back') + ' (2 or more top-ups or cash outs)';
+      $('us-both').textContent = nf.format(us.usedBoth);
+      $('usl-both').textContent = plural(us.usedBoth, 'wallet both added and cashed out', 'wallets both added and cashed out');
+      $('us-tx').textContent = nf.format(s.totals.cashOuts + (u ? u.topUps : 0));
+      if (s.partners && s.partners.active > 0) {
+        $('us-partners').textContent = nf.format(s.partners.active);
+        $('usl-partners').textContent = plural(s.partners.active, 'partner using the SDK', 'partners using the SDK');
+        $('us-partners-tile').hidden = false;
+      }
+      if (pe && pe.wallets > pe.verifiedWallets) {
+        var nv = pe.wallets - pe.verifiedWallets;
+        $('us-not').textContent = nf.format(nv) + plural(nv, ' wallet is', ' wallets are') + ' not verified yet. Most were used before the verify step started on 20 Nov 2026.';
+      }
+      if (us.undated) $('us-undated').textContent = nf.format(us.undated) + plural(us.undated, ' wallet is', ' wallets are') + ' not in this chart because the date of their first top-up is not known yet.';
+      draw(us.newWeekly, 'nchart', 'nfrom', 'wallets', ' new wallet', ' new wallets', function () { return ''; });
+      $('users').hidden = false;
+      if (u) {
+        $('u-back').textContent = nf.format(us.topUpCameBack);
+        $('ul-back').textContent = plural(us.topUpCameBack, 'wallet that came back', 'wallets that came back') + ' (2 or more top-ups)';
+        $('u-back-tile').hidden = false;
+      }
     }
 
     $('t-cashouts').textContent = nf.format(s.totals.cashOuts);

@@ -8,9 +8,11 @@ class MockKV {
   async get(k: string) {
     return this.store.get(k) ?? null;
   }
-  async put(k: string, v: string) {
+  meta = new Map<string, unknown>();
+  async put(k: string, v: string, o?: { metadata?: unknown }) {
     this.puts.push(k);
     this.store.set(k, v);
+    if (o?.metadata !== undefined) this.meta.set(k, o.metadata);
   }
   async list() {
     return { keys: [], list_complete: true };
@@ -60,7 +62,7 @@ describe('top-up totals', () => {
     expect(kv.puts).toEqual([]);
   });
 
-  it('writes at most three values for a first top-up and two for a returning wallet', async () => {
+  it('writes three values per top-up (marker, wallet count, totals)', async () => {
     const kv = new MockKV();
     order(kv, 'o1', A, 5000, at('2026-11-18T10:00:00Z'));
     order(kv, 'o2', A, 5000, at('2026-11-18T11:00:00Z'));
@@ -68,7 +70,7 @@ describe('top-up totals', () => {
     expect(kv.puts).toHaveLength(3);
     kv.puts.length = 0;
     await countTopUp(kv as unknown as Store, 'o2');
-    expect(kv.puts).toHaveLength(2);
+    expect(kv.puts).toHaveLength(3);
   });
 
   it('gives 12 weeks ending this week, zeros included, and drops older weeks from storage', async () => {
@@ -106,5 +108,28 @@ describe('the team\'s own wallets', () => {
   it('excludedWallets keeps only real addresses, lower-cased', () => {
     expect([...excludedWallets(`${A}, junk,,${B.toUpperCase().replace('0X', '0x')}`)]).toEqual([A.toLowerCase(), B.toLowerCase()]);
     expect(excludedWallets(undefined).size).toBe(0);
+  });
+});
+
+describe('per-wallet top-up count', () => {
+  it('keeps each wallet\'s number of top-ups and first date, as value and metadata', async () => {
+    const kv = new MockKV();
+    order(kv, 'o1', A, 5000, at('2026-11-16T09:00:00Z'));
+    order(kv, 'o2', A, 2500, at('2026-11-20T09:00:00Z'));
+    await countTopUp(kv as unknown as Store, 'o1');
+    await countTopUp(kv as unknown as Store, 'o2');
+    const key = `topupwallet:${A.toLowerCase()}`;
+    const want = { n: 2, first: at('2026-11-16T09:00:00Z') };
+    expect(JSON.parse(kv.store.get(key)!)).toEqual(want);
+    expect(kv.meta.get(key)).toEqual(want);
+  });
+
+  it('treats an old "1" marker as one earlier top-up with no date', async () => {
+    const kv = new MockKV();
+    kv.store.set(`topupwallet:${A.toLowerCase()}`, '1');
+    order(kv, 'o1', A, 5000, at('2026-11-20T09:00:00Z'));
+    await countTopUp(kv as unknown as Store, 'o1');
+    expect(kv.meta.get(`topupwallet:${A.toLowerCase()}`)).toEqual({ n: 2, first: null });
+    expect((await readTopUpTotals(kv as unknown as Store)).wallets).toBe(0); // not a new wallet: it was counted before
   });
 });

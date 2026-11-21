@@ -8,6 +8,7 @@
  *   node ../../scripts/topup-stats-backfill.mjs            shows the totals it would write, writes nothing
  *   node ../../scripts/topup-stats-backfill.mjs --yes      writes them (only if no totals exist yet)
  *   node ../../scripts/topup-stats-backfill.mjs --rebuild --yes   rewrites ONLY the totals value from the history (to correct it); writes no markers
+ *   node ../../scripts/topup-stats-backfill.mjs --wallets --yes   writes each wallet's number of top-ups and first date (for "came back" and new wallets per week)
  *   add --exclude 0xabc...,0xdef...   to leave the team's own wallets out (keep in step with STATS_EXCLUDE_WALLETS in wrangler.toml)
  *
  * Run it once, BEFORE deploying the Worker that keeps the counters. Each order it counts gets the same "already
@@ -51,6 +52,19 @@ export function build(rows, exclude = new Set()) {
   return { totals, orders: done.map((r) => r.orderId), wallets: [...wallets] };
 }
 
+/** rows -> each wallet's { n, first } (first in ms), the marker the Worker keeps per wallet (services/orders/src/usage.ts) */
+export function perWallet(rows, exclude = new Set()) {
+  const out = new Map();
+  for (const r of rows) {
+    const w = r.wallet.toLowerCase();
+    if (!(r.stage === 'done' || r.arrived === true) || !(typeof r.naira === 'number' && r.naira > 0) || exclude.has(w)) continue;
+    const cur = out.get(w) ?? { n: 0, first: null };
+    const at = r.at * 1000;
+    out.set(w, { n: cur.n + 1, first: cur.first === null ? at : Math.min(cur.first, at) });
+  }
+  return out;
+}
+
 const wrangler = (args) => execFileSync('npx', ['wrangler', ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
 // --remote: wrangler 4 reads a local copy of the store unless told otherwise
 const kv = (...a) => wrangler(['kv', 'key', ...a, '--namespace-id', NAMESPACE_ID, '--remote']);
@@ -69,6 +83,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const rebuild = process.argv.includes('--rebuild');
   const exArg = process.argv.indexOf('--exclude');
   const exclude = new Set(exArg > 0 ? process.argv[exArg + 1].split(',').map((w) => w.trim().toLowerCase()).filter(Boolean) : []);
+  if (process.argv.includes('--wallets')) {
+    // Safe to run again: it sets each wallet's marker from the full history, so a rerun writes the same values
+    const per = perWallet(readRows(), exclude);
+    const back = [...per.values()].filter((m) => m.n >= 2).length;
+    console.log(`Would set the top-up count and first date for ${per.size} wallets (${back} with two or more top-ups). That is ${per.size} storage writes.`);
+    if (!yes) {
+      console.log('Nothing written. Run again with --yes to write.');
+      process.exit(0);
+    }
+    for (const [w, m] of per) kv('put', `topupwallet:${w}`, JSON.stringify(m), '--metadata', JSON.stringify(m));
+    console.log('Written.');
+    process.exit(0);
+  }
   const existing = JSON.parse(kv('list', '--prefix', 'stats:topups'));
   if (existing.length && !rebuild) {
     console.log('Totals already exist (stats:topups). Nothing to do; this script only runs once. To correct them, use --rebuild.');

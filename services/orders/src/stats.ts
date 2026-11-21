@@ -11,6 +11,7 @@
 import { countActivePartners } from './partnerActive';
 import { summarisePeople, type PeopleSummary } from './people';
 import { excludedWallets, readTopUpTotals, summariseTopUps, type TopUpSummary } from './topupStats';
+import { listTopUpWallets, summariseUsage, type UsageSummary } from './usage';
 
 export interface StatsEnv {
   ORDER_STORE: KVNamespace;
@@ -60,6 +61,8 @@ export interface Stats {
   updatedAt: string;
   /** Different wallets that used GoodCash and how many verified people are behind them (counts only) */
   people?: PeopleSummary | null;
+  /** Wallets across top-ups and cash outs: in total, came back, used both, new per week (counts only) */
+  usage?: UsageSummary;
   /** The team's own test cash outs, left out of every number below and shown openly instead */
   excluded: { cashOuts: number; gDollars: number };
   totals: { cashOuts: number; wallets: number; repeatWallets: number; gDollars: number; dollars: number; firstAt: string | null; lastAt: string | null };
@@ -226,9 +229,10 @@ export async function buildStats(env: StatsEnv, now = new Date()): Promise<Stats
   const exclude = excludedWallets(env.STATS_EXCLUDE_WALLETS);
   const stats = summarise(rows, now, v2, exclude);
   // Everyone who has used GoodCash: wallets with a cash out, and wallets with a counted top-up
-  const topUpWallets = (await env.ORDER_STORE.list({ prefix: 'topupwallet:', limit: 1000 }).catch(() => ({ keys: [] as Array<{ name: string }> }))).keys.map((k) => k.name.slice('topupwallet:'.length));
-  const users = [...rows.map((r) => r.wallet), ...topUpWallets].filter((w) => !exclude.has(w.toLowerCase()));
-  return { ...stats, people: await summarisePeople(env, users) };
+  const topUpWallets = await listTopUpWallets(env.ORDER_STORE).catch(() => []);
+  const usage = summariseUsage(rows, topUpWallets, now, exclude);
+  const users = [...rows.map((r) => r.wallet), ...topUpWallets.map((t) => t.wallet)].filter((w) => !exclude.has(w.toLowerCase()));
+  return { ...stats, usage, people: await summarisePeople(env, users) };
 }
 
 /** GET /stats */

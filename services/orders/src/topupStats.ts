@@ -7,6 +7,7 @@
  * partner's webhook both report the same settle). Counting problems are logged and never break an order.
  */
 import type { Store } from './referral';
+import { parseTopUpWallet, TOPUP_WALLET_PREFIX, type TopUpWalletMeta } from './usage';
 
 export const TOPUP_KEY = 'stats:topups';
 const COUNTED_TTL = 60 * 60 * 24 * 400;
@@ -55,7 +56,8 @@ export async function countTopUp(store: Store, orderId: string, now = Date.now()
   if (exclude.has(wallet)) return false; // the team's own test top-ups are not customers
 
   const totals = await readTopUpTotals(store);
-  const isNewWallet = (await store.get(`topupwallet:${wallet}`)) === null;
+  const before = parseTopUpWallet(await store.get(`${TOPUP_WALLET_PREFIX}${wallet}`));
+  const isNewWallet = before === null;
   const at = order.createdAt ?? now;
   const week = weekStart(at);
   const w = totals.weeks[week] ?? { topUps: 0, naira: 0 };
@@ -70,7 +72,9 @@ export async function countTopUp(store: Store, orderId: string, now = Date.now()
 
   // Marker first: if the total then fails to save, one top-up goes uncounted rather than counted twice
   await store.put(`topupcounted:${orderId}`, '1', { expirationTtl: COUNTED_TTL });
-  if (isNewWallet) await store.put(`topupwallet:${wallet}`, '1');
+  // The wallet's own count and first date, in the metadata too so the stats page reads every wallet in one list call
+  const mine: TopUpWalletMeta = { n: (before?.n ?? 0) + 1, first: before ? before.first : at };
+  await store.put(`${TOPUP_WALLET_PREFIX}${wallet}`, JSON.stringify(mine), { metadata: mine });
   await store.put(TOPUP_KEY, JSON.stringify(totals));
   return true;
 }
