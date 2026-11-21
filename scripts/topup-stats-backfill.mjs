@@ -51,8 +51,9 @@ export function build(rows, exclude = new Set()) {
   return { totals, orders: done.map((r) => r.orderId), wallets: [...wallets] };
 }
 
-const wrangler = (args) => execFileSync('./node_modules/.bin/wrangler', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-const kv = (...a) => wrangler(['kv', 'key', ...a, '--namespace-id', NAMESPACE_ID]);
+const wrangler = (args) => execFileSync('npx', ['wrangler', ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
+// --remote: wrangler 4 reads a local copy of the store unless told otherwise
+const kv = (...a) => wrangler(['kv', 'key', ...a, '--namespace-id', NAMESPACE_ID, '--remote']);
 
 function readRows() {
   const keys = JSON.parse(kv('list', '--prefix', 'onramp-wallet:'));

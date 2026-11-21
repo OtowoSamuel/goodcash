@@ -135,8 +135,9 @@ export function marksFromCsv(text, records, paid = new Set()) {
 
 // --- live data ---------------------------------------------------------------------------------------------------
 
+// --remote: wrangler 4 reads a local copy of the store unless told otherwise
 function wrangler(args) {
-  return execFileSync('./node_modules/.bin/wrangler', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return execFileSync('npx', ['wrangler', ...args, '--remote'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
 }
 
 function loadFromStorage() {

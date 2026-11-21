@@ -64,22 +64,36 @@ function kv(args, input) {
     console.log(`[dry-run] wrangler kv ${args.join(' ')}`);
     return '';
   }
-  return execFileSync('npx', ['wrangler', 'kv', ...args, '--binding', 'ORDER_STORE', ...remoteFlag()], {
-    cwd: WORKER_DIR,
-    encoding: 'utf8',
-    input,
-    stdio: ['pipe', 'pipe', 'inherit'],
-  });
+  // wrangler's own notices stay hidden; they are shown only when the command really fails
+  try {
+    return execFileSync('npx', ['wrangler', 'kv', ...args, '--binding', 'ORDER_STORE', ...remoteFlag()], {
+      cwd: WORKER_DIR,
+      encoding: 'utf8',
+      input,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    const stderr = String(e.stderr ?? '');
+    const detail = stderr.split('\n').filter((l) => /ERROR|✘/.test(l)).join('\n') || stderr.trim() || e.message;
+    const err = new Error(`wrangler kv ${args.slice(0, 3).join(' ')} failed:\n${detail}`);
+    err.notFound = /404: Not Found|not found/i.test(detail);
+    throw err;
+  }
 }
 const put = (key, value) => kv(['key', 'put', key, typeof value === 'string' ? value : JSON.stringify(value)]);
+// A key that does not exist yet reads as null. Any other failure stops the script, so a list such as
+// liveapprove:queue is never rebuilt from an empty read and written back over the real one.
 const get = (key) => {
   if (DRY) return null;
+  let out;
   try {
-    const out = kv(['key', 'get', key]).trim();
-    return out ? JSON.parse(out) : null;
-  } catch {
-    return null;
+    out = kv(['key', 'get', key]).trim();
+  } catch (e) {
+    if (e.notFound) return null;
+    throw e;
   }
+  if (!out || /^Value not found/i.test(out)) return null;
+  return JSON.parse(out);
 };
 const del = (key) => kv(['key', 'delete', key]);
 
