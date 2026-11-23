@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Inter:wght@400;600;700&display=block');
+@font-face{font-family:'BricolageLocal';src:url('file:///Users/admin/Documents/GoodCash/.agents/skills/canvas-design/canvas-fonts/BricolageGrotesque-Bold.ttf');font-weight:700}
+:root{--lilac:#cdb8ff;--ink:#111;--pu:#7b39fc;--ye:#ffd23f;--mi:#8cf0c0;--wh:#fff}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--lilac)}
+.h{font-family:'Bricolage Grotesque','BricolageLocal',sans-serif;font-weight:800;color:var(--ink);letter-spacing:-0.01em}
+.b{font-family:'Inter',system-ui,sans-serif;color:var(--ink)}
+.card{background:var(--wh);border:var(--line) solid var(--ink);border-radius:var(--r);box-shadow:var(--sh) var(--sh) 0 var(--ink)}
+.coin{position:absolute;border-radius:50%;border:var(--line) solid var(--ink);display:flex;align-items:center;justify-content:center}
+.coin::after{content:'';position:absolute;border-radius:50%;border-top:calc(var(--line)*0.9) solid #fff;border-left:calc(var(--line)*0.9) solid transparent;transform:rotate(-30deg);opacity:.95}
+
+:root{--line:6px;--r:30px;--sh:10px}
+body{width:1080px;height:1080px;position:relative;overflow:hidden}
+.top{position:absolute;left:76px;top:70px;display:flex;align-items:center;gap:18px}
+.top img{width:78px;height:78px}
+.word{font-size:46px}
+.badge{position:absolute;right:76px;top:82px;background:var(--ye);border:5px solid var(--ink);border-radius:999px;padding:11px 24px;font-size:25px;box-shadow:7px 7px 0 var(--ink)}
+.head{position:absolute;left:76px;top:206px;width:928px;font-size:92px;line-height:1.02}
+.p{position:absolute;top:436px;width:430px;padding:30px 32px 32px}
+.p .n{font-size:58px;line-height:1}
+.p .t{font-size:25px;font-weight:600;margin-top:12px}
+.p .tag{display:inline-block;font-size:18px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border:4px solid var(--ink);border-radius:999px;padding:5px 13px;margin-bottom:18px;background:var(--lilac)}
+.plus{position:absolute;left:504px;top:578px;width:72px;height:72px;border-radius:50%;background:var(--ye);border:5px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:52px;line-height:1;z-index:2}
+.sub{position:absolute;left:76px;top:800px;width:928px;font-size:31px;line-height:1.38;font-weight:600}
+.url{position:absolute;left:76px;bottom:72px;font-size:30px;font-weight:700;background:var(--wh);border:5px solid var(--ink);border-radius:999px;padding:11px 26px;box-shadow:7px 7px 0 var(--ink)}
+.row{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.logo{width:92px;height:92px;border-radius:22px;border:5px solid var(--ink);box-shadow:7px 7px 0 var(--ink);overflow:hidden;background:#fff;flex:none}
+.logo img{width:100%;height:100%;display:block;object-fit:cover}
+.logo.glass{background:#f5f5f5}
+.logo.glass img{object-fit:contain;padding:5px}
+.row .tag{margin-bottom:0 !important}
+</style></head><body>
+<div class="top"><img src="file:///Users/admin/Documents/GoodCash/docs/brand/logo-v3-512.png"><div class="h word">GoodCash</div></div>
+<div class="badge h">First partners</div>
+<div class="h head">Our first partners<br>are here</div>
+<div class="card p b" style="left:76px"><div class="row"><div class="logo glass"><img src="file:///Users/admin/Documents/GoodCash/docs/brand/social/partners/goodbuild-icon.png" alt=""></div><div class="tag">Partner</div></div><div class="h n">GoodBuild</div><div class="t">@goodbuildit</div></div>
+<div class="h plus">+</div>
+<div class="card p b" style="left:574px;background:var(--mi)"><div class="row"><div class="logo"><img src="file:///Users/admin/Documents/GoodCash/docs/brand/social/partners/gooddrops-icon.png" alt=""></div><div class="tag">Partner</div></div><div class="h n">GoodDrops</div><div class="t">@gooddropss</div></div>
+<div class="b sub">Coming to their apps: cash out G$ to your bank,<br>and add G$ with naira.</div>
+<div class="b url">goodcash.xyz</div>
+</body></html>

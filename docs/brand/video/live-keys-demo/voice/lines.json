@@ -1,0 +1,13 @@
+{
+  "intro": "Here's how to add GoodCash to your app, from test keys to live keys.",
+  "form": "First, get test keys. Enter your app name, your email, and the websites you'll test from.",
+  "testmail": "We email you a link to confirm it's you. It works once.",
+  "testkeys": "Save your test keys. They're shown one time only, and they never move real money.",
+  "build": "Add the widget with two lines of code, then try full cash outs. No real money moves.",
+  "terminal": "When you're ready, ask for live access, with one call from your server.",
+  "review": "A person at GoodCash checks your setup against the go live checklist.",
+  "livemail": "Once approved, we email you a one time link. It works for twenty four hours.",
+  "livekeys": "Save your live keys. Your secret key stays on your server. Never in an app, or a chat.",
+  "switch": "Swap test for live, then do one small, real cash out yourself first.",
+  "outro": "Get your test keys today, at pay dot goodcash dot x y z."
+}
