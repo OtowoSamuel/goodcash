@@ -3120,7 +3120,7 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
     }
     const input = parseRegisterBody(body);
     if (!input) return err('Please try again.', 400);
-    const result = await giveVoteFee(env as TankEnv, input);
+    const result = await giveVoteFee(env as TankEnv, { ...input, kind: (body as { kind?: unknown })?.kind === 'claim' ? 'claim' : 'fee' });
     return json(result, tankStatus(result));
   }
 

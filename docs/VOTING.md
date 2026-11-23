@@ -15,7 +15,7 @@ Two steps for the customer: **1. Verify with GoodDollar, 2. Vote.**
 
 ## The gas tank (network fee from GoodCash)
 
-Written 23 November 2026. When a verified person's wallet is short of CELO, the vote screen offers **Get the network fee from GoodCash (free)**. They sign one free message, and GoodCash sends their wallet enough CELO to reach 0.1 (about the vote's fee with room to spare).
+Written 23 November 2026. When a verified person's wallet is short of CELO and they tap **Vote**, GoodCash sends the fee by itself (there is no extra button). Their wallet asks for one free message to prove the wallet is theirs, GoodCash sends enough CELO to reach 0.1 (about the vote's fee with room to spare), the app waits for it, and the vote goes on. A first-time voter reuses the free message they sign to turn on voting, so they are not asked twice (the app sends it with `kind: "claim"`; the Worker checks it against the voting message, a normal request against the fee message).
 
 - `POST /vote/tank` on the Worker: `services/orders/src/voteTank.ts`. The signed message is checked against the wallet (normal wallets only), the wallet must be verified with GoodDollar, and the top-up is once per PERSON (the verified main wallet, marker `votetank:<person>`), so connected wallets cannot collect twice.
 - Limits: a wallet that already has 0.1 CELO gets nothing; 30 top-ups a day (`VOTE_TANK_DAILY_CAP`); the tank stops before it falls under 0.3 CELO (`VOTE_TANK_RESERVE_CELO`); one send at a time (lock `vote-tank`).

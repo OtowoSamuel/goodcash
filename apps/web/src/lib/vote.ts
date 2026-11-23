@@ -218,12 +218,19 @@ export function buildClaimMessage(address: string, issuedAt: number): string {
 export type RegisterOutcome = 'registered' | 'not_verified' | 'other_wallet' | 'busy' | 'error';
 
 /** Ask the customer to sign the readable message (no cost, no transaction), then have Flow State register the wallet. */
-export async function registerVoter(wallet: string, provider: Eip1193 | null = getWalletProvider(), fetchImpl: typeof fetch = fetch): Promise<RegisterOutcome> {
+export interface SignedProof {
+  signature: `0x${string}`;
+  issuedAt: number;
+}
+
+/** `keep` receives the signed message, so the network fee request can reuse it and the customer signs only once. */
+export async function registerVoter(wallet: string, provider: Eip1193 | null = getWalletProvider(), fetchImpl: typeof fetch = fetch, keep?: { current: SignedProof | null }): Promise<RegisterOutcome> {
   if (!provider) throw new Error('NO_WALLET');
   await assertSameAccount(provider, wallet);
   const issuedAt = Date.now();
   const walletClient = createWalletClient({ chain: celo, transport: custom(provider) });
   const signature = await walletClient.signMessage({ account: wallet as Address, message: buildClaimMessage(wallet, issuedAt) });
+  if (keep) keep.current = { signature, issuedAt };
   let res: Response;
   try {
     res = await fetchImpl(`${ORDERS_API_BASE}/vote/register`, {
@@ -255,15 +262,20 @@ export type FeeGiftOutcome = 'sent' | 'enough' | 'off' | 'not_verified' | 'alrea
  * Ask GoodCash to send the small network fee for the vote. One free signature proves the wallet is theirs; GoodCash
  * checks GoodDollar verification, sends a little CELO once per person, and the app then waits for it to arrive.
  */
-export async function askForVoteFee(wallet: string, provider: Eip1193 | null = getWalletProvider(), fetchImpl: typeof fetch = fetch): Promise<FeeGiftOutcome> {
+export async function askForVoteFee(wallet: string, provider: Eip1193 | null = getWalletProvider(), fetchImpl: typeof fetch = fetch, proof?: SignedProof | null): Promise<FeeGiftOutcome> {
   if (!provider) throw new Error('NO_WALLET');
   await assertSameAccount(provider, wallet);
-  const issuedAt = Date.now();
-  const walletClient = createWalletClient({ chain: celo, transport: custom(provider) });
-  const signature = await walletClient.signMessage({ account: wallet as Address, message: buildFeeMessage(wallet, issuedAt) });
+  // A first-time voter has just signed the voting message: reuse it while it is fresh, so they are not asked twice
+  const reuse = !!proof && Date.now() - proof.issuedAt < 4 * 60 * 1000;
+  let issuedAt = reuse ? proof!.issuedAt : Date.now();
+  let signature = reuse ? proof!.signature : undefined;
+  if (!signature) {
+    const walletClient = createWalletClient({ chain: celo, transport: custom(provider) });
+    signature = await walletClient.signMessage({ account: wallet as Address, message: buildFeeMessage(wallet, issuedAt) });
+  }
   let res: Response;
   try {
-    res = await fetchImpl(`${ORDERS_API_BASE}/vote/tank`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: wallet, issuedAt, signature }) });
+    res = await fetchImpl(`${ORDERS_API_BASE}/vote/tank`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: wallet, issuedAt, signature, ...(reuse ? { kind: 'claim' } : {}) }) });
   } catch {
     return 'error';
   }

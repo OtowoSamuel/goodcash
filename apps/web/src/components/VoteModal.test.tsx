@@ -8,6 +8,8 @@ const m = vi.hoisted(() => ({
   estimateVoteFee: vi.fn(),
   readVerified: vi.fn(),
   registerVoter: vi.fn(),
+  askForVoteFee: vi.fn(),
+  waitForFee: vi.fn(),
   sendVote: vi.fn(),
   confirmVote: vi.fn(),
   loadPendingVote: vi.fn((): unknown => null),
@@ -77,16 +79,45 @@ describe('VoteModal', () => {
     await waitFor(() => expect(m.estimateVoteFee).toHaveBeenCalledWith(WALLET, 5));
   });
 
-  it('does not offer a vote until the fee is known, and not at all when the wallet cannot pay it', async () => {
-    m.estimateVoteFee.mockResolvedValue(fee({ enough: false, haveCelo: 0, needCelo: 0.124 }));
+  it('does not offer a vote until the fee is known', async () => {
+    m.estimateVoteFee.mockImplementation(() => new Promise(() => undefined));
+    open();
+    const btn = await voteButton();
+    expect(btn).toBeDisabled();
+    expect(m.sendVote).not.toHaveBeenCalled();
+  });
+
+  it('when the wallet is short of CELO, the Vote button asks GoodCash for the fee by itself, waits for it, then votes', async () => {
+    m.estimateVoteFee.mockResolvedValueOnce(fee({ enough: false, haveCelo: 0 })).mockResolvedValue(fee());
+    m.askForVoteFee.mockResolvedValue('sent');
+    m.waitForFee.mockResolvedValue(true);
+    m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
+    m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10, available: 0, allocated: 10 }) });
+    open();
+    const btn = await voteButton();
+    await waitFor(() => expect(screen.getByText(/GoodCash sends you this fee for free/)).toBeInTheDocument());
+    expect(btn).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /get the network fee/i })).not.toBeInTheDocument();
+    fireEvent.click(btn);
+    await waitFor(() => expect(screen.getByText(/Thank you!/)).toBeInTheDocument(), { timeout: 8000 });
+    expect(m.askForVoteFee).toHaveBeenCalledTimes(1);
+    expect(m.askForVoteFee.mock.invocationCallOrder[0]).toBeLessThan(m.sendVote.mock.invocationCallOrder[0]);
+    expect(m.sendVote).toHaveBeenCalledTimes(1);
+  });
+
+  it('when GoodCash cannot send the fee, nothing is voted and the naira option is offered', async () => {
+    m.estimateVoteFee.mockResolvedValue(fee({ enough: false, haveCelo: 0 }));
+    m.askForVoteFee.mockResolvedValue('already');
     const addCelo = vi.fn();
     open({ onAddCelo: addCelo });
     const btn = await voteButton();
-    await waitFor(() => expect(screen.getByText(/You need about/)).toBeInTheDocument());
-    expect(btn).toBeDisabled();
+    await waitFor(() => expect(screen.getByText(/GoodCash sends you this fee for free/)).toBeInTheDocument());
+    fireEvent.click(btn);
+    expect(await screen.findByText(/already sent you the network fee once/)).toBeInTheDocument();
+    expect(m.sendVote).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /vote with/i })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /add celo with naira/i }));
     expect(addCelo).toHaveBeenCalled();
-    expect(m.sendVote).not.toHaveBeenCalled();
   });
 
   it('says so when the contract would refuse the vote, and sends nothing', async () => {
@@ -161,7 +192,7 @@ describe('VoteModal', () => {
       open();
       fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
       await waitFor(() => expect(screen.getByText(/GoodCash now has 10 points/)).toBeInTheDocument(), { timeout: 8000 });
-      expect(m.registerVoter).toHaveBeenCalledWith(WALLET);
+      expect(m.registerVoter).toHaveBeenCalledWith(WALLET, undefined, undefined, expect.anything());
       expect(m.sendVote).toHaveBeenCalledTimes(1);
       expect(m.sendVote).toHaveBeenCalledWith(WALLET, 10, 520_000n);
       // registering comes first
@@ -178,16 +209,32 @@ describe('VoteModal', () => {
       await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, 500, 520_000n), { timeout: 8000 });
     });
 
-    it('stops before the vote when the wallet cannot pay the fee: voting is set up, and it offers to add CELO', async () => {
+    it('a first-time voter short of CELO gets the fee from GoodCash, then the vote goes on by itself', async () => {
+      m.registerVoter.mockResolvedValue('registered');
+      m.readBallot.mockResolvedValue(ballot({ power: 10, available: 10 }));
+      m.estimateVoteFee.mockResolvedValueOnce(fee({ enough: false, haveCelo: 0 })).mockResolvedValue(fee());
+      m.askForVoteFee.mockResolvedValue('sent');
+      m.waitForFee.mockResolvedValue(true);
+      m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
+      m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10, available: 0, allocated: 10 }) });
+      open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
+      await waitFor(() => expect(screen.getByText(/GoodCash now has 10 points/)).toBeInTheDocument(), { timeout: 10000 });
+      expect(m.askForVoteFee).toHaveBeenCalledTimes(1);
+      expect(m.sendVote).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops before the vote when GoodCash cannot send the fee: voting is set up, and it offers to add CELO', async () => {
       m.registerVoter.mockResolvedValue('registered');
       m.readBallot.mockResolvedValue(ballot());
       m.estimateVoteFee.mockResolvedValue(fee({ enough: false, haveCelo: 0 }));
+      m.askForVoteFee.mockResolvedValue('off');
       const addCelo = vi.fn();
       open({ onAddCelo: addCelo });
       fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
-      expect(await screen.findByText(/Add a little CELO for the network fee/, undefined, { timeout: 8000 })).toBeInTheDocument();
+      expect(await screen.findByText(/cannot send the network fee right now/, undefined, { timeout: 8000 })).toBeInTheDocument();
       expect(m.sendVote).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole('button', { name: /add celo with naira/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /add celo with naira/i }));
       expect(addCelo).toHaveBeenCalled();
     });
 

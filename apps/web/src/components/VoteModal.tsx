@@ -4,6 +4,7 @@ import { startGoodDollarVerification, verifyStartError } from '../lib/goodid';
 import { celoText } from '../lib/router';
 import {
   askForVoteFee,
+  type SignedProof,
   type Ballot,
   confirmVote,
   estimateVoteFee,
@@ -167,10 +168,59 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
     [wallet, load],
   );
 
+  // GoodCash sends the small network fee once, by itself, when they tap Vote and their wallet is short. Their wallet only
+  // asks for a free message. After that, or when it is off or empty, only the naira option is left.
+  const [gettingFee, setGettingFee] = useState(false);
+  const [feeGiftGone, setFeeGiftGone] = useState(false);
+  const feeAsked = useRef(false);
+  const claimProof = useRef<SignedProof | null>(null);
+  /** true when the fee has arrived */
+  const ensureFee = useCallback(
+    async (needCelo: number): Promise<boolean> => {
+      setGettingFee(true);
+      setNote(null);
+      try {
+        const outcome = await askForVoteFee(wallet, undefined, undefined, claimProof.current);
+        if (!alive.current) return false;
+        if (outcome === 'sent' || outcome === 'enough') {
+          const arrived = await waitForFee(wallet, needCelo);
+          if (!alive.current) return false;
+          if (!arrived) setNote('The network fee is on its way. Tap Vote again in a minute.');
+          return arrived;
+        }
+        if (outcome === 'not_verified') setNote('GoodDollar has not verified this wallet yet, so we cannot send the network fee.');
+        else if (outcome === 'busy') setNote('This is busy right now. Please try again in a minute.');
+        else if (outcome === 'error') setNote('We could not send the network fee just now. Nothing was taken. Please try again.');
+        else {
+          setFeeGiftGone(true);
+          setNote(outcome === 'already' ? 'GoodCash has already sent you the network fee once. Add a little CELO with naira to vote.' : 'GoodCash cannot send the network fee right now. You can add a little CELO with naira instead.');
+        }
+        return false;
+      } catch (e) {
+        if (alive.current) setNote(friendlyVoteError(e));
+        return false;
+      } finally {
+        if (alive.current) setGettingFee(false);
+      }
+    },
+    [wallet],
+  );
+
   // After a first-time voter's points are set up: carry on to the vote, but only when it is safe to. If the wallet
   // cannot pay the fee, or the fee cannot be checked, stop and show the normal screen so they can fix that first.
   useEffect(() => {
     if (!continueVote || phase !== 'ready') return;
+    // Short of CELO and GoodCash can send it: ask once, then look again
+    if (fee && !fee.enough && !feeGiftGone && !feeAsked.current) {
+      feeAsked.current = true;
+      void ensureFee(fee.needCelo).then((arrived) => {
+        if (!alive.current) return;
+        if (arrived) setFeeState(null);
+        else setContinueVote(false);
+      });
+      return;
+    }
+    if (gettingFee) return;
     if (feeFailed || (fee && !fee.enough)) {
       setContinueVote(false);
       setNote(fee && !fee.enough ? 'Your voting is set up. Add a little CELO for the network fee, then tap Vote.' : null);
@@ -180,7 +230,7 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
       setContinueVote(false);
       void castVote(plan.newTotal, fee.gas);
     }
-  }, [continueVote, phase, fee, feeFailed, plan, castVote]);
+  }, [continueVote, phase, fee, feeFailed, plan, castVote, feeGiftGone, gettingFee, ensureFee]);
 
   const vote = async () => {
     if (!ballot) return;
@@ -189,7 +239,7 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
       setNote(null);
       setPhase('registering');
       try {
-        const outcome = await registerVoter(wallet);
+        const outcome = await registerVoter(wallet, undefined, undefined, claimProof);
         if (outcome !== 'registered') {
           setNote(registerMessage[outcome]);
           if (outcome === 'not_verified') setVerified(false);
@@ -219,53 +269,33 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
       }
       return;
     }
-    if (!plan || !plan.ok || !fee || !fee.enough) return;
+    if (!plan || !plan.ok || !fee) return;
+    if (!fee.enough) {
+      // GoodCash sends the fee, then the vote carries on by itself
+      if (feeGiftGone) return;
+      feeAsked.current = true;
+      if (await ensureFee(fee.needCelo)) {
+        setFeeState(null);
+        setContinueVote(true);
+      }
+      return;
+    }
     await castVote(plan.newTotal, fee.gas);
   };
 
-  // GoodCash sends the small network fee once; after that, or when it is not on or is empty, only the naira option is left
-  const [gettingFee, setGettingFee] = useState(false);
-  const [feeGiftGone, setFeeGiftGone] = useState(false);
-  const getFeeFromGoodCash = async (needCelo: number) => {
-    setGettingFee(true);
-    setNote(null);
-    try {
-      const outcome = await askForVoteFee(wallet);
-      if (!alive.current) return;
-      if (outcome === 'sent' || outcome === 'enough') {
-        const arrived = await waitForFee(wallet, needCelo);
-        if (!alive.current) return;
-        setFeeState(null); // read the balance again
-        if (!arrived) setNote('The network fee is on its way. Tap Check again in a minute.');
-        return;
-      }
-      if (outcome === 'not_verified') setNote('GoodDollar has not verified this wallet yet, so we cannot send the network fee.');
-      else if (outcome === 'busy') setNote('This is busy right now. Please try again in a minute.');
-      else if (outcome === 'error') setNote('We could not send the network fee just now. Nothing was taken. Please try again.');
-      else {
-        setFeeGiftGone(true);
-        setNote(outcome === 'already' ? 'GoodCash has already sent you the network fee once. Add a little CELO with naira to vote.' : 'GoodCash cannot send the network fee right now. You can add a little CELO with naira instead.');
-      }
-    } catch (e) {
-      if (alive.current) setNote(friendlyVoteError(e));
-    } finally {
-      if (alive.current) setGettingFee(false);
-    }
-  };
-
-  const busy = phase === 'registering' || phase === 'sending' || phase === 'confirming' || continueVote;
+  const busy = phase === 'registering' || phase === 'sending' || phase === 'confirming' || continueVote || gettingFee;
   const registered = !!ballot && ballot.registered;
   const needsVerify = phase === 'ready' && !!ballot && ballot.active && !registered && verified === false;
   const firstVote = phase === 'ready' && !!ballot && ballot.active && !registered && verified === true;
   const noPointsLeft = phase === 'ready' && registered && !!ballot && ballot.available < 1;
-  const canVote = phase === 'ready' && !!plan && plan.ok && !!fee && fee.enough;
+  const canVote = phase === 'ready' && !!plan && plan.ok && !!fee && (fee.enough || !feeGiftGone);
 
   const primary = (label: string, onClick: () => void, enabled: boolean) => (
     <button type="button" onClick={onClick} disabled={!enabled || busy} className={`gc-btn gc-hit ${enabled && !busy ? '' : 'gc-btn--dis'}`} style={{ height: 46, width: '100%' }}>
       {busy ? (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span className="w-4 h-4 rounded-full border-[3px] border-current border-t-transparent animate-spin" aria-hidden="true" />
-          {phase === 'sending' ? 'Approve in your wallet…' : phase === 'registering' ? 'Setting up your vote…' : 'Confirming…'}
+          {gettingFee ? 'Sending you the network fee…' : phase === 'sending' ? 'Approve in your wallet…' : phase === 'registering' ? 'Setting up your vote…' : 'Confirming…'}
         </span>
       ) : (
         label
@@ -374,12 +404,8 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
                 ) : (
                   <>
                     You need about <b>{celoText(fee.needCelo)} CELO</b> and have {celoText(fee.haveCelo)}.{' '}
-                    {!feeGiftGone && (
-                      <button type="button" className="gc-btn gc-hit" style={{ height: 42, width: '100%', marginTop: 8 }} disabled={busy || gettingFee} onClick={() => void getFeeFromGoodCash(fee.needCelo)}>
-                        {gettingFee ? 'Sending you the fee…' : 'Get the network fee from GoodCash (free)'}
-                      </button>
-                    )}
-                    {onAddCelo && (
+                    {!feeGiftGone && <>When you tap Vote, GoodCash sends you this fee for free (once). Your wallet will ask you to approve a free message first.</>}
+                    {feeGiftGone && onAddCelo && (
                       <button type="button" className="gc-btn gc-btn--white gc-hit" style={{ height: 42, width: '100%', marginTop: 8 }} onClick={onAddCelo}>
                         Add CELO with naira
                       </button>

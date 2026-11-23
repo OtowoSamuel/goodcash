@@ -3,6 +3,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import worker from './index.js';
 import type { Env } from './index.js';
 import { fakeLockNamespace } from './lock.fake';
+import { buildClaimMessage, VOTE_CHAIN_ID, VOTE_COUNCIL } from './vote';
 import { buildTankMessage, giveVoteFee, tankStatus, type TankDeps, type TankEnv } from './voteTank';
 
 // A throwaway key made up for these tests. It has never held anything.
@@ -96,6 +97,18 @@ describe('giveVoteFee', () => {
     const wrongText = await person.signMessage({ message: 'Claim voting rights in this Flow Council.' });
     expect(await giveVoteFee(s.env, { address: person.address, issuedAt: Date.now(), signature: wrongText }, s.deps)).toEqual({ ok: false, reason: 'bad_signature' });
     expect(s.sends).toHaveLength(0);
+  });
+
+  it('accepts the message a first-time voter already signed to turn on voting, so they sign once', async () => {
+    const s = setup();
+    const issuedAt = Date.now();
+    const signature = await person.signMessage({ message: buildClaimMessage({ chainId: VOTE_CHAIN_ID, councilId: VOTE_COUNCIL, address: person.address, issuedAt }) });
+    expect(await giveVoteFee(s.env, { address: person.address, issuedAt, signature, kind: 'claim' }, s.deps)).toMatchObject({ ok: true, status: 'sent' });
+    // the same signature does not pass as a fee request, and a fee signature does not pass as a voting one
+    const s2 = setup();
+    expect(await giveVoteFee(s2.env, { address: person.address, issuedAt, signature }, s2.deps)).toEqual({ ok: false, reason: 'bad_signature' });
+    expect(await giveVoteFee(s2.env, { ...(await signed()), kind: 'claim' }, s2.deps)).toEqual({ ok: false, reason: 'bad_signature' });
+    expect(s2.sends).toHaveLength(0);
   });
 
   it('refuses a wallet that is not verified with GoodDollar', async () => {

@@ -19,7 +19,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { celo } from 'viem/chains';
 import { claimLock } from './lock';
 import { GOODDOLLAR_IDENTITY } from './verified';
-import { VOTE_CHAIN_ID, type RegisterInput } from './vote';
+import { buildClaimMessage, VOTE_CHAIN_ID, VOTE_COUNCIL, type RegisterInput } from './vote';
 
 const RPC_FALLBACK = 'https://forno.celo.org';
 const GET_WHITELISTED_ROOT = '0x2d0e9b46'; // getWhitelistedRoot(address)
@@ -105,13 +105,20 @@ async function personOf(deps: TankDeps, wallet: string): Promise<string | null> 
 }
 
 /** Give a verified person's wallet the small network fee for their vote. */
-export async function giveVoteFee(env: TankEnv, input: RegisterInput, deps: TankDeps | null = liveDeps(env)): Promise<TankResult> {
+/**
+ * `kind` says which message the person signed: the one made for this request ('fee'), or the free message a first-time
+ * voter has just signed to turn on voting ('claim'), which the app reuses so they sign once, not twice.
+ */
+export type TankInput = RegisterInput & { kind?: 'fee' | 'claim' };
+
+export async function giveVoteFee(env: TankEnv, input: TankInput, deps: TankDeps | null = liveDeps(env)): Promise<TankResult> {
   if (env.VOTE_TANK_ENABLED !== 'true' || !deps) return { ok: false, reason: 'off' };
 
   // 1. Only the owner of the wallet can ask for its top-up (a normal 65-byte signature; smart wallets are not supported)
   if (!/^0x[0-9a-fA-F]{130}$/.test(input.signature)) return { ok: false, reason: 'bad_signature' };
   try {
-    const signer = await recoverMessageAddress({ message: buildTankMessage(input.address, input.issuedAt), signature: input.signature as Hex });
+    const message = input.kind === 'claim' ? buildClaimMessage({ chainId: VOTE_CHAIN_ID, councilId: VOTE_COUNCIL, address: input.address, issuedAt: input.issuedAt }) : buildTankMessage(input.address, input.issuedAt);
+    const signer = await recoverMessageAddress({ message, signature: input.signature as Hex });
     if (signer.toLowerCase() !== input.address.toLowerCase()) return { ok: false, reason: 'bad_signature' };
   } catch {
     return { ok: false, reason: 'bad_signature' };

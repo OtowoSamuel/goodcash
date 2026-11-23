@@ -222,6 +222,32 @@ describe('askForVoteFee (the network fee from GoodCash)', () => {
     const sent = JSON.parse(String(init.body)) as { address: string; issuedAt: number; signature: `0x${string}` };
     expect(await recoverMessageAddress({ message: buildFeeMessage(account.address, sent.issuedAt), signature: sent.signature })).toBe(account.address);
   });
+  it('reuses the voting message a first-time voter just signed: no second signature, and the server is told which message it is', async () => {
+    const p = provider();
+    const issuedAt = Date.now() - 1000;
+    const signature = await account.signMessage({ message: buildClaimMessage(account.address, issuedAt) });
+    const f = reply({ ok: true, status: 'sent' });
+    expect(await askForVoteFee(account.address, p, f, { signature, issuedAt })).toBe('sent');
+    expect(p.request.mock.calls.some(([a]) => a.method === 'personal_sign')).toBe(false);
+    const sent = JSON.parse(String((f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0][1].body));
+    expect(sent).toEqual({ address: account.address, issuedAt, signature, kind: 'claim' });
+  });
+  it('signs a new message when the earlier one is too old', async () => {
+    const p = provider();
+    const issuedAt = Date.now() - 5 * 60 * 1000;
+    const signature = await account.signMessage({ message: buildClaimMessage(account.address, issuedAt) });
+    const f = reply({ ok: true, status: 'sent' });
+    await askForVoteFee(account.address, p, f, { signature, issuedAt });
+    expect(p.request.mock.calls.some(([a]) => a.method === 'personal_sign')).toBe(true);
+    expect(JSON.parse(String((f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0][1].body))).not.toHaveProperty('kind');
+  });
+  it('registerVoter hands back what it signed', async () => {
+    const keep = { current: null as { signature: `0x${string}`; issuedAt: number } | null };
+    const p = { request: vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => (method === 'eth_accounts' ? [account.address] : account.signMessage({ message: { raw: params![0] as `0x${string}` } }))) };
+    await registerVoter(account.address, p, reply({ ok: true }), keep);
+    expect(keep.current?.issuedAt).toBeGreaterThan(0);
+    expect(await recoverMessageAddress({ message: buildClaimMessage(account.address, keep.current!.issuedAt), signature: keep.current!.signature })).toBe(account.address);
+  });
   it('passes on what the server says, and treats anything unclear as an error', async () => {
     expect(await askForVoteFee(account.address, provider(), reply({ ok: true, status: 'enough' }))).toBe('enough');
     for (const reason of ['off', 'not_verified', 'already', 'empty', 'busy'] as const) {
