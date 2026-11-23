@@ -69,6 +69,10 @@ RESEND_FROM = "GoodCash <hello@goodcash.xyz>"
 REQUIRE_VERIFIED = "true"
 # Wallets left out of the public stats numbers (a comma list). Empty: every transaction on the platform is counted.
 STATS_EXCLUDE_WALLETS = ""
+# Vote gas tank (src/voteTank.ts): GoodCash sends a verified voter the small network fee, once per person.
+# It also needs the secret VOTE_TANK_KEY (the tank wallet's key, set with wrangler secret put). Without that key it stays off.
+# Set to "false" to switch it off at once.
+VOTE_TANK_ENABLED = "true"
 # Partner API (/v1). On since 9 Nov 2026. Set to "false" to switch it off at once (nothing else changes).
 PARTNER_API_ENABLED = "true"
 # Naira in for partners (top-ups). Set to "false" to switch it off at once. Live mode also needs each partner switched on.
