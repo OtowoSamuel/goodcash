@@ -13,6 +13,16 @@ Two steps for the customer: **1. Verify with GoodDollar, 2. Vote.**
 5. The vote is one transaction approved in the customer's own wallet: `vote([{ recipient: GoodCash, amount: newTotal }])` on the council. Only GoodCash's own total is sent, so other projects are never touched. The vote uses voting points, not G$.
 6. Waits for 3 confirmations, then reads the council again at that block. Success is shown only when the council itself shows GoodCash with the points. A vote that cannot be confirmed yet is never sent a second time on its own.
 
+## The gas tank (network fee from GoodCash)
+
+Written 23 November 2026. When a verified person's wallet is short of CELO, the vote screen offers **Get the network fee from GoodCash (free)**. They sign one free message, and GoodCash sends their wallet enough CELO to reach 0.1 (about the vote's fee with room to spare).
+
+- `POST /vote/tank` on the Worker: `services/orders/src/voteTank.ts`. The signed message is checked against the wallet (normal wallets only), the wallet must be verified with GoodDollar, and the top-up is once per PERSON (the verified main wallet, marker `votetank:<person>`), so connected wallets cannot collect twice.
+- Limits: a wallet that already has 0.1 CELO gets nothing; 30 top-ups a day (`VOTE_TANK_DAILY_CAP`); the tank stops before it falls under 0.3 CELO (`VOTE_TANK_RESERVE_CELO`); one send at a time (lock `vote-tank`).
+- Off until `VOTE_TANK_ENABLED=true` and the secret `VOTE_TANK_KEY` (a fresh wallet used only for this, funded with a small amount) is set. While off, the button explains it and the "Add CELO with naira" option stays.
+- Fund and watch the tank from its own address. Worst case in a day is the daily cap times 0.1 CELO.
+- Not tested with a real tank: the send itself ran against a stand-in for the chain.
+
 ## Fixed facts (checked on chain, 19 November 2026)
 
 - Network: Celo mainnet, chain 42220.
@@ -36,7 +46,7 @@ Change `VOTE_COUNCIL` and `GOODCASH_RECIPIENT` in `apps/web/src/lib/vote.ts` and
 
 - A pin of the council contract's code hash (GoodBuild does this). The address is fixed, but a change to the contract's behaviour would not be noticed.
 - Moving points from another project to GoodCash. A voter with no free points is sent to Flow State's website.
-- Paying the network fee for the customer. They need a little CELO (about 0.06 CELO for this vote). Flow State's own website seems to sponsor the fee (on 19 November 2026 most recent votes were sent by one bundler wallet through the account-abstraction entry point); ours sends a normal transaction from the customer's wallet.
+- Paying the fee inside the vote itself (a paymaster). Flow State's own website seems to sponsor the fee that way (on 19 November 2026 most recent votes were sent by one bundler wallet through the account-abstraction entry point); ours sends a normal transaction from the customer's wallet, and the gas tank below tops that wallet up first.
 - Our own check of the signature before forwarding. Flow State checks it, and our Worker only checks the format and age (5 minutes).
 - Smart-contract wallets are untested.
 - The full flow has been tested with a pretend wallet and a pretend chain, and every on-chain read and the fee simulation against the real council. A real wallet voting for real has not been done yet.

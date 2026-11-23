@@ -20,6 +20,7 @@ import { clearWorkIfIdle, markWork, shouldList } from './v1/work';
 import { claimLock } from './lock';
 import { inviterFrom, isWallet, qualifyReferralSafely, referralSummary } from './referral';
 import { parseRegisterBody, registerWithFlowState } from './vote';
+import { giveVoteFee, tankStatus, type TankEnv } from './voteTank';
 
 // The lock service (a Durable Object class) must be exported from the worker's entry file
 export { KeyLock } from './lock';
@@ -62,6 +63,11 @@ export interface Env {
   WIDGET_ORIGINS?: string;        // Comma-separated widget sites allowed for every publishable key (default https://pay.goodcash.xyz)
   PARTNER_MAX_G?: string;         // Largest single partner cash out in G$ (default 1000000)
   PARTNER_SECRETS_KEY?: string;   // Secret: base64 32-byte key that encrypts partners' webhook signing secrets
+  VOTE_TANK_ENABLED?: string;     // "true" turns the vote gas tank on (see voteTank.ts). Anything else: off
+  VOTE_TANK_KEY?: string;         // Secret: the tank wallet's private key. Put only a small amount in that wallet
+  VOTE_TANK_CELO?: string;        // Top-up size in CELO (default 0.1)
+  VOTE_TANK_DAILY_CAP?: string;   // Top-ups per day (default 30)
+  VOTE_TANK_RESERVE_CELO?: string; // The tank never goes below this (default 0.3)
   RATE_LIMITER_PARTNER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }; // per partner, all requests
 }
 
@@ -3057,7 +3063,7 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
   }
 
   // Requests that carry free text can't be huge
-  if (m === 'POST' && (['/support', '/diag', '/notify', '/vote/register'].includes(pathname) || /^\/onramp\/orders\/[^/]+\/(notify|arrived)$/i.test(pathname))) {
+  if (m === 'POST' && (['/support', '/diag', '/notify', '/vote/register', '/vote/tank'].includes(pathname) || /^\/onramp\/orders\/[^/]+\/(notify|arrived)$/i.test(pathname))) {
     if (Number(request.headers.get('Content-Length') ?? '0') > 16_384) return err('Request too large', 413);
   }
 
@@ -3100,6 +3106,22 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
     if (!input) return err('Please try again.', 400);
     const result = await registerWithFlowState(input);
     return json(result, result.ok ? 200 : result.reason === 'error' ? 502 : result.reason === 'busy' ? 503 : 200);
+  }
+
+  // POST /vote/tank - give a verified person's wallet the small network fee for their vote (see voteTank.ts)
+  if (m === 'POST' && pathname === '/vote/tank') {
+    const limited = await checkRateLimit(request, env, 'vote-tank', 'strict');
+    if (limited) return limited;
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return err('Invalid JSON body');
+    }
+    const input = parseRegisterBody(body);
+    if (!input) return err('Please try again.', 400);
+    const result = await giveVoteFee(env as TankEnv, input);
+    return json(result, tankStatus(result));
   }
 
   if (m === 'POST' && pathname === '/relay/quote') return handleRelayQuote(request, env);

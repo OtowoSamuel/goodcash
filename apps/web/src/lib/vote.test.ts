@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decodeFunctionData, recoverMessageAddress } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import {
+  askForVoteFee,
   buildClaimMessage,
+  buildFeeMessage,
   confirmVote,
   estimateVoteFee,
   friendlyVoteError,
@@ -17,6 +19,7 @@ import {
   GOODDOLLAR_IDENTITY,
   voteData,
   VOTE_COUNCIL,
+  waitForFee,
   type Ballot,
 } from './vote';
 
@@ -192,6 +195,63 @@ describe('registerVoter', () => {
   });
   it('needs a connected wallet', async () => {
     await expect(registerVoter(account.address, null, reply({ ok: true }))).rejects.toThrow('NO_WALLET');
+  });
+});
+
+describe('askForVoteFee (the network fee from GoodCash)', () => {
+  const account = privateKeyToAccount(generatePrivateKey());
+  const provider = () => ({
+    request: vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
+      if (method === 'eth_accounts') return [account.address.toLowerCase()];
+      if (method === 'personal_sign') return account.signMessage({ message: { raw: params![0] as `0x${string}` } });
+      throw new Error(`unexpected ${method}`);
+    }),
+  });
+  const reply = (body: unknown, status = 200) => vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+
+  it('asks in the exact words the server expects (this text is pinned in services/orders/src/voteTank.test.ts too)', () => {
+    expect(buildFeeMessage('0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', Date.UTC(2026, 10, 23, 12, 0, 0, 789))).toBe(
+      ['Ask GoodCash for the small network fee needed to vote.', '', 'Chain: 42220', 'Wallet: 0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef', 'Issued at: 2026-11-23T12:00:00Z'].join('\n'),
+    );
+  });
+  it('signs with the customer\'s own wallet and sends the proof to /vote/tank', async () => {
+    const f = reply({ ok: true, status: 'sent', hash: '0x1', amountCelo: 0.1 });
+    expect(await askForVoteFee(account.address, provider(), f)).toBe('sent');
+    const [url, init] = (f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0];
+    expect(url).toMatch(/\/vote\/tank$/);
+    const sent = JSON.parse(String(init.body)) as { address: string; issuedAt: number; signature: `0x${string}` };
+    expect(await recoverMessageAddress({ message: buildFeeMessage(account.address, sent.issuedAt), signature: sent.signature })).toBe(account.address);
+  });
+  it('passes on what the server says, and treats anything unclear as an error', async () => {
+    expect(await askForVoteFee(account.address, provider(), reply({ ok: true, status: 'enough' }))).toBe('enough');
+    for (const reason of ['off', 'not_verified', 'already', 'empty', 'busy'] as const) {
+      expect(await askForVoteFee(account.address, provider(), reply({ ok: false, reason }))).toBe(reason);
+    }
+    expect(await askForVoteFee(account.address, provider(), reply({ ok: false, reason: 'error' }, 502))).toBe('error');
+    expect(await askForVoteFee(account.address, provider(), reply({ weird: true }))).toBe('error');
+    expect(await askForVoteFee(account.address, provider(), vi.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch)).toBe('error');
+  });
+  it('refuses to sign for a different account, and needs a connected wallet', async () => {
+    const p = { request: vi.fn(async () => ['0x0000000000000000000000000000000000000001']) };
+    await expect(askForVoteFee(account.address, p, reply({ ok: true }))).rejects.toThrow('WRONG_ACCOUNT');
+    expect(p.request).toHaveBeenCalledTimes(1);
+    await expect(askForVoteFee(account.address, null, reply({ ok: true }))).rejects.toThrow('NO_WALLET');
+  });
+});
+
+describe('waitForFee', () => {
+  it('returns as soon as the wallet holds enough, and gives up after the tries', async () => {
+    const balances = [0n, 0n, 10n ** 17n];
+    const arrives = { getBalance: vi.fn(async () => balances.shift() ?? 10n ** 17n) };
+    expect(await waitForFee(WALLET, 0.06, arrives, 5, 1)).toBe(true);
+    expect(arrives.getBalance).toHaveBeenCalledTimes(3);
+    const never = { getBalance: vi.fn(async () => 0n) };
+    expect(await waitForFee(WALLET, 0.06, never, 3, 1)).toBe(false);
+    expect(never.getBalance).toHaveBeenCalledTimes(3);
+  });
+  it('keeps trying when a read fails', async () => {
+    const flaky = { getBalance: vi.fn().mockRejectedValueOnce(new Error('rpc')).mockResolvedValue(10n ** 17n) };
+    expect(await waitForFee(WALLET, 0.06, flaky, 3, 1)).toBe(true);
   });
 });
 

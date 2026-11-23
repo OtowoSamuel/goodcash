@@ -240,6 +240,49 @@ export async function registerVoter(wallet: string, provider: Eip1193 | null = g
   return 'error';
 }
 
+// --- the network fee from GoodCash (the vote gas tank) ----------------------------------------------------------
+
+/** The text the customer signs to ask for the fee. It must match the one in services/orders/src/voteTank.ts exactly. */
+export function buildFeeMessage(address: string, issuedAt: number): string {
+  const issuedAtSecond = Math.floor(issuedAt / 1000) * 1000;
+  const timestamp = new Date(issuedAtSecond).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return ['Ask GoodCash for the small network fee needed to vote.', '', `Chain: ${VOTE_CHAIN_ID}`, `Wallet: ${address.toLowerCase()}`, `Issued at: ${timestamp}`].join('\n');
+}
+
+export type FeeGiftOutcome = 'sent' | 'enough' | 'off' | 'not_verified' | 'already' | 'empty' | 'busy' | 'error';
+
+/**
+ * Ask GoodCash to send the small network fee for the vote. One free signature proves the wallet is theirs; GoodCash
+ * checks GoodDollar verification, sends a little CELO once per person, and the app then waits for it to arrive.
+ */
+export async function askForVoteFee(wallet: string, provider: Eip1193 | null = getWalletProvider(), fetchImpl: typeof fetch = fetch): Promise<FeeGiftOutcome> {
+  if (!provider) throw new Error('NO_WALLET');
+  await assertSameAccount(provider, wallet);
+  const issuedAt = Date.now();
+  const walletClient = createWalletClient({ chain: celo, transport: custom(provider) });
+  const signature = await walletClient.signMessage({ account: wallet as Address, message: buildFeeMessage(wallet, issuedAt) });
+  let res: Response;
+  try {
+    res = await fetchImpl(`${ORDERS_API_BASE}/vote/tank`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: wallet, issuedAt, signature }) });
+  } catch {
+    return 'error';
+  }
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; status?: string; reason?: string };
+  if (data.ok === true && (data.status === 'sent' || data.status === 'enough')) return data.status;
+  if (data.reason === 'off' || data.reason === 'not_verified' || data.reason === 'already' || data.reason === 'empty' || data.reason === 'busy') return data.reason;
+  return 'error';
+}
+
+/** Wait until the wallet holds enough CELO for the vote, up to about 40 seconds. */
+export async function waitForFee(wallet: string, needCelo: number, client: Pick<ReturnType<typeof publicClient>, 'getBalance'> = publicClient(), tries = 20, pauseMs = 2000): Promise<boolean> {
+  for (let i = 0; i < tries; i++) {
+    const have = await client.getBalance({ address: wallet as Address }).catch(() => 0n);
+    if (Number(have) / 1e18 >= needCelo) return true;
+    await new Promise((r) => setTimeout(r, pauseMs));
+  }
+  return false;
+}
+
 async function assertSameAccount(provider: Eip1193, wallet: string): Promise<void> {
   const accounts = ((await provider.request({ method: 'eth_accounts' })) as string[] | undefined) ?? [];
   if (!accounts.some((a) => a.toLowerCase() === wallet.toLowerCase())) throw new Error('WRONG_ACCOUNT');
