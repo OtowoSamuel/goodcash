@@ -6,6 +6,8 @@ import type { Ballot, VoteFee } from '../lib/vote';
 const m = vi.hoisted(() => ({
   readBallot: vi.fn(),
   estimateVoteFee: vi.fn(),
+  estimateBestVote: vi.fn(),
+  checkCouncilCode: vi.fn(),
   readVerified: vi.fn(),
   registerVoter: vi.fn(),
   askForVoteFee: vi.fn(),
@@ -27,7 +29,7 @@ vi.mock('../lib/vote', async () => {
 import { VoteModal } from './VoteModal';
 
 const WALLET = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
-const ballot = (o: Partial<Ballot> = {}): Ballot => ({ registered: true, power: 10, allocated: 0, mine: 0, available: 10, active: true, spread: 0, projects: 0, ...o });
+const ballot = (o: Partial<Ballot> = {}): Ballot => ({ registered: true, power: 10, allocated: 0, mine: 0, partnerMine: 0, partnerActive: true, available: 10, active: true, spread: 0, projects: 0, ...o });
 const fee = (o: Partial<VoteFee> = {}): VoteFee => ({ gas: 520_000n, feeCelo: 0.0635, needCelo: 0.124, haveCelo: 1, enough: true, ...o });
 
 beforeEach(() => {
@@ -36,6 +38,12 @@ beforeEach(() => {
   m.readBallot.mockResolvedValue(ballot());
   m.estimateVoteFee.mockResolvedValue(fee());
   m.readVerified.mockResolvedValue(true);
+  m.checkCouncilCode.mockResolvedValue(undefined);
+  // The screen asks for the best vote; here it is the planned (shared) vote, priced by the estimateVoteFee stand-in
+  m.estimateBestVote.mockImplementation(async (w: string, p: { newTotal: number; partnerTotal: number | null }) => ({
+    fee: await m.estimateVoteFee(w, { newTotal: p.newTotal, partnerTotal: p.partnerTotal }),
+    totals: { newTotal: p.newTotal, partnerTotal: p.partnerTotal },
+  }));
 });
 afterEach(() => vi.useRealTimers());
 
@@ -45,16 +53,18 @@ const voteButton = () => screen.findByRole('button', { name: /vote with/i });
 describe('VoteModal', () => {
   it('starts with all the voter\'s points chosen, shows the fee, and sends exactly that vote', async () => {
     m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
-    m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10, available: 0, allocated: 10 }) });
+    m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 5, partnerMine: 5, available: 0, allocated: 10, projects: 2 }) });
     open();
     const btn = await voteButton();
     expect(btn).toHaveTextContent('Vote with 10 points');
     await waitFor(() => expect(screen.getByText(/Your wallet has enough/)).toBeInTheDocument());
-    expect(m.estimateVoteFee).toHaveBeenCalledWith(WALLET, 10);
+    // shared 50/50 with GoodBuildIt, and the voter is told so before voting
+    expect(m.estimateVoteFee).toHaveBeenCalledWith(WALLET, { newTotal: 5, partnerTotal: 5 });
+    expect(screen.getByText(/shared with GoodBuildIt/).textContent).toMatch(/5 to GoodCash and 5 to GoodBuildIt/);
     fireEvent.click(btn);
     await waitFor(() => expect(screen.getByText(/Thank you!/)).toBeInTheDocument());
-    expect(m.sendVote).toHaveBeenCalledWith(WALLET, 10, 520_000n);
-    expect(screen.getByText(/GoodCash now has 10 points from you/)).toBeInTheDocument();
+    expect(m.sendVote).toHaveBeenCalledWith(WALLET, { newTotal: 5, partnerTotal: 5 }, 520_000n);
+    expect(screen.getByText(/GoodCash now has 5 points from you/).textContent).toMatch(/and GoodBuildIt has 5/);
   });
 
   it('lets the voter choose fewer points, and the vote follows the slider', async () => {
@@ -64,10 +74,10 @@ describe('VoteModal', () => {
     await voteButton();
     fireEvent.change(screen.getByRole('slider'), { target: { value: '4' } });
     expect(await screen.findByRole('button', { name: 'Vote with 4 points' })).toBeInTheDocument();
-    await waitFor(() => expect(m.estimateVoteFee).toHaveBeenLastCalledWith(WALLET, 4));
+    await waitFor(() => expect(m.estimateVoteFee).toHaveBeenLastCalledWith(WALLET, { newTotal: 2, partnerTotal: 2 }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Vote with 4 points' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Vote with 4 points' }));
-    await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, 4, 520_000n));
+    await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, { newTotal: 2, partnerTotal: 2 }, 520_000n));
   });
 
   it('adds to existing support: the total sent is existing plus the new points', async () => {
@@ -76,7 +86,37 @@ describe('VoteModal', () => {
     const already = await screen.findByText(/You already support GoodCash/);
     expect(already.parentElement).toHaveTextContent('with 2 points');
     await voteButton();
-    await waitFor(() => expect(m.estimateVoteFee).toHaveBeenCalledWith(WALLET, 5));
+    // 2 already with GoodCash, 3 free: GoodCash's total 2+2, GoodBuildIt's 0+1 (totals, not shares)
+    await waitFor(() => expect(m.estimateVoteFee).toHaveBeenCalledWith(WALLET, { newTotal: 4, partnerTotal: 1 }));
+  });
+
+  it('gives every point to GoodCash, and says so, when GoodBuildIt is not an active project', async () => {
+    m.readBallot.mockResolvedValue(ballot({ partnerActive: false }));
+    m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
+    m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10 }) });
+    open();
+    expect(await screen.findByText(/All 10 points go to GoodCash/)).toBeInTheDocument();
+    fireEvent.click(await voteButton());
+    await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, { newTotal: 10, partnerTotal: null }, 520_000n));
+  });
+
+  it('sends the vote that was checked: if sharing would be refused, it is all to GoodCash, and the screen says so', async () => {
+    m.estimateBestVote.mockImplementation(async () => ({ fee: fee(), totals: { newTotal: 10, partnerTotal: null } }));
+    m.sendVote.mockResolvedValue('0x' + 'ab'.repeat(32));
+    m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10 }) });
+    open();
+    expect(await screen.findByText(/All 10 points go to GoodCash/)).toBeInTheDocument();
+    fireEvent.click(await voteButton());
+    await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, { newTotal: 10, partnerTotal: null }, 520_000n));
+  });
+
+  it('asks for nothing when the voting contract is not the one we checked', async () => {
+    m.checkCouncilCode.mockRejectedValue(new Error('COUNCIL_CHANGED'));
+    open();
+    expect(await screen.findByText(/could not check voting right now/)).toBeInTheDocument();
+    expect(m.readBallot).not.toHaveBeenCalled();
+    expect(m.registerVoter).not.toHaveBeenCalled();
+    expect(m.sendVote).not.toHaveBeenCalled();
   });
 
   it('does not offer a vote until the fee is known', async () => {
@@ -194,7 +234,7 @@ describe('VoteModal', () => {
       await waitFor(() => expect(screen.getByText(/GoodCash now has 10 points/)).toBeInTheDocument(), { timeout: 8000 });
       expect(m.registerVoter).toHaveBeenCalledWith(WALLET, undefined, undefined, expect.anything());
       expect(m.sendVote).toHaveBeenCalledTimes(1);
-      expect(m.sendVote).toHaveBeenCalledWith(WALLET, 10, 520_000n);
+      expect(m.sendVote).toHaveBeenCalledWith(WALLET, { newTotal: 5, partnerTotal: 5 }, 520_000n);
       // registering comes first
       expect(m.registerVoter.mock.invocationCallOrder[0]).toBeLessThan(m.sendVote.mock.invocationCallOrder[0]);
     });
@@ -206,7 +246,7 @@ describe('VoteModal', () => {
       m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 500 }) });
       open();
       fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
-      await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, 500, 520_000n), { timeout: 8000 });
+      await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, { newTotal: 250, partnerTotal: 250 }, 520_000n), { timeout: 8000 });
     });
 
     it('a first-time voter short of CELO gets the fee from GoodCash, then the vote goes on by itself', async () => {
@@ -264,7 +304,7 @@ describe('VoteModal', () => {
       m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10 }) });
       open();
       fireEvent.click(await screen.findByRole('button', { name: 'Vote' }));
-      await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, 10, 520_000n), { timeout: 10000 });
+      await waitFor(() => expect(m.sendVote).toHaveBeenCalledWith(WALLET, { newTotal: 5, partnerTotal: 5 }, 520_000n), { timeout: 10000 });
     });
 
     it.each([
@@ -335,11 +375,11 @@ describe('VoteModal', () => {
   });
 
   it('follows a vote sent earlier instead of offering a new one', async () => {
-    m.loadPendingVote.mockReturnValue({ hash: '0x' + 'cd'.repeat(32), newTotal: 10, at: 1 });
-    m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 10 }) });
+    m.loadPendingVote.mockReturnValue({ hash: '0x' + 'cd'.repeat(32), newTotal: 5, partnerTotal: 5, at: 1 });
+    m.confirmVote.mockResolvedValue({ status: 'done', ballot: ballot({ mine: 5, partnerMine: 5 }) });
     open();
-    expect(await screen.findByText(/GoodCash now has 10 points/)).toBeInTheDocument();
-    expect(m.confirmVote).toHaveBeenCalledWith('0x' + 'cd'.repeat(32), 10, WALLET);
+    expect((await screen.findByText(/GoodCash now has 5 points/)).textContent).toMatch(/GoodBuildIt has 5/);
+    expect(m.confirmVote).toHaveBeenCalledWith('0x' + 'cd'.repeat(32), { newTotal: 5, partnerTotal: 5 }, WALLET);
     expect(m.sendVote).not.toHaveBeenCalled();
   });
 

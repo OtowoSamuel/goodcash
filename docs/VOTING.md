@@ -15,13 +15,23 @@ Two steps for the customer: **1. Verify with GoodDollar, 2. Vote.**
 
 ## The gas tank (network fee from GoodCash)
 
-Written 23 November 2026. When a verified person's wallet is short of CELO and they tap **Vote**, GoodCash sends the fee by itself (there is no extra button). Their wallet asks for one free message to prove the wallet is theirs, GoodCash sends enough CELO to reach 0.1 (about the vote's fee with room to spare), the app waits for it, and the vote goes on. A first-time voter reuses the free message they sign to turn on voting, so they are not asked twice (the app sends it with `kind: "claim"`; the Worker checks it against the voting message, a normal request against the fee message).
+Written 23 November 2026. When a verified person's wallet is short of CELO and they tap **Vote**, GoodCash sends the fee by itself (there is no extra button). Their wallet asks for one free message to prove the wallet is theirs, GoodCash sends enough CELO to reach 0.25 (`VOTE_TANK_CELO`; the shared vote needs about 0.2 in the wallet at the fee on 23 November 2026, of which about 0.1 is spent), the app waits for it, and the vote goes on. A first-time voter reuses the free message they sign to turn on voting, so they are not asked twice (the app sends it with `kind: "claim"`; the Worker checks it against the voting message, a normal request against the fee message).
 
 - `POST /vote/tank` on the Worker: `services/orders/src/voteTank.ts`. The signed message is checked against the wallet (normal wallets only), the wallet must be verified with GoodDollar, and the top-up is once per PERSON (the verified main wallet, marker `votetank:<person>`), so connected wallets cannot collect twice.
-- Limits: a wallet that already has 0.1 CELO gets nothing; 30 top-ups a day (`VOTE_TANK_DAILY_CAP`); the tank stops before it falls under 0.3 CELO (`VOTE_TANK_RESERVE_CELO`); one send at a time (lock `vote-tank`).
+- Limits: a wallet that already has 0.25 CELO gets nothing; 30 top-ups a day (`VOTE_TANK_DAILY_CAP`); the tank stops before it falls under 0.3 CELO (`VOTE_TANK_RESERVE_CELO`); one send at a time (lock `vote-tank`).
 - Off until `VOTE_TANK_ENABLED=true` and the secret `VOTE_TANK_KEY` (a fresh wallet used only for this, funded with a small amount) is set. While off, the button explains it and the "Add CELO with naira" option stays.
-- Fund and watch the tank from its own address. Worst case in a day is the daily cap times 0.1 CELO.
+- Fund and watch the tank from its own address. Worst case in a day is the daily cap times 0.25 CELO.
 - Not tested with a real tank: the send itself ran against a stand-in for the chain.
+
+## Shared votes with GoodBuildIt
+
+Written 23 November 2026, from GoodBuild's guide. Each vote from GoodCash is shared 50/50 with GoodBuildIt (recipient 10, `0xf0449277e30cc9063147bfb9ecdf036bf9d41531`), the odd point going to GoodCash. GoodBuild's app shares its voters' points with GoodCash the same way.
+
+- One transaction sets both totals: `vote([{ GoodCash, total }, { GoodBuildIt, total }])`. The contract SETS totals, so each amount is existing support plus the new share. Other projects are never in the array, so they keep their votes.
+- Everything goes to GoodCash when GoodBuildIt is not active, when only one point is given, or when the voter's project limit has room for one new project only.
+- If the council would refuse the shared vote, the app checks the same points all for GoodCash and sends that instead, so sharing never stops a vote. The screen always shows exactly what will be sent.
+- Before reading the ballot, the app checks the council's code hash (`COUNCIL_CODE_HASH`). A different contract stops voting before any signature.
+- Checked on chain on 23 November 2026: code hash matches, both projects active, no project limit, and a shared 5 + 5 vote simulates fine from two real registered voters (about 504,000 gas, against 313,000 for GoodCash alone). No real shared vote has been sent yet.
 
 ## Fixed facts (checked on chain, 19 November 2026)
 
@@ -44,7 +54,6 @@ Change `VOTE_COUNCIL` and `GOODCASH_RECIPIENT` in `apps/web/src/lib/vote.ts` and
 
 ## Not built
 
-- A pin of the council contract's code hash (GoodBuild does this). The address is fixed, but a change to the contract's behaviour would not be noticed.
 - Moving points from another project to GoodCash. A voter with no free points is sent to Flow State's website.
 - Paying the fee inside the vote itself (a paymaster). Flow State's own website seems to sponsor the fee that way (on 19 November 2026 most recent votes were sent by one bundler wallet through the account-abstraction entry point); ours sends a normal transaction from the customer's wallet, and the gas tank below tops that wallet up first.
 - Our own check of the signature before forwarding. Flow State checks it, and our Worker only checks the format and age (5 minutes).

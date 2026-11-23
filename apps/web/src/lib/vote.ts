@@ -1,4 +1,4 @@
-import { type Address, createPublicClient, createWalletClient, custom, encodeFunctionData, http } from 'viem';
+import { type Address, createPublicClient, createWalletClient, custom, encodeFunctionData, http, keccak256 } from 'viem';
 import { celo } from 'viem/chains';
 import { ORDERS_API_BASE } from './rate';
 import { CELO_RPC_URL, ensureCeloChain, getWalletProvider } from './router';
@@ -16,6 +16,13 @@ export const VOTE_CHAIN_ID = 42220;
 export const VOTE_COUNCIL: Address = '0x889e0aadaa3f8b28a794ef70da147827c620a590';
 /** GoodCash's funding address in that council (recipient number 11 when this was written) */
 export const GOODCASH_RECIPIENT: Address = '0xafdeebb89cda1669361117ea2eae3411f1228cb6';
+/**
+ * GoodBuildIt, a fellow GoodBuilders project (recipient number 10). Each vote from GoodCash is shared 50/50 with it,
+ * the odd point going to GoodCash; GoodBuild's own app shares its voters' points with GoodCash the same way.
+ */
+export const GOODBUILDIT_RECIPIENT: Address = '0xf0449277e30cc9063147bfb9ecdf036bf9d41531';
+/** keccak256 of the council's code, read on chain on 23 November 2026. A changed contract stops voting before anything is signed. */
+export const COUNCIL_CODE_HASH = '0x4f4b3bed84f524cc5162457e1ed5233b5527807945185a94a40a640bebf2c591';
 
 const COUNCIL_ABI = [
   {
@@ -75,6 +82,10 @@ export interface Ballot {
   allocated: number;
   /** Points already given to GoodCash */
   mine: number;
+  /** Points already given to GoodBuildIt */
+  partnerMine: number;
+  /** GoodBuildIt is an active project in the council (otherwise every point goes to GoodCash) */
+  partnerActive: boolean;
   /** Points still free to give */
   available: number;
   /** GoodCash is an active project in the council */
@@ -98,8 +109,9 @@ export function publicClient() {
 
 /** What the wallet has, what it has given and what is left, read from the council itself. Throws when the chain cannot be read. */
 export async function readBallot(wallet: string, client: ReadClient = publicClient(), blockNumber?: bigint): Promise<Ballot> {
-  const [recipientId, voter, spread] = await Promise.all([
+  const [recipientId, partnerId, voter, spread] = await Promise.all([
     read<bigint>(client, 'recipientIdByAddress', [GOODCASH_RECIPIENT], blockNumber),
+    read<bigint>(client, 'recipientIdByAddress', [GOODBUILDIT_RECIPIENT], blockNumber),
     read<{ votingPower: bigint; votes: ReadonlyArray<{ recipientId: bigint; amount: bigint }> }>(client, 'getVoter', [wallet], blockNumber),
     read<number>(client, 'maxVotingSpread', [], blockNumber),
   ]);
@@ -107,16 +119,25 @@ export async function readBallot(wallet: string, client: ReadClient = publicClie
   const given = voter.votes.filter((v) => v.amount > 0n);
   const allocated = given.reduce((n, v) => n + Number(v.amount), 0);
   const mine = recipientId === 0n ? 0 : Number(given.find((v) => v.recipientId === recipientId)?.amount ?? 0n);
+  const partnerMine = partnerId === 0n ? 0 : Number(given.find((v) => v.recipientId === partnerId)?.amount ?? 0n);
   return {
     registered: power > 0,
     power,
     allocated,
     mine,
+    partnerMine,
+    partnerActive: partnerId !== 0n,
     available: Math.max(0, power - allocated),
     active: recipientId !== 0n,
     spread: Number(spread),
     projects: given.length,
   };
+}
+
+/** Throws 'COUNCIL_CHANGED' unless the council's code is exactly the contract checked when this was written. */
+export async function checkCouncilCode(client: { getCode: (a: { address: Address }) => Promise<`0x${string}` | undefined> } = publicClient(), expected: string = COUNCIL_CODE_HASH): Promise<void> {
+  const code = await client.getCode({ address: VOTE_COUNCIL });
+  if (!code || code === '0x' || keccak256(code) !== expected) throw new Error('COUNCIL_CHANGED');
 }
 
 // --- GoodDollar verification -----------------------------------------------------------------------------------
@@ -142,25 +163,45 @@ export async function readVerified(wallet: string, client: ReadClient = publicCl
 
 // --- working out the vote --------------------------------------------------------------------------------------
 
+/** The totals one vote sets. The contract SETS each project's total, it does not add, so these are totals, not shares. */
+export interface VoteTotals {
+  /** GoodCash's points after this vote */
+  newTotal: number;
+  /** GoodBuildIt's points after this vote, or null when the vote leaves GoodBuildIt alone */
+  partnerTotal: number | null;
+}
+
 export type VotePlan =
-  | { ok: true; /** GoodCash's points after this vote (the contract sets the total, it does not add) */ newTotal: number }
+  | ({ ok: true; /** The same vote with every point to GoodCash, used if the shared vote would be refused */ alone: VoteTotals } & VoteTotals)
   | { ok: false; reason: 'not_active' | 'not_registered' | 'no_points' | 'too_many' | 'too_many_projects' | 'bad_amount' };
 
+/**
+ * Half the points (rounded down) to GoodBuildIt, the rest to GoodCash. Everything goes to GoodCash when GoodBuildIt is
+ * not active, when only one point is given, or when the voter's project limit leaves room for one new project only.
+ */
 export function planVote(ballot: Ballot, points: number): VotePlan {
   if (!ballot.active) return { ok: false, reason: 'not_active' };
   if (!ballot.registered) return { ok: false, reason: 'not_registered' };
   if (!Number.isInteger(points) || points < 1) return { ok: false, reason: 'bad_amount' };
   if (ballot.available < 1) return { ok: false, reason: 'no_points' };
   if (points > ballot.available) return { ok: false, reason: 'too_many' };
-  // A voter may be limited in how many projects they support; a first vote for GoodCash adds one
-  if (ballot.spread > 0 && ballot.mine === 0 && ballot.projects + 1 > ballot.spread) return { ok: false, reason: 'too_many_projects' };
-  // Other projects are never touched: only GoodCash's own total is sent
-  return { ok: true, newTotal: ballot.mine + points };
+  // A voter may be limited in how many projects they support; a first vote for a project adds one
+  const room = (added: number) => ballot.spread === 0 || ballot.projects + added <= ballot.spread;
+  const gcNew = ballot.mine === 0 ? 1 : 0;
+  const gbNew = ballot.partnerMine === 0 ? 1 : 0;
+  if (!room(gcNew)) return { ok: false, reason: 'too_many_projects' };
+  const alone: VoteTotals = { newTotal: ballot.mine + points, partnerTotal: null };
+  const share = ballot.partnerActive && points >= 2 && room(gcNew + gbNew) ? Math.floor(points / 2) : 0;
+  // Other projects are never touched: only GoodCash's and GoodBuildIt's own totals are sent
+  if (share === 0) return { ok: true, ...alone, alone };
+  return { ok: true, newTotal: ballot.mine + points - share, partnerTotal: ballot.partnerMine + share, alone };
 }
 
-/** The exact transaction: set GoodCash's total in the council. Nothing else is ever sent. */
-export function voteData(newTotal: number): `0x${string}` {
-  return encodeFunctionData({ abi: COUNCIL_ABI, functionName: 'vote', args: [[{ recipient: GOODCASH_RECIPIENT, amount: BigInt(newTotal) }]] });
+/** The exact transaction: set GoodCash's total, and GoodBuildIt's when it shares the vote. Nothing else is ever sent. */
+export function voteData(t: VoteTotals): `0x${string}` {
+  const votes = [{ recipient: GOODCASH_RECIPIENT, amount: BigInt(t.newTotal) }];
+  if (t.partnerTotal !== null) votes.push({ recipient: GOODBUILDIT_RECIPIENT, amount: BigInt(t.partnerTotal) });
+  return encodeFunctionData({ abi: COUNCIL_ABI, functionName: 'vote', args: [votes] });
 }
 
 // --- the network fee -------------------------------------------------------------------------------------------
@@ -187,9 +228,9 @@ const PRICE_NUM = 3n; // and 50% more than today's price
 const PRICE_DEN = 2n;
 
 /** Simulates the exact vote. It throws when the contract would refuse it, so a vote that would fail is never offered. */
-export async function estimateVoteFee(wallet: string, newTotal: number, client: FeeClient = publicClient() as unknown as FeeClient): Promise<VoteFee> {
+export async function estimateVoteFee(wallet: string, totals: VoteTotals, client: FeeClient = publicClient() as unknown as FeeClient): Promise<VoteFee> {
   const [estimate, price, balance] = await Promise.all([
-    client.estimateGas({ account: wallet as Address, to: VOTE_COUNCIL, data: voteData(newTotal) }),
+    client.estimateGas({ account: wallet as Address, to: VOTE_COUNCIL, data: voteData(totals) }),
     client.getGasPrice(),
     client.getBalance({ address: wallet as Address }),
   ]);
@@ -197,6 +238,20 @@ export async function estimateVoteFee(wallet: string, newTotal: number, client: 
   const need = (gas * price * PRICE_NUM) / PRICE_DEN;
   const toCelo = (w: bigint) => Number(w) / 1e18;
   return { gas, feeCelo: toCelo(estimate * price), needCelo: toCelo(need), haveCelo: toCelo(balance), enough: balance >= need };
+}
+
+/**
+ * The fee for the shared vote. If the council would refuse it, the same points all to GoodCash instead, so a problem
+ * with sharing never stops someone voting. Returns the vote that was checked: send exactly that one.
+ */
+export async function estimateBestVote(wallet: string, plan: VoteTotals & { alone: VoteTotals }, client: FeeClient = publicClient() as unknown as FeeClient): Promise<{ fee: VoteFee; totals: VoteTotals }> {
+  const shared: VoteTotals = { newTotal: plan.newTotal, partnerTotal: plan.partnerTotal };
+  if (shared.partnerTotal === null) return { fee: await estimateVoteFee(wallet, shared, client), totals: shared };
+  try {
+    return { fee: await estimateVoteFee(wallet, shared, client), totals: shared };
+  } catch {
+    return { fee: await estimateVoteFee(wallet, plan.alone, client), totals: plan.alone };
+  }
 }
 
 // --- turning voting on -----------------------------------------------------------------------------------------
@@ -302,9 +357,8 @@ async function assertSameAccount(provider: Eip1193, wallet: string): Promise<voi
 
 // --- casting the vote ------------------------------------------------------------------------------------------
 
-export interface PendingVote {
+export interface PendingVote extends VoteTotals {
   hash: `0x${string}`;
-  newTotal: number;
   at: number;
 }
 
@@ -312,8 +366,11 @@ const pendingKey = (wallet: string) => `goodcash_vote_pending_${wallet.toLowerCa
 
 export function loadPendingVote(wallet: string): PendingVote | null {
   try {
-    const v = JSON.parse(localStorage.getItem(pendingKey(wallet)) ?? 'null') as PendingVote | null;
-    return v && /^0x[0-9a-fA-F]{64}$/.test(v.hash) && Number.isInteger(v.newTotal) ? v : null;
+    const v = JSON.parse(localStorage.getItem(pendingKey(wallet)) ?? 'null') as (Omit<PendingVote, 'partnerTotal'> & { partnerTotal?: unknown }) | null;
+    if (!v || !/^0x[0-9a-fA-F]{64}$/.test(v.hash) || !Number.isInteger(v.newTotal)) return null;
+    // A vote saved before sharing began has no partner total: it only set GoodCash's
+    const partnerTotal = Number.isInteger(v.partnerTotal) ? (v.partnerTotal as number) : null;
+    return { hash: v.hash, newTotal: v.newTotal, partnerTotal, at: v.at };
   } catch {
     return null;
   }
@@ -330,8 +387,8 @@ export function savePendingVote(wallet: string, v: PendingVote | null): void {
 
 export type VoteOutcome = { status: 'done'; ballot: Ballot } | { status: 'failed' } | { status: 'unclear' };
 
-/** Wait for a sent vote, then confirm from the council itself that GoodCash now has the points. */
-export async function confirmVote(hash: `0x${string}`, newTotal: number, wallet: string, client = publicClient()): Promise<VoteOutcome> {
+/** Wait for a sent vote, then confirm from the council itself that GoodCash (and GoodBuildIt, when shared) now have the points. */
+export async function confirmVote(hash: `0x${string}`, totals: VoteTotals, wallet: string, client = publicClient()): Promise<VoteOutcome> {
   let receipt;
   try {
     receipt = await client.waitForTransactionReceipt({ hash, confirmations: 3, timeout: 150_000 });
@@ -340,17 +397,18 @@ export async function confirmVote(hash: `0x${string}`, newTotal: number, wallet:
   }
   if (receipt.status !== 'success') return { status: 'failed' };
   const ballot = await readBallot(wallet, client as unknown as ReadClient, receipt.blockNumber);
-  return ballot.mine === newTotal ? { status: 'done', ballot } : { status: 'unclear' };
+  const partnerOk = totals.partnerTotal === null || ballot.partnerMine === totals.partnerTotal;
+  return ballot.mine === totals.newTotal && partnerOk ? { status: 'done', ballot } : { status: 'unclear' };
 }
 
 /** Send the vote from the customer's own wallet. The wallet asks them to approve; nothing happens without that. */
-export async function sendVote(wallet: string, newTotal: number, gas: bigint, provider: Eip1193 | null = getWalletProvider()): Promise<`0x${string}`> {
+export async function sendVote(wallet: string, totals: VoteTotals, gas: bigint, provider: Eip1193 | null = getWalletProvider()): Promise<`0x${string}`> {
   if (!provider) throw new Error('NO_WALLET');
   await assertSameAccount(provider, wallet);
   await ensureCeloChain(provider);
   const walletClient = createWalletClient({ chain: celo, transport: custom(provider) });
-  const hash = await walletClient.sendTransaction({ account: wallet as Address, chain: celo, to: VOTE_COUNCIL, data: voteData(newTotal), gas });
-  savePendingVote(wallet, { hash, newTotal, at: Date.now() });
+  const hash = await walletClient.sendTransaction({ account: wallet as Address, chain: celo, to: VOTE_COUNCIL, data: voteData(totals), gas });
+  savePendingVote(wallet, { hash, newTotal: totals.newTotal, partnerTotal: totals.partnerTotal, at: Date.now() });
   return hash;
 }
 
@@ -361,6 +419,7 @@ export function friendlyVoteError(err: unknown): string {
   const e = err as { name?: string; message?: string; shortMessage?: string; code?: number; cause?: { code?: number; name?: string } } | null;
   const raw = `${e?.name ?? ''} ${e?.cause?.name ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`;
   if (e?.message === 'WRONG_ACCOUNT') return 'Your wallet is using a different account. Switch it back to the account shown in GoodCash, then try again.';
+  if (e?.message === 'COUNCIL_CHANGED') return 'Voting is paused while we check a change to the voting contract. Nothing was sent.';
   if (e?.message === 'NO_WALLET') return 'Your wallet is not connected. Reconnect it, then try again.';
   if (e?.code === 4001 || e?.cause?.code === 4001 || /user rejected|user denied|rejected the request|cancel/i.test(raw)) return 'You cancelled in your wallet. Nothing was sent. Tap to try again.';
   if (/insufficient funds|not enough/i.test(raw)) return 'Your wallet needs a little CELO to pay the network fee. Nothing was sent.';

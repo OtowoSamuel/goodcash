@@ -73,6 +73,9 @@ STATS_EXCLUDE_WALLETS = ""
 # It also needs the secret VOTE_TANK_KEY (the tank wallet's key, set with wrangler secret put). Without that key it stays off.
 # Set to "false" to switch it off at once.
 VOTE_TANK_ENABLED = "true"
+# Each top-up fills the wallet to this much CELO. The shared vote (GoodCash + GoodBuildIt) needs about 0.2 CELO in the
+# wallet at today's fee (about 0.1 CELO is spent, the rest stays with the voter). 0.1 was too little.
+VOTE_TANK_CELO = "0.25"
 # Partner API (/v1). On since 9 Nov 2026. Set to "false" to switch it off at once (nothing else changes).
 PARTNER_API_ENABLED = "true"
 # Naira in for partners (top-ups). Set to "false" to switch it off at once. Live mode also needs each partner switched on.

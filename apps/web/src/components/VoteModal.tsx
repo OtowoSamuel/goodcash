@@ -6,8 +6,9 @@ import {
   askForVoteFee,
   type SignedProof,
   type Ballot,
+  checkCouncilCode,
   confirmVote,
-  estimateVoteFee,
+  estimateBestVote,
   friendlyVoteError,
   loadPendingVote,
   planVote,
@@ -21,6 +22,7 @@ import {
   waitForFee,
   type RegisterOutcome,
   type VoteFee,
+  type VoteTotals,
 } from '../lib/vote';
 
 const COUNCIL_PAGE = `https://flowstate.network/flow-councils/${VOTE_CHAIN_ID}/${VOTE_COUNCIL}`;
@@ -46,9 +48,10 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
   const [verified, setVerified] = useState<boolean | null>(null);
   const [points, setPoints] = useState(0);
   // The fee is worked out for one particular vote; it stays valid until the chosen points change
-  const [feeState, setFeeState] = useState<{ for: number; fee: VoteFee | null; failed: boolean } | null>(null);
+  // `totals` is the vote that was checked (the shared one, or all to GoodCash if sharing would be refused): send exactly that
+  const [feeState, setFeeState] = useState<{ for: string; fee: VoteFee | null; totals: VoteTotals | null; failed: boolean } | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [gave, setGave] = useState(0);
+  const [gave, setGave] = useState<{ gc: number; gb: number }>({ gc: 0, gb: 0 });
   // A first-time voter pressed Vote: once their points are set up and the fee is fine, the vote goes on by itself
   const [continueVote, setContinueVote] = useState(false);
   // Verifying signs with this same wallet on our site, then GoodDollar's face check, then back here
@@ -76,6 +79,8 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
   const load = useCallback(async () => {
     setPhase('loading');
     try {
+      // Stop before anything is signed if the voting contract is not the one we checked
+      await checkCouncilCode();
       const b = await readBallot(wallet);
       // A wallet with voting points is verified by definition. Otherwise ask GoodDollar.
       const v = b.registered ? true : await readVerified(wallet);
@@ -94,11 +99,11 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
     const pending = loadPendingVote(wallet);
     if (!pending) return false;
     setPhase('confirming');
-    const r = await confirmVote(pending.hash, pending.newTotal, wallet);
+    const r = await confirmVote(pending.hash, { newTotal: pending.newTotal, partnerTotal: pending.partnerTotal }, wallet);
     if (!alive.current) return true;
     if (r.status === 'done') {
       savePendingVote(wallet, null);
-      setGave(r.ballot.mine);
+      setGave({ gc: r.ballot.mine, gb: pending.partnerTotal === null ? 0 : r.ballot.partnerMine });
       setBallot(r.ballot);
       setPhase('done');
     } else if (r.status === 'failed') {
@@ -119,17 +124,22 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
 
   // The network fee for the vote as chosen. Worked out a moment after the slider stops.
   const plan = ballot ? planVote(ballot, points) : null;
-  const planned = plan && plan.ok ? plan.newTotal : null;
+  const planned = plan && plan.ok ? `${plan.newTotal}/${plan.partnerTotal}` : null;
   const feeNow = feeState && feeState.for === planned ? feeState : null;
   const fee = feeNow?.fee ?? null;
+  const checked = feeNow?.totals ?? null;
   const feeFailed = feeNow?.failed === true;
+  // The plan is worked out from ballot and points on every render; `planned` stands for it in the effect below
+  const planRef = useRef(plan);
+  planRef.current = plan;
   useEffect(() => {
-    if (phase !== 'ready' || planned === null || feeState?.for === planned) return;
+    const p = planRef.current;
+    if (phase !== 'ready' || planned === null || !p || !p.ok || feeState?.for === planned) return;
     let live = true;
     const t = setTimeout(() => {
-      estimateVoteFee(wallet, planned)
-        .then((f) => live && setFeeState({ for: planned, fee: f, failed: false }))
-        .catch(() => live && setFeeState({ for: planned, fee: null, failed: true }));
+      estimateBestVote(wallet, p)
+        .then((r) => live && setFeeState({ for: planned, fee: r.fee, totals: r.totals, failed: false }))
+        .catch(() => live && setFeeState({ for: planned, fee: null, totals: null, failed: true }));
     }, 250);
     return () => {
       live = false;
@@ -138,18 +148,18 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
   }, [phase, planned, wallet, feeState]);
 
   const castVote = useCallback(
-    async (newTotal: number, gas: bigint) => {
+    async (totals: VoteTotals, gas: bigint) => {
       setNote(null);
       setPhase('sending');
       try {
-        const hash = await sendVote(wallet, newTotal, gas);
+        const hash = await sendVote(wallet, totals, gas);
         if (!alive.current) return;
         setPhase('confirming');
-        const r = await confirmVote(hash, newTotal, wallet);
+        const r = await confirmVote(hash, totals, wallet);
         if (!alive.current) return;
         if (r.status === 'done') {
           savePendingVote(wallet, null);
-          setGave(r.ballot.mine);
+          setGave({ gc: r.ballot.mine, gb: totals.partnerTotal === null ? 0 : r.ballot.partnerMine });
           setBallot(r.ballot);
           setPhase('done');
         } else if (r.status === 'failed') {
@@ -226,11 +236,11 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
       setNote(fee && !fee.enough ? 'Your voting is set up. Add a little CELO for the network fee, then tap Vote.' : null);
       return;
     }
-    if (fee && plan && plan.ok) {
+    if (fee && checked) {
       setContinueVote(false);
-      void castVote(plan.newTotal, fee.gas);
+      void castVote(checked, fee.gas);
     }
-  }, [continueVote, phase, fee, feeFailed, plan, castVote, feeGiftGone, gettingFee, ensureFee]);
+  }, [continueVote, phase, fee, feeFailed, checked, castVote, feeGiftGone, gettingFee, ensureFee]);
 
   const vote = async () => {
     if (!ballot) return;
@@ -269,7 +279,7 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
       }
       return;
     }
-    if (!plan || !plan.ok || !fee) return;
+    if (!plan || !plan.ok || !fee || !checked) return;
     if (!fee.enough) {
       // GoodCash sends the fee, then the vote carries on by itself
       if (feeGiftGone) return;
@@ -280,7 +290,7 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
       }
       return;
     }
-    await castVote(plan.newTotal, fee.gas);
+    await castVote(checked, fee.gas);
   };
 
   const busy = phase === 'registering' || phase === 'sending' || phase === 'confirming' || continueVote || gettingFee;
@@ -362,7 +372,7 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
 
       {firstVote && (
         <div className="gc-sm" style={{ marginTop: 8 }}>
-          You are verified. Tap <b>Vote</b> and we set up your voting points, then vote for GoodCash with all of them. Your wallet will ask you to approve two things: a free message first (no money), then the vote.
+          You are verified. Tap <b>Vote</b> and we set up your voting points, then vote with all of them, shared between GoodCash and GoodBuildIt, a fellow GoodDollar project. Your wallet will ask you to approve two things: a free message first (no money), then the vote.
         </div>
       )}
 
@@ -395,6 +405,18 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
             disabled={ballot.available === 1}
             style={{ width: '100%', marginTop: 8, accentColor: '#7c3aed', height: 32 }}
           />
+          {checked && (
+            <div className="gc-sm" style={{ marginTop: 8 }}>
+              {checked.partnerTotal === null ? (
+                <>All {points} {points === 1 ? 'point goes' : 'points go'} to GoodCash.</>
+              ) : (
+                <>
+                  Your points are shared with GoodBuildIt, a fellow GoodDollar project that shares its voters&apos; points with us too:{' '}
+                  <b>{checked.newTotal - ballot.mine}</b> to GoodCash and <b>{checked.partnerTotal - ballot.partnerMine}</b> to GoodBuildIt.
+                </>
+              )}
+            </div>
+          )}
           <div className="gc-sm" style={{ marginTop: 8 }} aria-live="polite">
             {fee ? (
               <>
@@ -429,7 +451,8 @@ export const VoteModal: React.FC<{ wallet: string; onClose: () => void; onAddCel
 
       {phase === 'done' && (
         <div className="gc-note" style={{ background: '#8cf0c0', marginTop: 12 }} role="status">
-          <b>Thank you!</b> GoodCash now has {gave} {gave === 1 ? 'point' : 'points'} from you.
+          <b>Thank you!</b> GoodCash now has {gave.gc} {gave.gc === 1 ? 'point' : 'points'} from you
+          {gave.gb > 0 ? <>, and GoodBuildIt has {gave.gb}</> : null}.
         </div>
       )}
 

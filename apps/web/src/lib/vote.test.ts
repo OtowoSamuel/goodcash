@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decodeFunctionData, recoverMessageAddress } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { keccak256 } from 'viem';
 import {
   askForVoteFee,
+  checkCouncilCode,
+  COUNCIL_CODE_HASH,
+  estimateBestVote,
+  GOODBUILDIT_RECIPIENT,
   buildClaimMessage,
   buildFeeMessage,
   confirmVote,
@@ -30,7 +35,8 @@ vi.mock('./router', () => ({
 }));
 
 const WALLET = '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF';
-const base: Ballot = { registered: true, power: 10, allocated: 0, mine: 0, available: 10, active: true, spread: 0, projects: 0 };
+const base: Ballot = { registered: true, power: 10, allocated: 0, mine: 0, partnerMine: 0, partnerActive: true, available: 10, active: true, spread: 0, projects: 0 };
+const T = (newTotal: number, partnerTotal: number | null = null) => ({ newTotal, partnerTotal });
 
 beforeEach(() => {
   const data = new Map<string, string>();
@@ -42,13 +48,23 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('planVote', () => {
-  it('gives all ten points to a new voter by default', () => {
-    expect(planVote(base, 10)).toEqual({ ok: true, newTotal: 10 });
+describe('planVote (shared 50/50 with GoodBuildIt)', () => {
+  const totals = (p: ReturnType<typeof planVote>) => (p.ok ? { newTotal: p.newTotal, partnerTotal: p.partnerTotal } : p);
+  it('10 points: 5 to GoodCash and 5 to GoodBuildIt', () => {
+    expect(planVote(base, 10)).toEqual({ ok: true, newTotal: 5, partnerTotal: 5, alone: T(10) });
   });
-  it('sets GoodCash\'s total: existing support plus the new points (the contract sets the total, it does not add)', () => {
-    // two points already with GoodCash, five elsewhere, three free: adding the three makes five
-    expect(planVote({ ...base, power: 10, allocated: 7, mine: 2, available: 3, projects: 2 }, 3)).toEqual({ ok: true, newTotal: 5 });
+  it('7 points: the odd point goes to GoodCash (4 and 3)', () => {
+    expect(totals(planVote({ ...base, power: 7, available: 7 }, 7))).toEqual(T(4, 3));
+  });
+  it('1 point: all to GoodCash, GoodBuildIt left alone', () => {
+    expect(totals(planVote(base, 1))).toEqual(T(1));
+  });
+  it('all to GoodCash when GoodBuildIt is not an active project', () => {
+    expect(totals(planVote({ ...base, partnerActive: false }, 10))).toEqual(T(10));
+  });
+  it('sends TOTALS, not shares: existing support stays and grows (the contract sets the total, it does not add)', () => {
+    // 2 already with GoodCash, 1 with GoodBuildIt, 3 elsewhere, 4 free: GoodCash 2+2, GoodBuildIt 1+2
+    expect(totals(planVote({ ...base, mine: 2, partnerMine: 1, allocated: 6, available: 4, projects: 3 }, 4))).toEqual(T(4, 3));
   });
   it('refuses what it cannot do, with a reason each', () => {
     expect(planVote({ ...base, active: false }, 1)).toEqual({ ok: false, reason: 'not_active' });
@@ -58,50 +74,71 @@ describe('planVote', () => {
     for (const bad of [0, -1, 1.5, NaN]) expect(planVote(base, bad)).toEqual({ ok: false, reason: 'bad_amount' });
   });
   it('respects a limit on how many projects one voter can support', () => {
+    // full: no room even for GoodCash
     expect(planVote({ ...base, spread: 3, projects: 3, allocated: 5, available: 5 }, 2)).toEqual({ ok: false, reason: 'too_many_projects' });
-    expect(planVote({ ...base, spread: 3, projects: 2, allocated: 5, available: 5 }, 2)).toEqual({ ok: true, newTotal: 2 });
-    // already supporting GoodCash: no new project is added
-    expect(planVote({ ...base, spread: 1, projects: 1, mine: 4, allocated: 4, available: 6 }, 2)).toEqual({ ok: true, newTotal: 6 });
+    // room for one new project only: all to GoodCash
+    expect(totals(planVote({ ...base, spread: 3, projects: 2, allocated: 5, available: 5 }, 2))).toEqual(T(2));
+    // room for two: shared
+    expect(totals(planVote({ ...base, spread: 4, projects: 2, allocated: 5, available: 5 }, 2))).toEqual(T(1, 1));
+    // already supporting both: nothing new is added, so it can share even at the limit
+    expect(totals(planVote({ ...base, spread: 2, projects: 2, mine: 2, partnerMine: 2, allocated: 4, available: 6 }, 6))).toEqual(T(5, 5));
   });
   it('works for a voter with more than ten points', () => {
-    expect(planVote({ ...base, power: 500, available: 500 }, 500)).toEqual({ ok: true, newTotal: 500 });
+    expect(totals(planVote({ ...base, power: 500, available: 500 }, 500))).toEqual(T(250, 250));
   });
 });
 
 describe('voteData', () => {
-  it('is one vote for GoodCash alone, and nothing else', () => {
-    const decoded = decodeFunctionData({
+  const decode = (data: `0x${string}`) => {
+    const d = decodeFunctionData({
       abi: [{ type: 'function', name: 'vote', stateMutability: 'nonpayable', inputs: [{ name: '_votes', type: 'tuple[]', components: [{ name: 'recipient', type: 'address' }, { name: 'amount', type: 'uint96' }] }], outputs: [] }] as const,
-      data: voteData(7),
+      data,
     });
-    expect(decoded.functionName).toBe('vote');
-    const [votes] = decoded.args as unknown as [Array<{ recipient: string; amount: bigint }>];
-    expect(votes).toHaveLength(1);
-    expect(votes[0].recipient.toLowerCase()).toBe(GOODCASH_RECIPIENT);
-    expect(votes[0].amount).toBe(7n);
+    expect(d.functionName).toBe('vote');
+    return (d.args as unknown as [Array<{ recipient: string; amount: bigint }>])[0].map((v) => [v.recipient.toLowerCase(), v.amount]);
+  };
+  it('a shared vote sets GoodCash first, then GoodBuildIt, and nothing else', () => {
+    expect(decode(voteData(T(5, 5)))).toEqual([[GOODCASH_RECIPIENT, 5n], [GOODBUILDIT_RECIPIENT, 5n]]);
+  });
+  it('a vote for GoodCash alone has only GoodCash in it', () => {
+    expect(decode(voteData(T(7)))).toEqual([[GOODCASH_RECIPIENT, 7n]]);
+  });
+});
+
+describe('checkCouncilCode', () => {
+  const code = '0x6080604052' as `0x${string}`;
+  it('passes only for the exact code checked on chain, and stops voting otherwise', async () => {
+    await expect(checkCouncilCode({ getCode: async () => code }, keccak256(code))).resolves.toBeUndefined();
+    await expect(checkCouncilCode({ getCode: async () => '0x6080604053' }, keccak256(code))).rejects.toThrow('COUNCIL_CHANGED');
+    await expect(checkCouncilCode({ getCode: async () => undefined }, keccak256(code))).rejects.toThrow('COUNCIL_CHANGED');
+    await expect(checkCouncilCode({ getCode: async () => '0x' }, keccak256(code))).rejects.toThrow('COUNCIL_CHANGED');
+  });
+  it('pins the hash read from the live council on 23 November 2026', () => {
+    expect(COUNCIL_CODE_HASH).toBe('0x4f4b3bed84f524cc5162457e1ed5233b5527807945185a94a40a640bebf2c591');
   });
 });
 
 describe('readBallot', () => {
-  const client = (voter: { votingPower: bigint; votes: Array<{ recipientId: bigint; amount: bigint }> }, recipientId = 11n, spread = 0) => ({
-    readContract: vi.fn(async (a: { functionName: string }) => {
-      if (a.functionName === 'recipientIdByAddress') return recipientId;
+  const client = (voter: { votingPower: bigint; votes: Array<{ recipientId: bigint; amount: bigint }> }, ids: { gc?: bigint; gb?: bigint } = {}, spread = 0) => ({
+    readContract: vi.fn(async (a: { functionName: string; args?: unknown[] }) => {
+      if (a.functionName === 'recipientIdByAddress') return String(a.args?.[0]).toLowerCase() === GOODBUILDIT_RECIPIENT ? (ids.gb ?? 10n) : (ids.gc ?? 11n);
       if (a.functionName === 'maxVotingSpread') return spread;
       return voter;
     }),
   });
 
-  it('adds up what a voter has given and finds GoodCash\'s share', async () => {
-    const b = await readBallot(WALLET, client({ votingPower: 10n, votes: [{ recipientId: 11n, amount: 2n }, { recipientId: 3n, amount: 5n }] }) as never);
-    expect(b).toEqual({ registered: true, power: 10, allocated: 7, mine: 2, available: 3, active: true, spread: 0, projects: 2 });
+  it('adds up what a voter has given and finds GoodCash\'s and GoodBuildIt\'s shares', async () => {
+    const b = await readBallot(WALLET, client({ votingPower: 10n, votes: [{ recipientId: 11n, amount: 2n }, { recipientId: 10n, amount: 1n }, { recipientId: 3n, amount: 4n }] }) as never);
+    expect(b).toEqual({ registered: true, power: 10, allocated: 7, mine: 2, partnerMine: 1, partnerActive: true, available: 3, active: true, spread: 0, projects: 3 });
   });
   it('ignores projects given zero points', async () => {
     const b = await readBallot(WALLET, client({ votingPower: 10n, votes: [{ recipientId: 3n, amount: 0n }] }) as never);
     expect(b).toMatchObject({ allocated: 0, projects: 0, available: 10 });
   });
-  it('says not registered for a wallet with no points, and not active when GoodCash is not in the council', async () => {
+  it('says not registered for a wallet with no points, and not active when a project is not in the council', async () => {
     expect((await readBallot(WALLET, client({ votingPower: 0n, votes: [] }) as never)).registered).toBe(false);
-    expect((await readBallot(WALLET, client({ votingPower: 10n, votes: [] }, 0n) as never)).active).toBe(false);
+    expect((await readBallot(WALLET, client({ votingPower: 10n, votes: [] }, { gc: 0n }) as never)).active).toBe(false);
+    expect((await readBallot(WALLET, client({ votingPower: 10n, votes: [] }, { gb: 0n }) as never))).toMatchObject({ active: true, partnerActive: false, partnerMine: 0 });
   });
   it('reads at the block it is asked to', async () => {
     const c = client({ votingPower: 10n, votes: [] });
@@ -112,13 +149,13 @@ describe('readBallot', () => {
 
 describe('estimateVoteFee', () => {
   const client = (balance: bigint, gas = 400_000n, price = 25_000_000_000n) => ({
-    estimateGas: vi.fn(async () => gas),
+    estimateGas: vi.fn(async (_a: { data: `0x${string}` }) => gas),
     getGasPrice: vi.fn(async () => price),
     getBalance: vi.fn(async () => balance),
   });
 
   it('asks for 30% more gas and 50% more than today\'s price, and says whether the wallet has enough', async () => {
-    const fee = await estimateVoteFee(WALLET, 10, client(10n ** 18n));
+    const fee = await estimateVoteFee(WALLET, T(5, 5), client(10n ** 18n));
     expect(fee.gas).toBe(520_000n);
     expect(fee.feeCelo).toBeCloseTo(0.01, 6); // 400,000 x 25 gwei
     expect(fee.needCelo).toBeCloseTo(0.0195, 6); // 520,000 x 25 gwei x 1.5
@@ -126,17 +163,44 @@ describe('estimateVoteFee', () => {
   });
   it('says not enough when the balance is below the need, and enough at exactly the need', async () => {
     const need = (520_000n * 25_000_000_000n * 3n) / 2n;
-    expect((await estimateVoteFee(WALLET, 10, client(need - 1n))).enough).toBe(false);
-    expect((await estimateVoteFee(WALLET, 10, client(need))).enough).toBe(true);
+    expect((await estimateVoteFee(WALLET, T(10), client(need - 1n))).enough).toBe(false);
+    expect((await estimateVoteFee(WALLET, T(10), client(need))).enough).toBe(true);
   });
   it('simulates the exact vote from the customer\'s wallet to the council', async () => {
     const c = client(10n ** 18n);
-    await estimateVoteFee(WALLET, 4, c);
-    expect(c.estimateGas).toHaveBeenCalledWith({ account: WALLET, to: VOTE_COUNCIL, data: voteData(4) });
+    await estimateVoteFee(WALLET, T(2, 2), c);
+    expect(c.estimateGas).toHaveBeenCalledWith({ account: WALLET, to: VOTE_COUNCIL, data: voteData(T(2, 2)) });
   });
   it('throws when the contract would refuse the vote, so it is never offered', async () => {
     const c = { ...client(10n ** 18n), estimateGas: vi.fn(async () => { throw new Error('execution reverted'); }) };
-    await expect(estimateVoteFee(WALLET, 4, c)).rejects.toThrow('reverted');
+    await expect(estimateVoteFee(WALLET, T(4), c)).rejects.toThrow('reverted');
+  });
+});
+
+describe('estimateBestVote', () => {
+  const plan = { newTotal: 5, partnerTotal: 5, alone: T(10) };
+  const client = (refuseShared: boolean, refuseAlone = false) => ({
+    estimateGas: vi.fn(async (a: { data: `0x${string}` }) => {
+      const shared = a.data === voteData(T(5, 5));
+      if ((shared && refuseShared) || (!shared && refuseAlone)) throw new Error('execution reverted');
+      return 400_000n;
+    }),
+    getGasPrice: vi.fn(async () => 25_000_000_000n),
+    getBalance: vi.fn(async () => 10n ** 18n),
+  });
+  it('checks the shared vote and returns it when the council accepts it', async () => {
+    expect((await estimateBestVote(WALLET, plan, client(false))).totals).toEqual(T(5, 5));
+  });
+  it('falls back to all points for GoodCash when the shared vote would be refused, so a sharing problem never stops a vote', async () => {
+    expect((await estimateBestVote(WALLET, plan, client(true))).totals).toEqual(T(10));
+  });
+  it('still throws when even the GoodCash-only vote would be refused', async () => {
+    await expect(estimateBestVote(WALLET, plan, client(true, true))).rejects.toThrow('reverted');
+  });
+  it('checks once when the vote is not shared', async () => {
+    const c = client(false);
+    expect((await estimateBestVote(WALLET, { ...T(1), alone: T(1) }, c)).totals).toEqual(T(1));
+    expect(c.estimateGas).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -297,54 +361,63 @@ describe('sendVote', () => {
         throw new Error(`unexpected ${method}`);
       }),
     };
-    expect(await sendVote(WALLET, 6, 520_000n, provider)).toBe(HASH);
+    expect(await sendVote(WALLET, T(3, 3), 520_000n, provider)).toBe(HASH);
     const tx = sent[0] as { from: string; to: string; data: string; value?: string };
     expect(tx.to.toLowerCase()).toBe(VOTE_COUNCIL);
-    expect(tx.data).toBe(voteData(6));
+    expect(tx.data).toBe(voteData(T(3, 3)));
     expect(tx.value ?? '0x0').toMatch(/^0x0*$/);
-    expect(loadPendingVote(WALLET)).toMatchObject({ hash: HASH, newTotal: 6 });
+    expect(loadPendingVote(WALLET)).toMatchObject({ hash: HASH, newTotal: 3, partnerTotal: 3 });
 
     const wrong = { request: vi.fn(async () => ['0x0000000000000000000000000000000000000001']) };
-    await expect(sendVote(WALLET, 6, 520_000n, wrong)).rejects.toThrow('WRONG_ACCOUNT');
+    await expect(sendVote(WALLET, T(3, 3), 520_000n, wrong)).rejects.toThrow('WRONG_ACCOUNT');
   });
 });
 
 describe('confirmVote', () => {
   const HASH = `0x${'cd'.repeat(32)}` as `0x${string}`;
-  const client = (receipt: unknown, mine: bigint) =>
+  const client = (receipt: unknown, mine: bigint, partner = 0n) =>
     ({
       waitForTransactionReceipt: vi.fn(async () => {
         if (receipt === 'timeout') throw new Error('timed out');
         return receipt;
       }),
-      readContract: vi.fn(async (a: { functionName: string }) => {
-        if (a.functionName === 'recipientIdByAddress') return 11n;
+      readContract: vi.fn(async (a: { functionName: string; args?: unknown[] }) => {
+        if (a.functionName === 'recipientIdByAddress') return String(a.args?.[0]).toLowerCase() === GOODBUILDIT_RECIPIENT ? 10n : 11n;
         if (a.functionName === 'maxVotingSpread') return 0;
-        return { votingPower: 10n, votes: [{ recipientId: 11n, amount: mine }] };
+        return { votingPower: 10n, votes: [{ recipientId: 11n, amount: mine }, { recipientId: 10n, amount: partner }] };
       }),
     }) as never;
 
-  it('is done only when the council itself shows GoodCash with the points', async () => {
-    const r = await confirmVote(HASH, 10, WALLET, client({ status: 'success', blockNumber: 5n }, 10n));
-    expect(r).toMatchObject({ status: 'done', ballot: { mine: 10 } });
+  it('is done only when the council itself shows both projects with their points', async () => {
+    const r = await confirmVote(HASH, T(5, 5), WALLET, client({ status: 'success', blockNumber: 5n }, 5n, 5n));
+    expect(r).toMatchObject({ status: 'done', ballot: { mine: 5, partnerMine: 5 } });
   });
-  it('is not done when the receipt says success but the points are not there', async () => {
-    expect(await confirmVote(HASH, 10, WALLET, client({ status: 'success', blockNumber: 5n }, 4n))).toEqual({ status: 'unclear' });
+  it('a GoodCash-only vote does not look at GoodBuildIt', async () => {
+    expect(await confirmVote(HASH, T(10), WALLET, client({ status: 'success', blockNumber: 5n }, 10n, 3n))).toMatchObject({ status: 'done' });
+  });
+  it('is not done when the receipt says success but either project\'s points are not there', async () => {
+    expect(await confirmVote(HASH, T(5, 5), WALLET, client({ status: 'success', blockNumber: 5n }, 4n, 5n))).toEqual({ status: 'unclear' });
+    expect(await confirmVote(HASH, T(5, 5), WALLET, client({ status: 'success', blockNumber: 5n }, 5n, 0n))).toEqual({ status: 'unclear' });
   });
   it('says failed for a reverted transaction, and unclear when it cannot be seen yet (never "send again")', async () => {
-    expect(await confirmVote(HASH, 10, WALLET, client({ status: 'reverted', blockNumber: 5n }, 0n))).toEqual({ status: 'failed' });
-    expect(await confirmVote(HASH, 10, WALLET, client('timeout', 0n))).toEqual({ status: 'unclear' });
+    expect(await confirmVote(HASH, T(10), WALLET, client({ status: 'reverted', blockNumber: 5n }, 0n))).toEqual({ status: 'failed' });
+    expect(await confirmVote(HASH, T(10), WALLET, client('timeout', 0n))).toEqual({ status: 'unclear' });
   });
 });
 
 describe('pending vote and plain words', () => {
   it('remembers a sent vote per wallet and forgets it when asked', () => {
     const HASH = `0x${'ef'.repeat(32)}` as `0x${string}`;
-    savePendingVote(WALLET, { hash: HASH, newTotal: 3, at: 1 });
-    expect(loadPendingVote(WALLET)).toEqual({ hash: HASH, newTotal: 3, at: 1 });
+    savePendingVote(WALLET, { hash: HASH, newTotal: 3, partnerTotal: 2, at: 1 });
+    expect(loadPendingVote(WALLET)).toEqual({ hash: HASH, newTotal: 3, partnerTotal: 2, at: 1 });
     expect(loadPendingVote('0x0000000000000000000000000000000000000001')).toBeNull();
     savePendingVote(WALLET, null);
     expect(loadPendingVote(WALLET)).toBeNull();
+  });
+  it('reads a vote saved before sharing began as a GoodCash-only vote', () => {
+    const HASH = `0x${'ef'.repeat(32)}`;
+    localStorage.setItem(`goodcash_vote_pending_${WALLET.toLowerCase()}`, JSON.stringify({ hash: HASH, newTotal: 4, at: 1 }));
+    expect(loadPendingVote(WALLET)).toEqual({ hash: HASH, newTotal: 4, partnerTotal: null, at: 1 });
   });
   it('ignores a damaged saved vote', () => {
     localStorage.setItem(`goodcash_vote_pending_${WALLET.toLowerCase()}`, '{"hash":"nope","newTotal":"x"}');
