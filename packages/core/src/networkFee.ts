@@ -1,12 +1,13 @@
 /**
  * The network fee for a cash out, paid in CELO by the wallet (never in G$).
- * Measured on real cash outs (Nov 2026): one-tap uses ~1M gas (wallet limit ~1.16M). A wallet only sends when it holds
- * gas limit x max fee, so the balance we ask for is higher than what is actually spent.
+ * Measured on real cash outs: one-tap used 1.18M to 1.31M gas (21 to 23 Nov 2026), and wallets set limits up to 1.63M.
+ * A wallet only sends when it holds gas limit x max fee, so the balance we ask for is higher than what is actually spent.
+ * Keep in step with apps/web/src/lib/router.ts.
  */
 export type CashOutFlow = 'one-tap' | 'three-step';
 
 export const FEE_GAS: Record<CashOutFlow, { used: bigint; limit: bigint }> = {
-  'one-tap': { used: 1_000_000n, limit: 1_160_000n },
+  'one-tap': { used: 1_200_000n, limit: 1_650_000n },
   'three-step': { used: 1_000_000n, limit: 1_150_000n },
 };
 /** Wallets set their max fee above today's price, so ask for 50% headroom. */

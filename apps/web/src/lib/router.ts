@@ -157,14 +157,15 @@ function rememberSentDeposit(orderId: string, hash: string | null): void {
 // ---------------------------------------------------------------------------
 // Network fee (paid in CELO by the wallet, never in G$)
 //
-// Measured on real GoodCash cash outs (Nov 2026): one-tap uses ~996k gas (wallet limit ~1.16M); the three-step
-// swap uses ~864k (limit ~1.0M) plus an approval and a dollar transfer. A wallet will only send when it holds
-// gas limit x max fee, so the balance we ask for is higher than what is actually spent.
+// Measured on real GoodCash cash outs: one-tap used 1.18M to 1.31M gas (21 to 23 Nov 2026), and wallets set limits
+// up to 1.63M; the three-step swap uses ~864k (limit ~1.0M) plus an approval and a dollar transfer (7 to 8 Nov). A
+// wallet will only send when it holds gas limit x max fee, so the balance we ask for is higher than what is spent.
+// Keep in step with packages/core/src/networkFee.ts.
 // ---------------------------------------------------------------------------
 
 export type CashOutFlow = 'one-tap' | 'three-step';
 const FEE_GAS: Record<CashOutFlow, { used: bigint; limit: bigint }> = {
-  'one-tap': { used: 1_000_000n, limit: 1_160_000n },
+  'one-tap': { used: 1_200_000n, limit: 1_650_000n },
   'three-step': { used: 1_000_000n, limit: 1_150_000n },
 };
 /** Wallets set their max fee above today's price, so ask for 50% headroom. */

@@ -147,7 +147,9 @@ describe('statuses and wallet errors', () => {
   it('network fee', () => {
     const info = networkFeeFrom({ balanceWei: 10n ** 17n, gasPriceWei: 200_000_000_000n, flow: 'one-tap', celoUsd: 0.5 });
     expect(info.enough).toBe(false);
-    expect(info.needCelo).toBeCloseTo(0.348, 3);
+    // 1.65M gas limit (wallets set up to 1.63M on real cash outs) x 200 gwei x 1.5 headroom; 1.2M gas spent
+    expect(info.needCelo).toBeCloseTo(0.495, 3);
+    expect(info.feeCelo).toBeCloseTo(0.24, 3);
   });
 });
 

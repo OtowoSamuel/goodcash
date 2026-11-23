@@ -197,9 +197,10 @@ describe('network fee check', () => {
     const { getNetworkFeeInfo, friendlySwapError, NetworkFeeError } = await import('./router');
     const empty = (await getNetworkFeeInfo(W, 'one-tap', client(0n)))!;
     expect(empty.enough).toBe(false);
-    // ~1M gas at 202 gwei is ~0.20 CELO spent; the wallet must hold ~0.35 before it will send
-    expect(empty.feeCelo).toBeCloseTo(0.202, 3);
-    expect(empty.needCelo).toBeGreaterThan(0.3);
+    // 1.2M gas at 202 gwei is ~0.24 CELO spent (real cash outs, 21 to 23 Nov 2026); wallets set limits up to 1.63M,
+    // so the wallet must hold ~0.50 (1.65M x 202 gwei x 1.5) before it will send
+    expect(empty.feeCelo).toBeCloseTo(0.2424, 3);
+    expect(empty.needCelo).toBeCloseTo(0.49995, 4);
     const msg = friendlySwapError(new NetworkFeeError(empty));
     expect(msg).toMatch(/Top up first/);
     expect(msg).toMatch(/you have 0 CELO/);
