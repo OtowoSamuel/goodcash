@@ -16,6 +16,7 @@ import { ReadinessCard } from './components/ReadinessCard';
 import { StatusStrip, pickNotice, type StatusNotice } from './components/StatusStrip';
 import { BLOCKSCOUT_URL } from './components/SafetyBanner';
 import { HomeLinks } from './components/HomeLinks';
+import { joinWithSavedReferral } from './lib/referral';
 const AddGsModal = React.lazy(() => import('./components/AddGsModal'));
 /** Naira -> G$ is parked (it needs the customer's BVN/NIN). Only builds that set VITE_ADDG_ENABLED=true show it. */
 const ADDG_ENABLED = import.meta.env.VITE_ADDG_ENABLED === 'true';
@@ -483,6 +484,12 @@ export function App({
   // No wallet, no balance (production)
   useEffect(() => {
     if (!isDemoMode && !walletAddress) setBalanceG(0);
+  }, [isDemoMode, walletAddress]);
+
+  // Opened a friend's link before connecting: let the server know this wallet came through it (once per wallet)
+  useEffect(() => {
+    if (isDemoMode || !walletAddress) return;
+    void joinWithSavedReferral(walletAddress);
   }, [isDemoMode, walletAddress]);
 
   // Real G$ balance from Celo (production only; demo keeps its mock balance)

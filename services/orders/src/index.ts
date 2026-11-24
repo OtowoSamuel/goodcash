@@ -18,7 +18,7 @@ import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Dep
 import { processLiveApprovals } from './v1/liveKeys';
 import { clearWorkIfIdle, markWork, shouldList } from './v1/work';
 import { claimLock } from './lock';
-import { inviterFrom, isWallet, qualifyReferralSafely, referralSummary } from './referral';
+import { checkWaitingFriends, inviterFrom, isWallet, joinReferral, liveChain, payRewards, referralSummary, type ReferralEnv } from './referral';
 import { parseRegisterBody, registerWithFlowState } from './vote';
 import { giveVoteFee, tankStatus, type TankEnv } from './voteTank';
 
@@ -68,6 +68,9 @@ export interface Env {
   VOTE_TANK_CELO?: string;        // Top-up size in CELO (default 0.1)
   VOTE_TANK_DAILY_CAP?: string;   // Top-ups per day (default 30)
   VOTE_TANK_RESERVE_CELO?: string; // The tank never goes below this (default 0.3)
+  REFERRAL_PAY_ENABLED?: string; // "true": referral rewards are paid automatically (src/referral.ts)
+  REFERRAL_KEY?: string; // Secret: the referral wallet's private key
+  REFERRAL_DAILY_G?: string; // Most G$ of referral rewards paid per day (default 100,000)
   RATE_LIMITER_PARTNER?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }; // per partner, all requests
 }
 
@@ -1471,7 +1474,6 @@ async function handleWebhook(request: Request, env: Env, waitUntil?: (p: Promise
   if (status === 'settled' && (await env.ORDER_STORE.get(`onramp:${id}`))) {
     await updateOnrampHistory(env, id, { stage: 'done' });
     await countTopUpSafely(env.ORDER_STORE, id, env.STATS_EXCLUDE_WALLETS);
-    await qualifyReferralSafely(env.ORDER_STORE, id);
     await maybeSendOnrampReady(id, env);
     return new Response('OK', { status: 200 });
   }
@@ -2957,7 +2959,6 @@ async function handleGetOnrampOrder(orderId: string, env: Env): Promise<Response
     }
     if (stage === 'done') {
       await countTopUpSafely(env.ORDER_STORE, orderId, env.STATS_EXCLUDE_WALLETS);
-      await qualifyReferralSafely(env.ORDER_STORE, orderId);
       await maybeSendOnrampReady(orderId, env);
     }
     const cap = await onrampOrderCap(orderId, env).catch(() => null);
@@ -3089,7 +3090,22 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
   if (m === 'GET' && pathname === '/referral/me') {
     const wallet = url.searchParams.get('wallet') ?? '';
     if (!isWallet(wallet)) return err('Invalid wallet address', 400);
-    return json(await referralSummary(env.ORDER_STORE, wallet));
+    return json(await referralSummary(env.ORDER_STORE, liveChain(env), wallet));
+  }
+
+  // POST /referral/join { wallet, ref } - a wallet connected with a friend's link saved. Only a wallet GoodDollar has
+  // not verified yet is recorded; it counts later, once it is verified and has claimed (checked on the schedule).
+  if (m === 'POST' && pathname === '/referral/join') {
+    const limited = await checkRateLimit(request, env, 'referral-join', 'strict');
+    if (limited) return limited;
+    let body: { wallet?: unknown; ref?: unknown };
+    try {
+      body = (await request.json()) as { wallet?: unknown; ref?: unknown };
+    } catch {
+      return err('Invalid JSON body');
+    }
+    const result = await joinReferral(env.ORDER_STORE, liveChain(env), body?.wallet, body?.ref);
+    return json(result, !result.ok && result.reason === 'bad_wallet' ? 400 : result.ok || result.reason !== 'error' ? 200 : 502);
   }
 
   // POST /vote/register - pass a customer's signed message to Flow State so their wallet can vote for GoodCash
@@ -3300,6 +3316,14 @@ export default {
       if (out.added > 0 || out.done) console.log(`[onramp-backfill] scanned ${out.scanned}, added ${out.added}${out.done ? ', finished' : ''}`);
     } catch (e) {
       console.error('[onramp-backfill] failed:', e);
+    }
+    try {
+      const checked = await checkWaitingFriends(env.ORDER_STORE, liveChain(env));
+      if (checked.counted > 0) console.log(`[referral] counted ${checked.counted} friends`);
+      const out = await payRewards(env as ReferralEnv);
+      if (out.paid > 0 || out.check > 0) console.log(`[referral] paid ${out.paid}, to check ${out.check}`);
+    } catch (e) {
+      console.error('[referral] schedule failed:', e);
     }
   },
 };

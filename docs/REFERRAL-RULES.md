@@ -1,42 +1,42 @@
 # GoodCash Referral Campaign: Rules
 
-Written 19 November 2026. These match what the code does (services/orders/src/referral.ts and scripts/referral-payouts.mjs). If you change a rule in the code, change it here too.
+Written 24 November 2026, replacing the 19 November version (a first top-up of ₦2,000 earned a bonus; nobody ever qualified, so no reward was owed when it was replaced). These match what the code does (`services/orders/src/referral.ts`). If you change a rule in the code, change it here too.
 
 ## The reward
 
-1. A friend who joins through your link gets G$ 3,500 free, which is about ₦500 at the 19 November 2026 rate.
-2. The person who shared the link also gets G$ 3,500.
-3. The reward is a fixed amount of G$, so it does not change if the price moves.
+1. For every 2 friends who count, the person who shared the link gets G$ 6,500. That is about ₦1,000 in the bank after every fee at the 24 November 2026 price, and it is more than the smallest cash out, so it can be cashed out straight away.
+2. The reward is a fixed amount of G$, so its naira value moves with the G$ price. The invite screen shows today's naira value.
+3. Nobody pays anything to take part. Rewards are paid by GoodCash, never from other people's money.
+4. Each person earns only from the friends they invited themselves. Nothing is paid for friends of friends.
 
-## How a friend qualifies
+## How a friend counts
 
-4. The friend opens the inviter's link, then adds money to GoodCash through the Add G$ screen on the same phone or browser. Adding G$ or CELO both count.
-5. It must be the friend's first ever top-up, and it must be at least ₦2,000.
-6. The reward counts only once the bank payment has actually arrived. Starting an order or asking for details does not count.
-7. If a person opens several links, only the first one counts.
-8. Opening a link on one device and topping up on another does not count.
+5. The friend opens the inviter's link, then connects their wallet in GoodCash on the same phone or browser.
+6. GoodDollar verifies the friend for the first time after that (the free face check). Someone who was already verified with GoodDollar before opening the link does not count, even with a new wallet.
+7. The friend claims their free G$ at least once after opening the link (in the GoodDollar app or anywhere else).
+8. If a person opens several links, only the first one they connect with counts.
+9. A friend has 30 days from connecting to verify and claim.
 
 ## Who is paid
 
-9. Rewards go only to wallets verified with GoodDollar.
-10. Each person is rewarded once, however many wallets they have. GoodDollar tells us which wallets belong to the same person.
-11. Nobody is paid for inviting themselves, including with a second wallet.
-12. One person is paid for at most 20 friends. After that, new friends still get their own bonus, but the inviter gets nothing more.
-13. If an inviter is not verified, the friend is still paid and the inviter's share is held. If the friend is not verified, both are held.
-14. Existing customers who have already finished a top-up are not "new" and get no bonus.
+10. The inviter must be verified with GoodDollar. While they are not, their friends wait and are counted once they verify.
+11. Each person counts once, for one inviter, however many wallets they have. GoodDollar tells us which wallets belong to the same person.
+12. Nobody counts as their own friend, including with a second wallet.
+13. One person can be counted for at most 20 friends, which is 10 rewards (about ₦10,000).
+14. The reward goes to the wallet whose link was used.
 
 ## How payment works
 
-15. Rewards are never sent automatically. Each one is recorded, then checked by a person, then sent by hand to the wallet. This can take a few days.
-16. A held reward can be paid later, once the wallet is verified with GoodDollar.
-17. Links made to claim rewards over and over are not paid.
+15. Everything is checked automatically, on the chain, every 10 minutes. No form and no waiting for a person.
+16. A reward is sent automatically from the GoodCash referral wallet, usually within a day of the second friend counting.
+17. If a payment fails, it is not retried by itself. It is marked for the team to look at, so nobody is ever paid twice.
+18. At most G$ 100,000 of rewards are paid per day (about 15 rewards). Rewards over that wait for the next day.
 
 ## When the campaign stops
 
-18. The campaign ends on 31 December 2026 at 23:59 UTC, or when the budget is used up, whichever comes first.
-19. The budget is G$ 3,500,000 in total, friend bonuses and inviter rewards together. That is about 500 friends, around $365 at the 19 November 2026 price.
-20. What counts is when the friend started their top-up. A top-up started before the end still counts if the bank payment arrives after it.
-21. When the campaign is closed, the app stops promising a reward and the invite screen says the rewards have ended. Rewards already recorded are still paid.
+19. The campaign ends on 31 December 2026 at 23:59 UTC, or when the budget is used up, whichever comes first. A friend must connect before the end.
+20. The budget is G$ 3,500,000 of rewards in total, about 538 rewards, which is about 1,070 friends.
+21. When the campaign is closed, the invite screen says the rewards have ended. Rewards already earned are still paid.
 
 ## What we reserve
 
@@ -44,19 +44,16 @@ Written 19 November 2026. These match what the code does (services/orders/src/re
 
 ## Settings in the code
 
-- Friend bonus and inviter reward: `REFERRAL.newG` and `REFERRAL.inviterG` in `services/orders/src/referral.ts`.
-- Minimum first top-up: `REFERRAL.minNaira`.
-- End date and total budget: `REFERRAL.endsAt` and `REFERRAL.budgetG`. Two top-ups settling at the very same moment can overshoot the budget by one reward. That is accepted.
-- Friends one person can be paid for: `REFERRAL.maxPerInviter`, and `MAX_FRIENDS` in `scripts/referral-payouts.mjs`. Keep the two equal.
-- The amounts shown to a friend before they top up come from the server, so there is nothing to keep in step.
+- Reward size, friends per reward, friends per person, end date, budget and the 30-day wait: `REFERRAL` in `services/orders/src/referral.ts`.
+- Paying on or off: `REFERRAL_PAY_ENABLED` in `services/orders/wrangler.toml` (`"true"` or `"false"`). Checking friends runs either way, so nothing is lost while paying is off.
+- Most G$ paid per day: `REFERRAL_DAILY_G` in `services/orders/wrangler.toml`.
+- The referral wallet's key: the Worker secret `REFERRAL_KEY`. Without it nothing is paid.
 
-## Paying out
+## Running it
 
-Run these from `/Users/admin/Documents/GoodCash/services/orders`.
+1. Create a new wallet for referrals only. Keep a small amount in it: a week of rewards and about 0.5 CELO for its own network fees.
+2. Set its key: `cd /Users/admin/Documents/GoodCash/services/orders && npx wrangler secret put REFERRAL_KEY`
+3. Set `REFERRAL_PAY_ENABLED = "true"` and deploy.
+4. Each week, send that wallet the G$ you want to spend that week from the GoodCash voting wallet. The referral wallet can only spend what is in it, and pauses by itself when it runs low.
 
-1. `node ../../scripts/referral-payouts.mjs --csv > rewards.csv` writes the list. It reads the waiting rewards, asks GoodDollar's Identity contract on Celo who each wallet belongs to, and gives every line PAY, HOLD (with the reason) or PAID.
-2. Send the G$ by hand for the PAY lines only.
-3. `node ../../scripts/referral-payouts.mjs --mark-paid rewards.csv` shows what would be marked as paid. It writes nothing.
-4. `node ../../scripts/referral-payouts.mjs --mark-paid rewards.csv --yes` marks those lines as paid.
-
-Use the same file for steps 3 and 4 that you paid from. A line is marked only if it matches a real reward (same wallet, same amount) and is not already marked, so a wrong or old file marks nothing. Paid lines still count toward "one person once" and the 20 friends limit. Listing never changes anything; only `--mark-paid ... --yes` writes.
+A failed payment shows as `status: "check"` in the reward record (`refpay:<inviter person>:<n>` in ORDER_STORE). Look up the inviter's wallet on the chain before paying it by hand, then set the record's status to `"paid"`.

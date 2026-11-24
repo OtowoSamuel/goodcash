@@ -5,7 +5,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from './index.js';
 import type { Env } from './index.js';
-import { REFERRAL } from './referral';
 
 class MockKV {
   store = new Map<string, string>();
@@ -60,8 +59,6 @@ async function signedWebhook(id: string, status: string): Promise<Response> {
   return worker.fetch(new Request('https://api.goodcash.xyz/webhooks/paycrest', { method: 'POST', headers: { 'X-Paycrest-Signature': sig }, body: payload }), env);
 }
 
-const summary = async (wallet: string) =>
-  (await (await call('GET', `/referral/me?wallet=${wallet}`)).json()) as { friends: number; earnedG: number; bonusG: number; open: boolean };
 
 beforeEach(() => {
   kv = new MockKV();
@@ -109,79 +106,11 @@ describe('an order that came from a friend\'s link', () => {
     expect(JSON.parse((await kv.get(`onramp:${ID1}`))!).ref).toBeUndefined();
   });
 
-  it('R2. records the reward when the app sees the payment settle, and the public numbers follow', async () => {
+  it('R2. a settled top-up no longer creates any referral reward (rewards now come from friends who verify and claim)', async () => {
     await call('POST', '/onramp/orders', orderBody({ ref: INVITER }));
-    expect(await kv.get(`refq:${FRIEND.toLowerCase()}`)).toBeNull(); // not before the money arrives
     partnerStatus = 'settled';
     expect((await call('GET', `/onramp/orders/${ID1}`)).status).toBe(200);
-    expect(JSON.parse((await kv.get(`refq:${FRIEND.toLowerCase()}`))!)).toMatchObject({ inviter: INVITER, newG: REFERRAL.newG, inviterG: REFERRAL.inviterG, status: 'pending' });
-    expect(await summary(INVITER)).toMatchObject({ friends: 1, earnedG: REFERRAL.inviterG, open: true });
-    expect(await summary(FRIEND)).toMatchObject({ friends: 0, bonusG: REFERRAL.newG });
-  });
-
-  it('R3. records the reward from the signed webhook even when the app is closed', async () => {
-    await call('POST', '/onramp/orders', orderBody({ ref: INVITER }));
     expect((await signedWebhook(ID1, 'settled')).status).toBe(200);
-    expect(await kv.get(`refq:${FRIEND.toLowerCase()}`)).not.toBeNull();
-  });
-
-  it('R4. a webhook with a wrong signature records nothing', async () => {
-    await call('POST', '/onramp/orders', orderBody({ ref: INVITER }));
-    const res = await worker.fetch(new Request('https://api.goodcash.xyz/webhooks/paycrest', { method: 'POST', headers: { 'X-Paycrest-Signature': 'deadbeef' }, body: JSON.stringify({ event: 'payment_order.settled', data: { id: ID1, status: 'settled' } }) }), env);
-    expect(res.status).toBe(403);
-    expect(await kv.get(`refq:${FRIEND.toLowerCase()}`)).toBeNull();
-  });
-
-  it('R5. polling and the webhook together, over and over, record it once', async () => {
-    await call('POST', '/onramp/orders', orderBody({ ref: INVITER }));
-    partnerStatus = 'settled';
-    await call('GET', `/onramp/orders/${ID1}`);
-    await signedWebhook(ID1, 'settled');
-    await call('GET', `/onramp/orders/${ID1}`);
-    expect(kv.puts.filter((k) => k.startsWith('refq:'))).toHaveLength(1);
-    expect(kv.store.get('reftotal')).toBe(String(REFERRAL.newG + REFERRAL.inviterG));
-  });
-
-  it('R6. nothing is recorded while the payment is still waiting', async () => {
-    await call('POST', '/onramp/orders', orderBody({ ref: INVITER }));
-    await call('GET', `/onramp/orders/${ID1}`);
-    expect(kv.puts.filter((k) => k.startsWith('refq:'))).toHaveLength(0);
-  });
-
-  it('R7. a top-up under the minimum earns nothing', async () => {
-    await call('POST', '/onramp/orders', orderBody({ ref: INVITER, naira: REFERRAL.minNaira - 1 }));
-    partnerStatus = 'settled';
-    await call('GET', `/onramp/orders/${ID1}`);
-    expect(await kv.get(`refq:${FRIEND.toLowerCase()}`)).toBeNull();
-  });
-
-  it('R8. using your own wallet as the link earns nothing', async () => {
-    await call('POST', '/onramp/orders', orderBody({ ref: FRIEND }));
-    partnerStatus = 'settled';
-    await call('GET', `/onramp/orders/${ID1}`);
-    expect(await kv.get(`refq:${FRIEND.toLowerCase()}`)).toBeNull();
-  });
-
-  it('R9. a second top-up from a link is not a new customer', async () => {
-    await call('POST', '/onramp/orders', orderBody());
-    partnerStatus = 'settled';
-    await call('GET', `/onramp/orders/${ID1}`); // first top-up finishes, with no link
-    nextId = ID2;
-    partnerStatus = 'pending';
-    await call('POST', '/onramp/orders', orderBody({ ref: INVITER }));
-    partnerStatus = 'settled';
-    await call('GET', `/onramp/orders/${ID2}`);
-    expect(await kv.get(`refq:${FRIEND.toLowerCase()}`)).toBeNull();
-  });
-
-  it('R10. a storage failure while recording never breaks the order or its answer', async () => {
-    await call('POST', '/onramp/orders', orderBody({ ref: INVITER }));
-    kv.failPutsFor = 'refq:';
-    partnerStatus = 'settled';
-    const res = await call('GET', `/onramp/orders/${ID1}`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ orderId: ID1, stage: 'done' });
-    // and the webhook still answers OK
-    expect((await signedWebhook(ID1, 'settled')).status).toBe(200);
+    expect(kv.puts.filter((k) => k.startsWith('ref'))).toHaveLength(0);
   });
 });

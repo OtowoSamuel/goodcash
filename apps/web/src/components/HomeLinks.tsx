@@ -33,7 +33,7 @@ export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; o
         ))}
         {wallet && (
           <button type="button" className="gc-pill gc-pill--white gc-hit" onClick={() => setInviting(true)}>
-            Invite a friend
+            Invite friends
           </button>
         )}
         {wallet && (

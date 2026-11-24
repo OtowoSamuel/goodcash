@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureReferral, inviteLink, refFromSearch, REF_KEY, savedReferral } from './referral';
+import { captureReferral, inviteLink, joinWithSavedReferral, refFromSearch, REF_KEY, savedReferral } from './referral';
 
 const A = '0x2222222222222222222222222222222222222222';
 const B = '0x3333333333333333333333333333333333333333';
@@ -50,5 +50,39 @@ describe('savedReferral', () => {
 describe('inviteLink', () => {
   it('carries the wallet in lower case', () => {
     expect(inviteLink(A.toUpperCase().replace('0X', '0x'))).toBe(`https://goodcash.xyz/?ref=${A}`);
+  });
+});
+
+describe('joinWithSavedReferral', () => {
+  const ok = () => vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
+
+  it('tells the server once per wallet, with the saved link', async () => {
+    localStorage.setItem(REF_KEY, A);
+    const f = ok();
+    await joinWithSavedReferral(B, f as unknown as typeof fetch);
+    await joinWithSavedReferral(B, f as unknown as typeof fetch);
+    expect(f).toHaveBeenCalledTimes(1);
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toMatch(/\/referral\/join$/);
+    expect(JSON.parse(String(init.body))).toEqual({ wallet: B, ref: A });
+  });
+
+  it('does nothing without a saved link, or when the link is the wallet itself', async () => {
+    const f = ok();
+    await joinWithSavedReferral(B, f as unknown as typeof fetch);
+    localStorage.setItem(REF_KEY, B);
+    await joinWithSavedReferral(B, f as unknown as typeof fetch);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('tries again next time when the server could not be reached, and never throws', async () => {
+    localStorage.setItem(REF_KEY, A);
+    const down = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    await expect(joinWithSavedReferral(B, down as unknown as typeof fetch)).resolves.toBeUndefined();
+    const f = ok();
+    await joinWithSavedReferral(B, f as unknown as typeof fetch);
+    expect(f).toHaveBeenCalledTimes(1);
   });
 });

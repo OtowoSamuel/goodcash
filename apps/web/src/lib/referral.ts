@@ -1,6 +1,6 @@
 import { ORDERS_API_BASE } from './rate';
 
-/** The friend's link the customer opened, kept on this device until they add money. */
+/** The friend's link the customer opened, kept on this device until their wallet connects. */
 export const REF_KEY = 'goodcash_ref';
 const SITE = 'https://goodcash.xyz';
 const WALLET = /^0x[0-9a-fA-F]{40}$/;
@@ -45,17 +45,54 @@ export interface ReferralSummary {
   /** False once the campaign has ended or its budget is used up */
   open: boolean;
   endsAt: string;
+  /** Friends who joined with this link and have not verified and claimed yet */
+  waiting: number;
+  /** Friends who counted */
   friends: number;
-  earnedG: number;
-  bonusG: number;
-  perFriendG: number;
-  friendBonusG: number;
-  minNaira: number;
+  perFriends: number;
+  rewardG: number;
   maxFriends: number;
+  paidG: number;
+  pendingG: number;
+  /** False when this wallet is not verified with GoodDollar right now */
+  verified: boolean;
 }
 
 export async function fetchReferralSummary(wallet: string): Promise<ReferralSummary> {
   const res = await fetch(`${ORDERS_API_BASE}/referral/me?wallet=${wallet}`);
   if (!res.ok) throw new Error('We could not load this right now.');
   return (await res.json()) as ReferralSummary;
+}
+
+const JOINED_KEY = 'goodcash_ref_joined';
+
+/**
+ * A wallet connected with a friend's link saved: tell the server once per wallet on this device. The server keeps it
+ * only for a wallet GoodDollar has not verified yet, and counts it later. Never throws and never blocks the app.
+ */
+export async function joinWithSavedReferral(wallet: string, fetchFn: typeof fetch = fetch): Promise<void> {
+  const ref = savedReferral(wallet);
+  if (!ref) return;
+  const me = wallet.toLowerCase();
+  try {
+    if (localStorage.getItem(JOINED_KEY) === me) return;
+  } catch {
+    // Storage blocked: still try once
+  }
+  try {
+    const res = await fetchFn(`${ORDERS_API_BASE}/referral/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: me, ref }),
+    });
+    if (res.ok) {
+      try {
+        localStorage.setItem(JOINED_KEY, me);
+      } catch {
+        // Nothing to keep
+      }
+    }
+  } catch {
+    // Offline or blocked: tried again on the next visit
+  }
 }
