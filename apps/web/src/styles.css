@@ -791,7 +791,8 @@ button {
   .gc .gc-col { gap: 14px; }
   .gc .gc--mobile-shell {
     gap: 14px;
-    padding: 16px 16px 96px;
+    /* Room for the tab bar and the strip behind it, so the last line can be scrolled fully into view */
+    padding: 16px 16px calc(112px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -1162,4 +1163,16 @@ body:has([role="dialog"]) .gc-banner { display: none; }
     font-size: 13px;
     border-width: 2px;
   }
+}
+
+/* Behind the floating bottom tab bar (phones): the page colour, with a soft top edge */
+.gc-nav-backdrop {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(92px + env(safe-area-inset-bottom, 0px));
+  z-index: 49;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(212, 197, 251, 0) 0, #d4c5fb 18px, #d4c5fb 100%);
 }

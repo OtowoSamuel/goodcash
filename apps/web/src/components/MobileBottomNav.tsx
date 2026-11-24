@@ -15,6 +15,9 @@ const TABS: { id: MobileTab; label: string }[] = [
 
 /** Bottom tab bar shared by the mobile Home and History screens. */
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ active, onNavigate }) => (
+  <>
+  {/* A solid strip behind the floating bar, so page content slides under it cleanly instead of showing through */}
+  <div className="gc-nav-backdrop md:!hidden" aria-hidden="true" />
   <nav
     aria-label="Bottom navigation"
     className="gc-nav fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-[420px] z-50 md:!hidden"
@@ -31,6 +34,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ active, onNavi
       </button>
     ))}
   </nav>
+  </>
 );
 
 export default MobileBottomNav;
