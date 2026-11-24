@@ -2143,13 +2143,7 @@ export function App({
               />
               {claimCard}
               <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} openCosts={costsTick} />
-              <div className="gc-sm" style={{ textAlign: 'center', marginTop: 4 }}>
-                <a href="/about" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>About</a>
-                {' · '}
-                <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Privacy</a>
-                {' · '}
-                <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>Terms</a>
-              </div>
+{/* About, Privacy and Terms are in the More sheet on phones (and in the footer on desktop) */}
             </div>
 
             {/* Bottom Navigation */}

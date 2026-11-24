@@ -99,7 +99,7 @@ describe('Step 1 home validation', () => {
 
     expect(screen.getAllByText(/your balance/i)[0]).toBeInTheDocument();
     expect(screen.getAllByText(/to go/i)[0]).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /stay safe/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /^More/ }).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Cash out your GoodDollar/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/New\b/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/dune\.com/i)).not.toBeInTheDocument();
@@ -165,12 +165,13 @@ describe('Step 2b shell and i18n', () => {
     expect(mobileNav.querySelectorAll('button')).toHaveLength(3);
   });
 
-  it('keeps the safety message one tap away, in one pop-up, instead of a banner', () => {
+  it('keeps the safety message in the More sheet, in one pop-up, instead of a banner', () => {
     storageMock.clear();
     render(<App />);
 
     expect(screen.queryByText(/Never share your seed phrase/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button', { name: /stay safe/i })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^More/ })[0]);
+    fireEvent.click(within(screen.getByRole('dialog', { name: /^More$/ })).getByRole('button', { name: /stay safe/i }));
     expect(screen.getByRole('dialog', { name: /stay safe/i })).toBeInTheDocument();
     expect(screen.getByText(/Never share your seed phrase/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /got it/i }));

@@ -8,14 +8,15 @@ import { VoteModal } from './VoteModal';
 type Sheet = 'how' | 'costs' | 'safe';
 
 /**
- * "How it works", "What it costs" and "Stay safe" used to be three cards on the home page. They are answers people
- * look for once, so they now sit behind three small buttons and open in one pop-up.
+ * Help, Invite and Vote are things people look for once in a while, so Home shows a single "More" link. It opens one
+ * sheet with every option (and About, Privacy and Terms), and each option opens its own pop-up.
  */
 export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; onAddCelo?: () => void; openCosts?: number }> = ({ language, wallet, onAddCelo, openCosts = 0 }) => {
   const t = getTranslations(language);
   const [open, setOpen] = useState<Sheet | null>(null);
   const [inviting, setInviting] = useState(false);
   const [voting, setVoting] = useState(false);
+  const [more, setMore] = useState(false);
   const items: Array<[Sheet, string]> = [
     ['how', t.howItWorks],
     ['costs', t.whatItCostsPanel],
@@ -30,23 +31,49 @@ export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; o
 
   return (
     <>
-      <div className="gc-pills" role="group" aria-label="More about GoodCash">
-        {items.map(([k, text]) => (
-          <button key={k} type="button" className="gc-pill-btn gc-hit" onClick={() => setOpen(k)}>
-            {text}
-          </button>
-        ))}
-        {wallet && (
-          <button type="button" className="gc-pill-btn gc-hit" onClick={() => setInviting(true)}>
-            Invite friends
-          </button>
-        )}
-        {wallet && (
-          <button type="button" className="gc-pill-btn gc-hit" onClick={() => setVoting(true)}>
-            Vote for GoodCash
-          </button>
-        )}
+      <div className="gc-more-row">
+        <button type="button" className="gc-more gc-hit" onClick={() => setMore(true)} aria-haspopup="dialog">
+          More
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="gc-more__icon"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
       </div>
+      {more && (
+        <Modal label="More" title="More" onClose={() => setMore(false)} z={70} tone="white">
+          <div className="gc-menu">
+            {items.map(([k, text]) => (
+              <button key={k} type="button" className="gc-menu__item" onClick={() => { setMore(false); setOpen(k); }}>
+                <span>{text}</span>
+                <span aria-hidden="true">›</span>
+              </button>
+            ))}
+            {wallet && (
+              <button type="button" className="gc-menu__item" onClick={() => { setMore(false); setInviting(true); }}>
+                <span>
+                  Invite friends
+                  <span className="gc-menu__sub">Earn G$ for every 2 friends who join</span>
+                </span>
+                <span aria-hidden="true">›</span>
+              </button>
+            )}
+            {wallet && (
+              <button type="button" className="gc-menu__item" onClick={() => { setMore(false); setVoting(true); }}>
+                <span>
+                  Vote for GoodCash
+                  <span className="gc-menu__sub">Free, takes a minute</span>
+                </span>
+                <span aria-hidden="true">›</span>
+              </button>
+            )}
+          </div>
+          <div className="gc-sm gc-menu__legal">
+            <a href="/about" target="_blank" rel="noopener noreferrer">About</a>
+            {' · '}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy</a>
+            {' · '}
+            <a href="/terms" target="_blank" rel="noopener noreferrer">Terms</a>
+          </div>
+        </Modal>
+      )}
       {inviting && wallet && <InviteModal wallet={wallet} onClose={() => setInviting(false)} onVote={() => { setInviting(false); setVoting(true); }} />}
       {voting && wallet && (
         <VoteModal

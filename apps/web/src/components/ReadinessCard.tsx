@@ -132,7 +132,6 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
           <button type="button" onClick={onAddCelo} disabled={!onAddCelo} className={`gc-btn gc-hit w-full${onAddCelo ? '' : ' gc-btn--dis'}`}>
             Add CELO to cash out
           </button>
-          <div className="gc-help">Smallest top-up is ₦1,000. What's left stays in your wallet for next time.</div>
         </>
       ) : minimumReached ? (
         <button type="button" onClick={onCashOutClick} className="gc-btn gc-hit w-full">

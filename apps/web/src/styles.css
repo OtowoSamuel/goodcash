@@ -1176,3 +1176,39 @@ body:has([role="dialog"]) .gc-banner { display: none; }
   pointer-events: none;
   background: linear-gradient(to bottom, rgba(212, 197, 251, 0) 0, #d4c5fb 18px, #d4c5fb 100%);
 }
+
+/* ── "More" link and its sheet ───────────────────────────────── */
+.gc-more-row { display: flex; justify-content: center; margin-top: 4px; }
+.gc-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  color: #111;
+  border: 2px solid #111;
+  border-radius: 99px;
+  padding: 7px 16px 7px 18px;
+  font: 800 14px 'Bricolage Grotesque';
+  cursor: pointer;
+}
+.gc-more__icon { width: 16px; height: 16px; }
+.gc-menu { display: flex; flex-direction: column; gap: 8px; }
+.gc-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  color: #111;
+  border: 2px solid #111;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: 800 15px 'Bricolage Grotesque';
+  cursor: pointer;
+}
+.gc-menu__item > span:last-child { font-size: 20px; line-height: 1; }
+.gc-menu__sub { display: block; font: 600 12.5px 'Bricolage Grotesque'; opacity: .75; margin-top: 2px; }
+.gc-menu__legal { text-align: center; margin-top: 14px; }
+.gc-menu__legal a { text-decoration: underline; color: #111; }
