@@ -559,6 +559,7 @@ export function App({
         void fetchGBalance(walletAddress).then((b) => setBalanceG(Math.floor(b * 100) / 100)).catch(() => undefined);
       }}
       onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined}
+      onVote={() => setAppVoteOpen(true)}
     />
   ) : null;
   const continueAfterVerify = () => {

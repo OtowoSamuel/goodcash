@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { fetchReferralSummary, inviteLink, type ReferralSummary } from '../lib/referral';
 import { fetchPaycrestRate, getCashoutRate } from '../lib/rate';
+import { VoteNudge } from './VoteNudge';
 
 const g = (n: number) => `G$ ${Math.round(n).toLocaleString('en-US')}`;
 /** Rounded to the nearest ₦100 so it reads as the estimate it is */
 const aboutNaira = (n: number) => `about ₦${(Math.round(n / 100) * 100).toLocaleString('en-US')}`;
 
 /** Invite friends: the customer's own link, what they earn, and how their friends are doing. */
-export const InviteModal: React.FC<{ wallet: string; onClose: () => void }> = ({ wallet, onClose }) => {
+export const InviteModal: React.FC<{ wallet: string; onClose: () => void; onVote?: () => void }> = ({ wallet, onClose, onVote }) => {
   const [info, setInfo] = useState<ReferralSummary | null>(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -89,6 +90,8 @@ export const InviteModal: React.FC<{ wallet: string; onClose: () => void }> = ({
           </div>
         </div>
       )}
+
+      {onVote && <VoteNudge wallet={wallet} onVote={onVote} style={{ marginTop: 12 }} />}
 
       <div className="gc-sm" style={{ marginTop: 12, marginBottom: 4, fontWeight: 800 }}>Your link</div>
       <div className="gc-note" style={{ wordBreak: 'break-all', userSelect: 'all' }}>{link}</div>

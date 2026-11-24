@@ -42,7 +42,7 @@ export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; o
           </button>
         )}
       </div>
-      {inviting && wallet && <InviteModal wallet={wallet} onClose={() => setInviting(false)} />}
+      {inviting && wallet && <InviteModal wallet={wallet} onClose={() => setInviting(false)} onVote={() => { setInviting(false); setVoting(true); }} />}
       {voting && wallet && (
         <VoteModal
           wallet={wallet}

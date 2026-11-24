@@ -838,8 +838,9 @@ body:has([role="dialog"]) .gc-banner { display: none; }
 /* ── Daily claim card ────────────────────────────────────────── */
 .gc-claim {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px 12px;
 }
 
 .gc-claim__text {
@@ -912,4 +913,25 @@ body:has([role="dialog"]) .gc-banner { display: none; }
 
 @keyframes gc-claim-spin {
   to { transform: rotate(360deg); }
+}
+
+/* ── "Vote for GoodCash" ask ─────────────────────────────────── */
+.gc-vote-nudge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.gc-vote-nudge > span {
+  flex: 1;
+}
+
+.gc-vote-nudge__btn {
+  width: auto;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
+  box-shadow: 3px 3px 0 #111;
+  font-size: 13px;
 }

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { VerifiedStatus } from '../lib/verified';
+import { VoteNudge } from './VoteNudge';
 import {
   askClaimGas,
   confirmClaim,
@@ -42,8 +43,10 @@ export const ClaimCard: React.FC<{
   onVerify: () => void;
   onClaimed?: (g: number) => void;
   onAddCelo?: () => void;
+  /** Opens the vote screen. When given, someone who has not voted for GoodCash yet is asked, after claiming. */
+  onVote?: () => void;
   deps?: ClaimDeps;
-}> = ({ wallet, verified, onVerify, onClaimed, onAddCelo, deps = live }) => {
+}> = ({ wallet, verified, onVerify, onClaimed, onAddCelo, onVote, deps = live }) => {
   const [info, setInfo] = useState<ClaimInfo | null>(null);
   const [step, setStep] = useState<Step>('idle');
   const [claimedG, setClaimedG] = useState<number | null>(null);
@@ -140,6 +143,7 @@ export const ClaimCard: React.FC<{
           </div>
         </div>
         <div className="gc-claim__done" aria-hidden="true">✓</div>
+        {onVote && <VoteNudge wallet={wallet} onVote={onVote} style={{ flexBasis: '100%' }} />}
         <div className="gc-sticker">Nice one</div>
       </div>
     );
@@ -156,6 +160,7 @@ export const ClaimCard: React.FC<{
           </div>
         </div>
         <div className="gc-claim__done gc-claim__done--muted" aria-hidden="true">✓</div>
+        {onVote && <VoteNudge wallet={wallet} onVote={onVote} style={{ flexBasis: '100%' }} />}
       </div>
     );
   }
