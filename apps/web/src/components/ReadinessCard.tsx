@@ -2,7 +2,7 @@ import { nairaFromUsdt } from '../lib/units';
 import React from 'react';
 import type { Language } from '../lib/i18n';
 import { getTranslations } from '../lib/i18n';
-import { getBalanceProgressPercent, getCashoutRate, MIN_NET_USDT_REQUIRED, getMinimumCashOutG } from '../lib/rate';
+import { getCashoutRate, getMinimumCashOutG } from '../lib/rate';
 import type { SwapHistoryItem } from './HistoryCard';
 
 interface ReadinessCardProps {
@@ -26,8 +26,6 @@ interface ReadinessCardProps {
   celoShort?: { needCelo: number; haveCelo: number; celoUsd: number | null } | null;
   /** Opens adding CELO with naira */
   onAddCelo?: () => void;
-  /** Opens "What it costs" */
-  onSeeCosts?: () => void;
 }
 
 function formatG(amount: number): string {
@@ -54,13 +52,11 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   onLastCashOutClick,
   celoShort = null,
   onAddCelo,
-  onSeeCosts,
 }) => {
   const t = getTranslations('en');
   const rate = getCashoutRate(balanceG, dailyClaimG, ngnPerUsdt);
   // With an empty wallet the per-G$ price is unknown, so count down from the minimum itself
   const gToGo = Math.max(rate.remainingG, getMinimumCashOutG() - balanceG, 0);
-  const percent = getBalanceProgressPercent(balanceG);
   const minimumReached = rate.minimumReached;
 
   // Naira display helpers
@@ -68,9 +64,6 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
     ? t.nairaUnavailable
     : formatNaira(rate.netNaira);
 
-  const minNaira = ngnPerUsdt != null && Number.isFinite(ngnPerUsdt)
-    ? formatNaira(nairaFromUsdt(MIN_NET_USDT_REQUIRED, ngnPerUsdt))
-    : t.nairaUnavailable;
 
   // Last cash out from history
   const lastCashOut = history.length > 0 ? history[0] : null;
@@ -91,21 +84,11 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
         <div className={`gc-big gc-big--home-desktop gc-big--balance${formatG(balanceG).length >= 12 ? ' gc-big--xlong' : formatG(balanceG).length >= 9 ? ' gc-big--long' : ''}`}>{formatG(balanceG)}</div>
         <div className="gc-sm">
           {t.aboutNairaAfterFees.replace('{naira}', nairaStr)}
-          {onSeeCosts && (
-            <>
-              {' '}
-              <button type="button" className="gc-linkbtn" onClick={onSeeCosts}>
-                See breakdown
-              </button>
-            </>
-          )}
         </div>
-        <div className="gc-bar">
-          <div className="gc-bar__fill" style={{ width: `${percent}%`, ...(needsCelo ? { background: 'var(--gc-ye)' } : {}) }} />
-        </div>
-        <div className="gc-sm">
+        {/* One status line (no progress bar or percent badge: they repeated this and could contradict it) */}
+        <div className="gc-sm gc-status-line">
           {needsCelo
-            ? 'Almost there. You just need a small network fee in CELO.'
+            ? 'Almost there. You need a small CELO fee.'
             : minimumReached
               ? t.readyToCashOutShort
               : t.gToGo.replace('{n}', Math.ceil(gToGo).toLocaleString())}
@@ -138,7 +121,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
             Add CELO to cash out
           </button>
           <div className="gc-sm" style={{ textAlign: 'center' }}>
-            Network fee: {feeNaira ? `about ₦${feeNaira.toLocaleString('en-US')} ` : ''}in CELO (G$ can't pay it). Smallest top-up is ₦1,000, and the rest stays for next time.
+            Network fee {feeNaira ? `about ₦${feeNaira.toLocaleString('en-US')}` : 'paid in CELO'}.
           </div>
         </>
       ) : minimumReached ? (
@@ -150,16 +133,12 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
           {t.cashOutOpensAt.replace('{n}', getMinimumCashOutG().toLocaleString())}
         </button>
       )}
-      {!minimumReached && (
-        <div className="gc-sm" style={{ textAlign: 'center' }}>
-          Minimum cash out is about {getMinimumCashOutG().toLocaleString()} G$ ({minNaira}).
-        </div>
-      )}
-
       {onAddClick && (
-        <button type="button" onClick={onAddClick} className="gc-btn gc-btn--white gc-hit w-full" style={{ marginTop: 10 }}>
-          Buy with naira
-        </button>
+        <div style={{ textAlign: 'center' }}>
+          <button type="button" onClick={onAddClick} className="gc-linkbtn gc-hit gc-sm">
+            Buy with naira
+          </button>
+        </div>
       )}
 
       {isStale && (

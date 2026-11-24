@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Modal } from './Modal';
 import { getTranslations, type Language } from '../lib/i18n';
 import { BLOCKSCOUT_URL, SHORT_ROUTER_ADDRESS } from './SafetyBanner';
@@ -11,7 +11,7 @@ type Sheet = 'how' | 'costs' | 'safe';
  * "How it works", "What it costs" and "Stay safe" used to be three cards on the home page. They are answers people
  * look for once, so they now sit behind three small buttons and open in one pop-up.
  */
-export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; onAddCelo?: () => void; openCosts?: number }> = ({ language, wallet, onAddCelo, openCosts = 0 }) => {
+export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; onAddCelo?: () => void }> = ({ language, wallet, onAddCelo }) => {
   const t = getTranslations(language);
   const [open, setOpen] = useState<Sheet | null>(null);
   const [inviting, setInviting] = useState(false);
@@ -22,10 +22,7 @@ export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; o
     ['safe', t.staySafe],
   ];
   const label = (s: Sheet) => items.find(([k]) => k === s)![1];
-  // "See breakdown" on the balance card opens "What it costs"
-  useEffect(() => {
-    if (openCosts > 0) setOpen('costs');
-  }, [openCosts]);
+
 
   return (
     <>
@@ -37,18 +34,13 @@ export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; o
         ))}
       </div>
       {wallet && (
-        <div className="gc-promo-row" role="group" aria-label="Help GoodCash grow">
-          <button type="button" className="gc-promo gc-hit" onClick={() => setInviting(true)}>
-            <span>
-              <b>Invite friends</b>
-              <span className="gc-promo__sub">Earn G$ for every 2</span>
-            </span>
+        <div className="gc-sm gc-quiet-links">
+          <button type="button" className="gc-linkbtn gc-hit" onClick={() => setInviting(true)}>
+            Invite friends
           </button>
-          <button type="button" className="gc-promo gc-hit" onClick={() => setVoting(true)}>
-            <span>
-              <b>Vote for GoodCash</b>
-              <span className="gc-promo__sub">Free, takes a minute</span>
-            </span>
+          <span aria-hidden="true">·</span>
+          <button type="button" className="gc-linkbtn gc-hit" onClick={() => setVoting(true)}>
+            Vote for GoodCash
           </button>
         </div>
       )}

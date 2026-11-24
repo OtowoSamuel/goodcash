@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { VerifiedStatus } from '../lib/verified';
-import { VoteNudge } from './VoteNudge';
 import {
   askClaimGas,
   confirmClaim,
@@ -43,10 +42,8 @@ export const ClaimCard: React.FC<{
   onVerify: () => void;
   onClaimed?: (g: number) => void;
   onAddCelo?: () => void;
-  /** Opens the vote screen. When given, someone who has not voted for GoodCash yet is asked, after claiming. */
-  onVote?: () => void;
   deps?: ClaimDeps;
-}> = ({ wallet, verified, onVerify, onClaimed, onAddCelo, onVote, deps = live }) => {
+}> = ({ wallet, verified, onVerify, onClaimed, onAddCelo, deps = live }) => {
   const [info, setInfo] = useState<ClaimInfo | null>(null);
   const [step, setStep] = useState<Step>('idle');
   const [claimedG, setClaimedG] = useState<number | null>(null);
@@ -113,54 +110,37 @@ export const ClaimCard: React.FC<{
     }
   };
 
-  // Not verified yet: an offer, not a warning. Starting it opens the one-time step (Home never shows a verify banner)
+  // One slim row in every state. Not verified yet: an offer, not a warning; Claim opens the one-time step (Home never
+  // shows a verify banner).
   if (verified === 'not_verified') {
     return (
-      <div className="gc-card gc-card--dashed gc-claim" data-testid="claim-card">
-        <div className="gc-claim__text">
-          <div className="gc-lab">Free G$ every day</div>
-          <div className="gc-sm" style={{ marginTop: 2 }}>
-            GoodDollar gives free G$ to every person, every day. Claim yours right here.
-          </div>
+      <div className="gc-card gc-slim" data-testid="claim-card">
+        <div className="gc-slim__text">
+          <b>Free G$ every day</b> from GoodDollar
         </div>
-        <button type="button" className="gc-btn gc-btn--white gc-hit gc-claim__btn" onClick={onVerify}>
-          Claim free G$
+        <button type="button" className="gc-slim__btn gc-hit" onClick={onVerify}>
+          Claim
         </button>
       </div>
     );
   }
   if (verified !== 'verified' || !info) return null;
 
-  // Just claimed
-  if (claimedG !== null) {
+  // Claimed (just now, or earlier today): one quiet line
+  if (claimedG !== null || info.readyG === 0) {
+    const next = info.nextAt > 0 ? ` · next in ${timeUntil(info.nextAt, now)}` : '';
     return (
-      <div className="gc-card gc-card--mint gc-claim" data-testid="claim-card" role="status">
-        <div className="gc-claim__text">
-          <div className="gc-lab">Claimed today</div>
-          <div className="gc-claim__amount">+{fmt(claimedG)}<span className="gc-claim__unit"> G$</span></div>
-          <div className="gc-sm">
-            {info.nextAt > 0 ? `Next free G$ in ${timeUntil(info.nextAt, now)}.` : 'It is in your balance now.'}
-          </div>
+      <div className="gc-card gc-slim gc-slim--done" data-testid="claim-card" role={claimedG !== null ? 'status' : undefined}>
+        <span className="gc-slim__tickwrap" aria-hidden="true"><svg className="gc-claim__tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+        <div className="gc-slim__text">
+          {claimedG !== null ? (
+            <>
+              <b>+{fmt(claimedG)} G$</b> claimed today{next}
+            </>
+          ) : (
+            <>Claimed today{next}</>
+          )}
         </div>
-        <div className="gc-claim__done" aria-hidden="true"><svg className="gc-claim__tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
-        {onVote && <VoteNudge wallet={wallet} onVote={onVote} style={{ flexBasis: '100%' }} />}
-        <div className="gc-sticker">Nice one</div>
-      </div>
-    );
-  }
-
-  // Already claimed today
-  if (info.readyG === 0) {
-    return (
-      <div className="gc-card gc-claim" data-testid="claim-card">
-        <div className="gc-claim__text">
-          <div className="gc-lab">Free G$</div>
-          <div className="gc-sm" style={{ marginTop: 2 }}>
-            Today's is claimed. Next one in <b>{timeUntil(info.nextAt, now)}</b>.
-          </div>
-        </div>
-        <div className="gc-claim__done gc-claim__done--muted" aria-hidden="true"><svg className="gc-claim__tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
-        {onVote && <VoteNudge wallet={wallet} onVote={onVote} style={{ flexBasis: '100%' }} />}
       </div>
     );
   }
@@ -168,23 +148,31 @@ export const ClaimCard: React.FC<{
   // Ready to claim
   const busy = step !== 'idle';
   return (
-    <div className="gc-card gc-card--mint gc-claim" data-testid="claim-card">
-      <div className="gc-claim__text">
-        <div className="gc-lab">Your free G$ today</div>
-        <div className="gc-claim__amount">+{fmt(info.readyG)}<span className="gc-claim__unit"> G$</span></div>
-        <div className="gc-sm" aria-live="polite">
-          {busy ? STEP_TEXT[step as Exclude<Step, 'idle'>] : problem ?? 'From GoodDollar. Claim it once a day.'}
-        </div>
-        {noGas && onAddCelo && !busy && (
-          <button type="button" className="gc-claim__link" onClick={onAddCelo}>
-            Add a little CELO
-          </button>
+    <div className="gc-card gc-card--mint gc-slim" data-testid="claim-card">
+      <div className="gc-slim__text" aria-live="polite">
+        {busy ? (
+          STEP_TEXT[step as Exclude<Step, 'idle'>]
+        ) : problem ? (
+          <>
+            {problem}
+            {noGas && onAddCelo && (
+              <>
+                {' '}
+                <button type="button" className="gc-linkbtn" onClick={onAddCelo}>
+                  Add a little CELO
+                </button>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <b>+{fmt(info.readyG)} G$</b> free today
+          </>
         )}
       </div>
-      <button type="button" className="gc-btn gc-btn--white gc-hit gc-claim__btn" onClick={() => void claim()} disabled={busy} aria-busy={busy}>
+      <button type="button" className="gc-slim__btn gc-slim__btn--go gc-hit" onClick={() => void claim()} disabled={busy} aria-busy={busy}>
         {busy ? <span className="gc-claim__spin" aria-label="Working" /> : 'Claim'}
       </button>
-      {!busy && !problem && <div className="gc-sticker">Daily</div>}
     </div>
   );
 };

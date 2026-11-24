@@ -40,7 +40,7 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, celoText, SwapUncertainError, type NetworkFeeInfo } from './lib/router';
+import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, SwapUncertainError, type NetworkFeeInfo } from './lib/router';
 import { findOneTapPayment, findRecentCashOut, fetchWalletHistoryFull, createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { disconnectWalletConnect, restoreWalletConnect } from './lib/walletConnect';
@@ -504,8 +504,7 @@ export function App({
   // before they press Confirm, not by a failed swap.
   const [networkFee, setNetworkFee] = useState<NetworkFeeInfo | null>(null);
   const celoShort = networkFee && !networkFee.enough ? { needCelo: networkFee.needCelo, haveCelo: networkFee.haveCelo, celoUsd: networkFee.celoUsd } : null;
-  /** Bumped by "See breakdown" on the balance card to open "What it costs" */
-  const [costsTick, setCostsTick] = useState(0);
+
   const reviewing = !!pendingQuote || mobileView === 'review';
   useEffect(() => {
     if (isDemoMode || !walletAddress) {
@@ -557,7 +556,6 @@ export function App({
         void fetchGBalance(walletAddress).then((b) => setBalanceG(Math.floor(b * 100) / 100)).catch(() => undefined);
       }}
       onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined}
-      onVote={() => setAppVoteOpen(true)}
     />
   ) : null;
   const continueAfterVerify = () => {
@@ -1662,10 +1660,9 @@ export function App({
               ngnPerUsdt={liveNgnRate}
               celoShort={celoShort}
               onAddCelo={ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined}
-              onSeeCosts={() => setCostsTick((n) => n + 1)}
             />
             {claimCard}
-            <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} openCosts={costsTick} />
+            <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} />
             </>
           ) : currentTab === 'cashout' ? (
             <>
@@ -2139,10 +2136,9 @@ export function App({
                 ngnPerUsdt={liveNgnRate}
                 celoShort={celoShort}
                 onAddCelo={ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined}
-                onSeeCosts={() => setCostsTick((n) => n + 1)}
-              />
+                />
               {claimCard}
-              <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} openCosts={costsTick} />
+              <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} />
               <div className="gc-sm" style={{ textAlign: 'center', marginTop: 4 }}>
                 <a href="/about" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>About</a>
                 {' · '}

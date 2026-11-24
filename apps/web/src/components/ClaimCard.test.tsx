@@ -22,7 +22,7 @@ describe('ClaimCard', () => {
     const onVerify = vi.fn();
     render(<ClaimCard wallet={W} verified="not_verified" onVerify={onVerify} deps={deps()} />);
     expect(screen.queryByText(/verify/i)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Claim free G$' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
     expect(onVerify).toHaveBeenCalled();
   });
 
@@ -35,20 +35,20 @@ describe('ClaimCard', () => {
     const d = deps();
     const onClaimed = vi.fn();
     render(<ClaimCard wallet={W} verified="verified" onVerify={() => undefined} onClaimed={onClaimed} deps={d} />);
-    expect(await screen.findByText((_, el) => el?.className === 'gc-claim__amount' && el.textContent === '+120.87 G$')).toBeInTheDocument();
+    expect(await screen.findByText('+120.87 G$')).toBeInTheDocument();
     (d.readClaim as ReturnType<typeof vi.fn>).mockResolvedValue({ readyG: 0, nextAt: Date.now() + 5 * 3600_000 });
     fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
-    expect(await screen.findByText('Claimed today')).toBeInTheDocument();
+    expect(await screen.findByText(/claimed today/)).toBeInTheDocument();
     expect(onClaimed).toHaveBeenCalledWith(120.87);
     expect(d.askClaimGas).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByText(/Next free G\$ in/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/next in/)).toBeInTheDocument());
   });
 
   it('gets the network fee first when the wallet has none', async () => {
     const d = deps({ needsClaimGas: vi.fn(async () => true) });
     render(<ClaimCard wallet={W} verified="verified" onVerify={() => undefined} deps={d} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Claim' }));
-    expect(await screen.findByText('Claimed today')).toBeInTheDocument();
+    expect(await screen.findByText(/claimed today/)).toBeInTheDocument();
     expect(d.askClaimGas).toHaveBeenCalledWith(W);
     expect(d.sendClaim).toHaveBeenCalled();
   });
@@ -67,7 +67,7 @@ describe('ClaimCard', () => {
   it('shows when the next claim opens once today is claimed', async () => {
     const d = deps({ readClaim: vi.fn(async () => ({ readyG: 0, nextAt: Date.now() + 3 * 3600_000 + 5 * 60_000 })) });
     render(<ClaimCard wallet={W} verified="verified" onVerify={() => undefined} deps={d} />);
-    expect(await screen.findByText(/Today's is claimed/, undefined, { timeout: 4000 })).toBeInTheDocument();
+    expect(await screen.findByText(/Claimed today/, undefined, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.getByText(/3h \d+m/)).toBeInTheDocument();
   });
 
