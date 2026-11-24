@@ -987,51 +987,128 @@ body:has([role="dialog"]) .gc-banner { display: none; }
   font-size: .62em;
 }
 
-/* ── Slim rows (daily free G$) ───────────────────────────────── */
-.gc-slim {
+
+
+/* ── Home, per the 25 Nov 2026 mock-ups ─────────────────────── */
+.gc-see {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 14px;
+}
+.gc-divider {
+  height: 0;
+  border-top: 2.5px solid #111;
+  margin: 14px 0 12px;
+}
+.gc-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font: 700 15px/1.35 'Bricolage Grotesque';
+}
+.gc-status__dot {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 2.5px solid #111;
+  background: #2fbf71;
+}
+.gc-status__dot--warn { background: var(--gc-ye); }
+.gc-status__dot--wait { background: var(--gc-pill-default); }
+.gc-help {
+  text-align: center;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #3a3550;
+  padding: 0 8px;
+}
+.gc-buy {
+  font-size: 14.5px;
+  margin: 2px 0 6px;
+}
+
+/* Free G$ card: dashed, quieter than the balance card */
+.gc-free {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px 9px 14px;
-  box-shadow: 3px 3px 0 #111;
-}
-.gc .gc-card.gc-slim { padding: 9px 10px 9px 14px; }
-.gc-slim__text {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-.gc-slim__text b { font-weight: 800; }
-.gc-slim__btn {
-  flex: none;
-  height: 36px;
-  padding: 0 16px;
-  border: 2px solid #111;
-  border-radius: 12px;
+  gap: 12px;
   background: #fff;
+  border: 2.5px dashed #111;
+  border-radius: 18px;
+  padding: 12px 14px 12px 16px;
+}
+.gc-free__text { flex: 1; min-width: 0; }
+.gc-free__lab {
+  font: 700 12px 'Bricolage Grotesque';
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #3a3550;
+}
+.gc-free__amount {
+  font: 800 clamp(22px, 7vw, 28px)/1.1 'Bricolage Grotesque';
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.gc-free__sub {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.gc-free__btn {
+  flex: none;
+  min-width: 92px;
+  height: 46px;
+  padding: 0 18px;
+  border: 2.5px solid #111;
+  border-radius: 14px;
+  background: var(--gc-ye);
   color: #111;
-  font: 800 14px 'Bricolage Grotesque';
+  box-shadow: 4px 4px 0 #111;
+  font: 800 16px 'Bricolage Grotesque';
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
-.gc-slim__btn--go { background: #111; color: #fff; }
-.gc-slim__btn--go .gc-claim__spin { border-color: rgba(255, 255, 255, .35); border-top-color: #fff; width: 16px; height: 16px; }
-.gc-slim--done { box-shadow: none; border-width: 2px; }
-.gc-slim__tickwrap { display: flex; width: 22px; height: 22px; flex: none; }
-.gc-slim__tickwrap .gc-claim__tick { width: 22px; height: 22px; }
-
-/* Status line under the balance */
-.gc-status-line { margin-top: 6px; }
-
-/* Invite and Vote: quiet text links under the help links */
-.gc-quiet-links {
+.gc-free__btn:disabled { cursor: progress; box-shadow: 1px 1px 0 #111; transform: translate(3px, 3px); }
+.gc-free__btn .gc-claim__spin { border-color: rgba(17, 17, 17, .25); border-top-color: #111; }
+.gc-free__done {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2.5px solid #111;
+  background: #2fbf71;
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
+}
+
+/* The five links as pills, centred */
+.gc-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
-  margin-top: 2px;
+  margin-top: 8px;
+}
+.gc-pill-btn {
+  background: #fff;
+  color: #111;
+  border: 2.5px solid #111;
+  border-radius: 99px;
+  padding: 9px 18px;
+  font: 800 14.5px 'Bricolage Grotesque';
+  cursor: pointer;
+}
+
+.gc-naira {
+  font-size: 15.5px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+@media (min-width: 900px) {
+  .gc-naira { font-size: 16px; }
 }

@@ -503,6 +503,8 @@ export function App({
   // The network fee is paid in CELO. Check it while a cash out is being reviewed, so the customer is told
   // before they press Confirm, not by a failed swap.
   const [networkFee, setNetworkFee] = useState<NetworkFeeInfo | null>(null);
+  /** Bumped by "See breakdown" on the balance card to open "What it costs" */
+  const [costsTick, setCostsTick] = useState(0);
   const celoShort = networkFee && !networkFee.enough ? { needCelo: networkFee.needCelo, haveCelo: networkFee.haveCelo, celoUsd: networkFee.celoUsd } : null;
 
   const reviewing = !!pendingQuote || mobileView === 'review';
@@ -1660,9 +1662,10 @@ export function App({
               ngnPerUsdt={liveNgnRate}
               celoShort={celoShort}
               onAddCelo={ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined}
+              onSeeCosts={() => setCostsTick((n) => n + 1)}
             />
             {claimCard}
-            <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} />
+            <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} openCosts={costsTick} />
             </>
           ) : currentTab === 'cashout' ? (
             <>
@@ -2136,9 +2139,10 @@ export function App({
                 ngnPerUsdt={liveNgnRate}
                 celoShort={celoShort}
                 onAddCelo={ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined}
-                />
+                onSeeCosts={() => setCostsTick((n) => n + 1)}
+              />
               {claimCard}
-              <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} />
+              <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} openCosts={costsTick} />
               <div className="gc-sm" style={{ textAlign: 'center', marginTop: 4 }}>
                 <a href="/about" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>About</a>
                 {' · '}

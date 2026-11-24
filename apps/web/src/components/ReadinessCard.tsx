@@ -26,6 +26,8 @@ interface ReadinessCardProps {
   celoShort?: { needCelo: number; haveCelo: number; celoUsd: number | null } | null;
   /** Opens adding CELO with naira */
   onAddCelo?: () => void;
+  /** Opens "What it costs" */
+  onSeeCosts?: () => void;
 }
 
 function formatG(amount: number): string {
@@ -52,6 +54,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
   onLastCashOutClick,
   celoShort = null,
   onAddCelo,
+  onSeeCosts,
 }) => {
   const t = getTranslations('en');
   const rate = getCashoutRate(balanceG, dailyClaimG, ngnPerUsdt);
@@ -82,16 +85,25 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
         <div className="gc-lab">{t.yourBalance}</div>
         {/* Long balances get a smaller size so they never run into the G$ coin */}
         <div className={`gc-big gc-big--home-desktop gc-big--balance${formatG(balanceG).length >= 12 ? ' gc-big--xlong' : formatG(balanceG).length >= 9 ? ' gc-big--long' : ''}`}>{formatG(balanceG)}</div>
-        <div className="gc-sm">
+        <div className="gc-naira">
           {t.aboutNairaAfterFees.replace('{naira}', nairaStr)}
         </div>
-        {/* One status line (no progress bar or percent badge: they repeated this and could contradict it) */}
-        <div className="gc-sm gc-status-line">
-          {needsCelo
-            ? 'Almost there. You need a small CELO fee.'
-            : minimumReached
-              ? t.readyToCashOutShort
-              : t.gToGo.replace('{n}', Math.ceil(gToGo).toLocaleString())}
+        {onSeeCosts && (
+          <button type="button" className="gc-linkbtn gc-hit gc-see" onClick={onSeeCosts}>
+            See breakdown
+          </button>
+        )}
+        <div className="gc-divider" />
+        {/* One status row with a dot (no progress bar or percent badge: they repeated this and could contradict it) */}
+        <div className="gc-status">
+          <span className={`gc-status__dot gc-status__dot--${needsCelo ? 'warn' : minimumReached ? 'ok' : 'wait'}`} aria-hidden="true" />
+          <span>
+            {needsCelo
+              ? `Almost there. You need a small CELO fee${feeNaira ? ` (about ₦${feeNaira.toLocaleString('en-US')})` : ''}.`
+              : minimumReached
+                ? t.readyToCashOutShort
+                : t.gToGo.replace('{n}', Math.ceil(gToGo).toLocaleString())}
+          </span>
         </div>
       </div>
 
@@ -120,9 +132,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
           <button type="button" onClick={onAddCelo} disabled={!onAddCelo} className={`gc-btn gc-hit w-full${onAddCelo ? '' : ' gc-btn--dis'}`}>
             Add CELO to cash out
           </button>
-          <div className="gc-sm" style={{ textAlign: 'center' }}>
-            Network fee {feeNaira ? `about ₦${feeNaira.toLocaleString('en-US')}` : 'paid in CELO'}.
-          </div>
+          <div className="gc-help">Smallest top-up is ₦1,000. What's left stays in your wallet for next time.</div>
         </>
       ) : minimumReached ? (
         <button type="button" onClick={onCashOutClick} className="gc-btn gc-hit w-full">
@@ -133,10 +143,10 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
           {t.cashOutOpensAt.replace('{n}', getMinimumCashOutG().toLocaleString())}
         </button>
       )}
-      {onAddClick && (
+      {onAddClick && !needsCelo && (
         <div style={{ textAlign: 'center' }}>
-          <button type="button" onClick={onAddClick} className="gc-linkbtn gc-hit gc-sm">
-            Buy with naira
+          <button type="button" onClick={onAddClick} className="gc-linkbtn gc-hit gc-buy">
+            Need more G$? Buy with naira
           </button>
         </div>
       )}
