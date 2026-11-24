@@ -11,7 +11,7 @@ Written 24 November 2026, replacing the 19 November version (a first top-up of â
 
 ## How a friend counts
 
-5. The friend opens the inviter's link, then connects their wallet in GoodCash on the same phone or browser.
+5. The friend opens the inviter's link, connects their wallet in GoodCash on the same phone or browser, and taps Accept. Their wallet signs a free message naming the inviter, so nobody can sign up someone else's wallet under their link. They must accept before they verify.
 6. GoodDollar verifies the friend for the first time after that (the free face check). Someone who was already verified with GoodDollar before opening the link does not count, even with a new wallet.
 7. The friend claims their free G$ at least once after opening the link (in the GoodDollar app or anywhere else).
 8. If a person opens several links, only the first one they connect with counts.
@@ -27,9 +27,9 @@ Written 24 November 2026, replacing the 19 November version (a first top-up of â
 
 ## How payment works
 
-15. Everything is checked automatically, on the chain, every 10 minutes. No form and no waiting for a person.
+15. Everything is checked automatically, on the chain, every 10 minutes, a few friends per run in turn so nobody is skipped. No form and no waiting for a person.
 16. A reward is sent automatically from the GoodCash referral wallet, usually within a day of the second friend counting.
-17. If a payment fails, it is not retried by itself. It is marked for the team to look at, so nobody is ever paid twice.
+17. Every payment is checked again later. If it failed, or no receipt appears within 30 minutes, it is not retried by itself. It is marked for the team to look at, so nobody is ever paid twice.
 18. At most G$ 100,000 of rewards are paid per day (about 15 rewards). Rewards over that wait for the next day.
 
 ## When the campaign stops

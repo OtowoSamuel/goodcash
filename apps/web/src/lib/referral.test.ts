@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { captureReferral, inviteLink, joinWithSavedReferral, refFromSearch, REF_KEY, savedReferral } from './referral';
+import { acceptInvite, buildJoinMessage, captureReferral, inviteHandled, inviteLink, refFromSearch, REF_KEY, savedReferral } from './referral';
 
 const A = '0x2222222222222222222222222222222222222222';
 const B = '0x3333333333333333333333333333333333333333';
@@ -53,36 +53,41 @@ describe('inviteLink', () => {
   });
 });
 
-describe('joinWithSavedReferral', () => {
-  const ok = () => vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
+/** Pinned word for word, and the same text is pinned in services/orders/src/referral.test.ts */
+export const PINNED_JOIN = 'Accept a GoodCash invite.\n\nThis is free and sends no money.\n\nInvited by: 0x2222222222222222222222222222222222222222\nWallet: 0x3333333333333333333333333333333333333333\nIssued at: 2026-12-01T10:00:00Z';
 
-  it('tells the server once per wallet, with the saved link', async () => {
-    localStorage.setItem(REF_KEY, A);
-    const f = ok();
-    await joinWithSavedReferral(B, f as unknown as typeof fetch);
-    await joinWithSavedReferral(B, f as unknown as typeof fetch);
-    expect(f).toHaveBeenCalledTimes(1);
-    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toMatch(/\/referral\/join$/);
-    expect(JSON.parse(String(init.body))).toEqual({ wallet: B, ref: A });
+describe('accepting an invite', () => {
+  const T = Date.parse('2026-12-01T10:00:00.500Z');
+
+  it('signs exactly the text the server checks', () => {
+    expect(buildJoinMessage(B, A, T)).toBe(PINNED_JOIN);
   });
 
-  it('does nothing without a saved link, or when the link is the wallet itself', async () => {
-    const f = ok();
-    await joinWithSavedReferral(B, f as unknown as typeof fetch);
-    localStorage.setItem(REF_KEY, B);
-    await joinWithSavedReferral(B, f as unknown as typeof fetch);
-    expect(f).not.toHaveBeenCalled();
+  it('asks the wallet to sign, sends the signature, and remembers it was handled', async () => {
+    localStorage.setItem(REF_KEY, A);
+    const provider = { request: vi.fn(async () => '0xsig') };
+    const f = vi.fn(async () => Response.json({ ok: true }));
+    expect(await acceptInvite(B, provider, f as unknown as typeof fetch, T)).toBe('joined');
+    const call = provider.request.mock.calls[0] as unknown as [{ method: string; params: string[] }];
+    expect(call[0].method).toBe('personal_sign');
+    expect(call[0].params[1]).toBe(B);
+    const body = JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body));
+    expect(body).toEqual({ wallet: B, ref: A, signature: '0xsig', issuedAt: T });
+    expect(inviteHandled(B)).toBe(true);
   });
 
-  it('tries again next time when the server could not be reached, and never throws', async () => {
+  it('says when the invite does not apply, and lets a failure be tried again', async () => {
     localStorage.setItem(REF_KEY, A);
-    const down = vi.fn(async () => {
-      throw new Error('offline');
-    });
-    await expect(joinWithSavedReferral(B, down as unknown as typeof fetch)).resolves.toBeUndefined();
-    const f = ok();
-    await joinWithSavedReferral(B, f as unknown as typeof fetch);
-    expect(f).toHaveBeenCalledTimes(1);
+    const provider = { request: vi.fn(async () => '0xsig') };
+    expect(await acceptInvite(B, provider, (async () => Response.json({ ok: false, reason: 'already_verified' })) as unknown as typeof fetch, T)).toBe('not_new');
+    localStorage.removeItem('goodcash_ref_handled');
+    expect(await acceptInvite(B, provider, (async () => Response.json({ ok: false, reason: 'error' })) as unknown as typeof fetch, T)).toBe('failed');
+    expect(inviteHandled(B)).toBe(false);
+  });
+
+  it('passes on a cancel in the wallet', async () => {
+    localStorage.setItem(REF_KEY, A);
+    const provider = { request: vi.fn(async () => { throw Object.assign(new Error('User rejected'), { code: 4001 }); }) };
+    await expect(acceptInvite(B, provider, vi.fn() as unknown as typeof fetch, T)).rejects.toMatchObject({ code: 4001 });
   });
 });

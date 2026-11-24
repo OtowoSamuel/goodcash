@@ -18,11 +18,15 @@ const ENOUGH_WEI = 6n * 10n ** 16n;
 
 export interface ClaimGasEnv extends VerifiedEnv {
   CLAIM_GAS_ENABLED?: string; // "false" switches this off at once
+  ORDER_STORE?: Pick<KVNamespace, 'get' | 'put'>;
 }
+
+/** One ask per wallet per this long, so nobody can use our server to hammer GoodDollar's faucet for many wallets */
+const ONCE_PER_SECONDS = 20 * 3600;
 
 export type ClaimGasResult =
   | { ok: true; status: 'sent' | 'enough' }
-  | { ok: false; reason: 'off' | 'bad_wallet' | 'not_verified' | 'refused' | 'error' };
+  | { ok: false; reason: 'off' | 'bad_wallet' | 'not_verified' | 'refused' | 'too_soon' | 'error' };
 
 export interface ClaimGasDeps {
   fetch: typeof fetch;
@@ -46,6 +50,11 @@ export async function askClaimGas(env: ClaimGasEnv, walletRaw: unknown, deps: Cl
     const body = (await res.json()) as { result?: unknown };
     if (typeof body.result !== 'string' || !/^0x[0-9a-fA-F]+$/.test(body.result)) return { ok: false, reason: 'error' };
     if (BigInt(body.result) >= ENOUGH_WEI) return { ok: true, status: 'enough' };
+
+    const marker = `claimgas:${wallet}`;
+    if (env.ORDER_STORE && (await env.ORDER_STORE.get(marker)) !== null) return { ok: false, reason: 'too_soon' };
+    // Written before asking, so many requests at once for one wallet still reach GoodDollar about once
+    await env.ORDER_STORE?.put(marker, '1', { expirationTtl: ONCE_PER_SECONDS });
 
     const top = await deps.fetch(`${GOODDOLLAR_SERVER}/verify/topWallet`, {
       method: 'POST',

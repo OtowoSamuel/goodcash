@@ -24,7 +24,7 @@
  *   refpay-total                   -> G$ committed to rewards so far
  *   refpay-day:<yyyy-mm-dd>        -> G$ paid that day
  */
-import { createWalletClient, decodeFunctionResult, encodeFunctionData, http, parseAbi, type Hex } from 'viem';
+import { createPublicClient, createWalletClient, decodeFunctionResult, encodeFunctionData, http, parseAbi, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { celo } from 'viem/chains';
 import { claimLock } from './lock';
@@ -59,8 +59,14 @@ const DAY_MS = 24 * 3600 * 1000;
 export const DEFAULT_DAILY_G = 100_000;
 /** The referral wallet needs a little CELO for its own sends */
 const MIN_PAYER_CELO_WEI = 2n * 10n ** 16n; // 0.02 CELO
-const CHECKS_PER_RUN = 40;
-const PAYS_PER_RUN = 10;
+/** Kept small so one scheduled run stays well inside Cloudflare's limit on outside calls */
+const CHECKS_PER_RUN = 10;
+const PAYS_PER_RUN = 5;
+const RECEIPTS_PER_RUN = 5;
+/** A sent payment with no receipt after this long is handed to a person */
+const RECEIPT_WAIT_MS = 30 * 60 * 1000;
+/** A signed join must be this fresh */
+const JOIN_MAX_AGE_MS = 10 * 60 * 1000;
 
 const ABI = parseAbi([
   'function getWhitelistedRoot(address) view returns (address)',
@@ -90,6 +96,8 @@ export interface Reward {
   status: 'pending' | 'sending' | 'paid' | 'check';
   hash?: string;
   paidAt?: number;
+  /** Set once the payment's receipt shows it went through */
+  confirmed?: boolean;
 }
 
 export function isWallet(v: unknown): v is string {
@@ -112,6 +120,8 @@ export interface Chain {
   firstVerifiedAt(person: string): Promise<number>;
   /** When this wallet last claimed G$, in ms (0 when never) */
   lastClaimedAt(wallet: string): Promise<number>;
+  /** True when `signature` is this wallet's signature of `message` (normal wallets and smart wallets) */
+  verifySignature(wallet: string, message: string, signature: string): Promise<boolean>;
 }
 
 export function rpcFor(env: Pick<ReferralEnv, 'CELO_RPC_URL'>) {
@@ -144,6 +154,14 @@ export function liveChain(env: Pick<ReferralEnv, 'CELO_RPC_URL'>): Chain {
     async lastClaimedAt(wallet) {
       return Number((await call(GOODDOLLAR_UBI, 'lastClaimed', wallet)) as bigint) * 1000;
     },
+    async verifySignature(wallet, message, signature) {
+      const client = createPublicClient({ chain: celo, transport: http(env.CELO_RPC_URL || RPC_FALLBACK) });
+      try {
+        return await client.verifyMessage({ address: wallet as Hex, message, signature: signature as Hex });
+      } catch {
+        return false;
+      }
+    },
   };
 }
 
@@ -151,17 +169,39 @@ export function liveChain(env: Pick<ReferralEnv, 'CELO_RPC_URL'>): Chain {
 // Joining (the app calls this when a wallet connects with a friend's link saved)
 // ---------------------------------------------------------------------------
 
-export type JoinResult = { ok: true } | { ok: false; reason: 'bad_wallet' | 'self' | 'already' | 'ended' | 'already_verified' | 'error' };
+export type JoinResult =
+  | { ok: true }
+  | { ok: false; reason: 'bad_wallet' | 'self' | 'already' | 'ended' | 'already_verified' | 'bad_signature' | 'error' };
 
-export async function joinReferral(store: Store, chain: Chain, friendRaw: unknown, inviterRaw: unknown, now = Date.now()): Promise<JoinResult> {
-  const friend = inviterFrom(friendRaw);
-  const inviter = inviterFrom(inviterRaw);
+/**
+ * The exact text a friend signs to accept an invite. Free, sends nothing. The signature proves the wallet's owner
+ * chose this invite, so nobody can sign up other people's wallets under their own link.
+ */
+export function buildJoinMessage(wallet: string, inviter: string, issuedAt: number): string {
+  const ts = new Date(Math.floor(issuedAt / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return ['Accept a GoodCash invite.', '', 'This is free and sends no money.', '', `Invited by: ${inviter.toLowerCase()}`, `Wallet: ${wallet.toLowerCase()}`, `Issued at: ${ts}`].join('\n');
+}
+
+export interface JoinInput {
+  wallet: unknown;
+  ref: unknown;
+  signature: unknown;
+  issuedAt: unknown;
+}
+
+export async function joinReferral(store: Store, chain: Chain, input: JoinInput, now = Date.now()): Promise<JoinResult> {
+  const friend = inviterFrom(input.wallet);
+  const inviter = inviterFrom(input.ref);
   if (!friend || !inviter) return { ok: false, reason: 'bad_wallet' };
   if (friend === inviter) return { ok: false, reason: 'self' };
   if (now > Date.parse(REFERRAL.endsAt)) return { ok: false, reason: 'ended' };
+  const issuedAt = typeof input.issuedAt === 'number' ? input.issuedAt : NaN;
+  if (typeof input.signature !== 'string' || !/^0x[0-9a-fA-F]+$/.test(input.signature) || input.signature.length > 20_000) return { ok: false, reason: 'bad_signature' };
+  if (!Number.isFinite(issuedAt) || issuedAt > now + 2 * 60_000 || now - issuedAt > JOIN_MAX_AGE_MS) return { ok: false, reason: 'bad_signature' };
   if ((await store.get(`refj:${friend}`)) !== null) return { ok: false, reason: 'already' };
-  // A wallet GoodDollar already counts as verified is not a new person: nothing to write
   try {
+    if (!(await chain.verifySignature(friend, buildJoinMessage(friend, inviter, issuedAt), input.signature))) return { ok: false, reason: 'bad_signature' };
+    // A wallet GoodDollar already counts as verified is not a new person: nothing to write
     if (await chain.personOf(friend)) return { ok: false, reason: 'already_verified' };
   } catch {
     return { ok: false, reason: 'error' };
@@ -193,8 +233,20 @@ async function countFor(store: Store, inviterPerson: string): Promise<number> {
   return (await store.list({ prefix: `refc:${inviterPerson}:`, limit: 1000 })).keys.length;
 }
 
+/**
+ * What one scheduled run has already decided. Storage can answer with an old value for up to a minute after a write,
+ * so within a run these, not fresh reads, say who was counted, each inviter's count, the rewards made and the total.
+ */
+export interface RunState {
+  persons: Set<string>;
+  counts: Map<string, number>;
+  rewards: Set<string>;
+  total: number | null;
+}
+export const newRunState = (): RunState => ({ persons: new Set(), counts: new Map(), rewards: new Set(), total: null });
+
 /** Decide one joined friend. Safe to run again and again: a friend is written as counted once. */
-export async function checkFriend(store: Store, chain: Chain, friend: string, now = Date.now()): Promise<CheckOutcome> {
+export async function checkFriend(store: Store, chain: Chain, friend: string, now = Date.now(), run: RunState = newRunState()): Promise<CheckOutcome> {
   const raw = await store.get(`refj:${friend}`);
   if (!raw) {
     await store.delete(`refwait:${friend}`);
@@ -217,22 +269,26 @@ export async function checkFriend(store: Store, chain: Chain, friend: string, no
   const inviterPerson = await chain.personOf(join.inviter);
   if (!inviterPerson) return 'waiting'; // the inviter has to be verified to be counted; checked again later
   if (inviterPerson === person) return done('self');
-  if ((await store.get(`refp:${person}`)) !== null) return done('already');
+  if (run.persons.has(person) || (await store.get(`refp:${person}`)) !== null) return done('already');
 
-  const count = await countFor(store, inviterPerson);
+  const count = run.counts.get(inviterPerson) ?? (await countFor(store, inviterPerson));
   if (count >= REFERRAL.maxFriends) return done('full');
   await store.put(`refp:${person}`, '1');
   await store.put(`refc:${inviterPerson}:${person}`, JSON.stringify({ friend, inviter: join.inviter, at: now }));
+  run.persons.add(person);
   const newCount = count + 1;
+  run.counts.set(inviterPerson, newCount);
   if (newCount % REFERRAL.perFriends === 0) {
     const n = newCount / REFERRAL.perFriends;
     const key = `refpay:${inviterPerson}:${n}`;
-    const total = await committedG(store);
-    if ((await store.get(key)) === null && total + REFERRAL.rewardG <= REFERRAL.budgetG) {
+    const total = run.total ?? (await committedG(store));
+    if (!run.rewards.has(key) && (await store.get(key)) === null && total + REFERRAL.rewardG <= REFERRAL.budgetG) {
       const reward: Reward = { wallet: join.inviter, person: inviterPerson, n, g: REFERRAL.rewardG, at: now, status: 'pending' };
       await store.put(key, JSON.stringify(reward));
-      // Checks run one after another on the schedule, so two cannot add to the total at the same moment
-      await store.put('refpay-total', String(total + REFERRAL.rewardG));
+      run.rewards.add(key);
+      run.total = total + REFERRAL.rewardG;
+      // Runs happen one after another on the schedule, so only this run adds to the total
+      await store.put('refpay-total', String(run.total));
     }
   }
   return done('counted');
@@ -240,11 +296,16 @@ export async function checkFriend(store: Store, chain: Chain, friend: string, no
 
 export async function checkWaitingFriends(store: Store, chain: Chain, now = Date.now()): Promise<Record<CheckOutcome, number>> {
   const out: Record<CheckOutcome, number> = { counted: 0, waiting: 0, not_new: 0, self: 0, already: 0, full: 0, expired: 0 };
-  const rows = await store.list({ prefix: 'refwait:', limit: CHECKS_PER_RUN });
+  // Walk the whole list over several runs with a saved place, so friends who never verify cannot hold up the rest
+  const cursor = (await store.get('refwait-cursor')) ?? undefined;
+  const rows = (await store.list({ prefix: 'refwait:', limit: CHECKS_PER_RUN, cursor })) as { keys: { name: string }[]; list_complete?: boolean; cursor?: string };
+  if (rows.list_complete === false && rows.cursor) await store.put('refwait-cursor', rows.cursor, { expirationTtl: 24 * 3600 });
+  else await store.delete('refwait-cursor');
+  const run = newRunState();
   for (const k of rows.keys) {
     const friend = k.name.slice('refwait:'.length);
     try {
-      out[await checkFriend(store, chain, friend, now)]++;
+      out[await checkFriend(store, chain, friend, now, run)]++;
     } catch (e) {
       out.waiting++;
       console.error('[referral] check failed:', (e as Error)?.message);
@@ -261,8 +322,12 @@ export interface Payer {
   address: string;
   gBalance(): Promise<bigint>;
   celoBalance(): Promise<bigint>;
-  /** Sends G$; resolves with the transaction hash once the network accepted it. Throws when it fails. */
-  sendG(to: string, wei: bigint): Promise<string>;
+  /** The next transaction number for the referral wallet, counting sends still waiting to be confirmed */
+  nonce(): Promise<number>;
+  /** Sends G$ with the given transaction number; resolves with the hash once the network accepted it. Throws when it fails. */
+  sendG(to: string, wei: bigint, nonce: number): Promise<string>;
+  /** 'success' or 'reverted' once confirmed, null while unknown */
+  receipt(hash: string): Promise<'success' | 'reverted' | null>;
 }
 
 export function livePayer(env: ReferralEnv): Payer | null {
@@ -280,7 +345,15 @@ export function livePayer(env: ReferralEnv): Payer | null {
     async celoBalance() {
       return BigInt((await rpc('eth_getBalance', [account.address, 'latest'])) as string);
     },
-    sendG: (to, wei) => client.writeContract({ address: G_TOKEN, abi: ABI, functionName: 'transfer', args: [to as Hex, wei] }),
+    async nonce() {
+      return Number(BigInt((await rpc('eth_getTransactionCount', [account.address, 'pending'])) as string));
+    },
+    sendG: (to, wei, nonce) => client.writeContract({ address: G_TOKEN, abi: ABI, functionName: 'transfer', args: [to as Hex, wei], nonce }),
+    async receipt(hash) {
+      const r = (await rpc('eth_getTransactionReceipt', [hash]).catch(() => null)) as { status?: string } | null;
+      if (!r || typeof r.status !== 'string') return null;
+      return r.status === '0x1' ? 'success' : 'reverted';
+    },
   };
 }
 
@@ -298,35 +371,61 @@ export async function payRewards(env: ReferralEnv, payer: Payer | null = livePay
   let paid = 0;
   let check = 0;
   try {
+    const rows = await store.list({ prefix: 'refpay:', limit: 1000 });
+    const rewards: Array<[string, Reward]> = [];
+    for (const k of rows.keys) {
+      const raw = await store.get(k.name);
+      if (raw) rewards.push([k.name, JSON.parse(raw) as Reward]);
+    }
+
+    // 1. Payments sent earlier: confirm them, or hand them to a person if they failed or never arrived
+    let looked = 0;
+    for (const [key, r] of rewards) {
+      if (r.status !== 'paid' || r.confirmed || !r.hash || looked >= RECEIPTS_PER_RUN) continue;
+      looked++;
+      const outcome = await payer.receipt(r.hash).catch(() => null);
+      if (outcome === 'success') await store.put(key, JSON.stringify({ ...r, confirmed: true }));
+      else if (outcome === 'reverted' || now - (r.paidAt ?? now) > RECEIPT_WAIT_MS) {
+        await store.put(key, JSON.stringify({ ...r, status: 'check' }));
+        check++;
+        console.error('[referral] a sent payment did not go through, marked for a person to check');
+      }
+    }
+
+    // 2. New payments, numbered here one after another so two sends never share a transaction number
+    const pending = rewards.filter(([, r]) => r.status === 'pending');
+    if (pending.length === 0) return { paid, check };
     const dayKey = `refpay-day:${new Date(now).toISOString().slice(0, 10)}`;
     let usedToday = Number((await store.get(dayKey)) ?? '0') || 0;
     const capRaw = Number(env.REFERRAL_DAILY_G ?? DEFAULT_DAILY_G);
     const cap = Number.isFinite(capRaw) && capRaw > 0 ? capRaw : DEFAULT_DAILY_G;
-    const rows = await store.list({ prefix: 'refpay:', limit: 1000 });
-    for (const k of rows.keys) {
+    let gLeft = await payer.gBalance();
+    const celo = await payer.celoBalance();
+    let nonce = await payer.nonce();
+    for (const [key, reward] of pending) {
       if (paid >= PAYS_PER_RUN) break;
-      const raw = await store.get(k.name);
-      if (!raw) continue;
-      const reward = JSON.parse(raw) as Reward;
-      if (reward.status !== 'pending') continue;
       if (usedToday + reward.g > cap) return { paid, check, skipped: 'day_cap' };
       const wei = BigInt(reward.g) * 10n ** 18n;
-      if ((await payer.gBalance()) < wei || (await payer.celoBalance()) < MIN_PAYER_CELO_WEI) {
+      if (gLeft < wei || celo < MIN_PAYER_CELO_WEI) {
         console.error('[referral] referral wallet is low: payments paused');
         return { paid, check, skipped: 'low' };
       }
       // Marked before sending, so a send that fails halfway is never sent twice: it waits for a person to look
-      await store.put(k.name, JSON.stringify({ ...reward, status: 'sending' }));
+      await store.put(key, JSON.stringify({ ...reward, status: 'sending' }));
       try {
-        const hash = await payer.sendG(reward.wallet, wei);
-        await store.put(k.name, JSON.stringify({ ...reward, status: 'paid', hash, paidAt: now }));
+        const hash = await payer.sendG(reward.wallet, wei, nonce);
+        nonce++;
+        gLeft -= wei;
+        await store.put(key, JSON.stringify({ ...reward, status: 'paid', hash, paidAt: now }));
         usedToday += reward.g;
         await store.put(dayKey, String(usedToday), { expirationTtl: 3 * 24 * 3600 });
         paid++;
       } catch (e) {
-        await store.put(k.name, JSON.stringify({ ...reward, status: 'check' }));
+        await store.put(key, JSON.stringify({ ...reward, status: 'check' }));
         check++;
         console.error('[referral] payment failed, marked for a person to check:', (e as Error)?.name);
+        // The transaction number may or may not have been used: stop, and start fresh on the next run
+        return { paid, check };
       }
     }
     return { paid, check };

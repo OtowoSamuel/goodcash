@@ -18,7 +18,25 @@ function deps(opts: { verified?: boolean | null; balanceWei?: bigint; top?: { st
   return { calls, d: { fetch: f as unknown as typeof fetch, verified: async () => (opts.verified === undefined ? true : opts.verified) } };
 }
 
+class KV {
+  m = new Map<string, string>();
+  async get(k: string) {
+    return this.m.get(k) ?? null;
+  }
+  async put(k: string, v: string) {
+    this.m.set(k, v);
+  }
+}
+
 describe('askClaimGas', () => {
+  it('asks GoodDollar at most once a day for one wallet', async () => {
+    const kv = new KV();
+    const { d, calls } = deps({ balanceWei: 0n });
+    expect(await askClaimGas({ ORDER_STORE: kv as never }, W, d)).toEqual({ ok: true, status: 'sent' });
+    expect(await askClaimGas({ ORDER_STORE: kv as never }, W, d)).toEqual({ ok: false, reason: 'too_soon' });
+    expect(calls.filter((u) => u.startsWith(GOODDOLLAR_SERVER)).length).toBe(1);
+  });
+
   it('asks GoodDollar for a verified wallet with almost no CELO', async () => {
     const { d, calls } = deps({ balanceWei: 10n ** 15n });
     expect(await askClaimGas({}, W.toUpperCase().replace('0X', '0x'), d)).toEqual({ ok: true, status: 'sent' });

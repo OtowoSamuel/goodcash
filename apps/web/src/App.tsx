@@ -17,7 +17,7 @@ import { StatusStrip, pickNotice, type StatusNotice } from './components/StatusS
 import { BLOCKSCOUT_URL } from './components/SafetyBanner';
 import { HomeLinks } from './components/HomeLinks';
 import { ClaimCard } from './components/ClaimCard';
-import { joinWithSavedReferral } from './lib/referral';
+import { InviteAcceptCard } from './components/InviteAcceptCard';
 const AddGsModal = React.lazy(() => import('./components/AddGsModal'));
 /** Naira -> G$ is parked (it needs the customer's BVN/NIN). Only builds that set VITE_ADDG_ENABLED=true show it. */
 const ADDG_ENABLED = import.meta.env.VITE_ADDG_ENABLED === 'true';
@@ -487,12 +487,6 @@ export function App({
     if (!isDemoMode && !walletAddress) setBalanceG(0);
   }, [isDemoMode, walletAddress]);
 
-  // Opened a friend's link before connecting: let the server know this wallet came through it (once per wallet)
-  useEffect(() => {
-    if (isDemoMode || !walletAddress) return;
-    void joinWithSavedReferral(walletAddress);
-  }, [isDemoMode, walletAddress]);
-
   // Real G$ balance from Celo (production only; demo keeps its mock balance)
   useEffect(() => {
     if (isDemoMode || !walletAddress) return;
@@ -547,6 +541,8 @@ export function App({
   };
   /** The daily free G$ card on Home (real wallets only). Claiming refreshes the balance at once. */
   const claimCard = walletAddress && !isDemoMode ? (
+    <>
+    <InviteAcceptCard wallet={walletAddress} />
     <ClaimCard
       wallet={walletAddress}
       verified={verified.status}
@@ -561,6 +557,7 @@ export function App({
       onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined}
       onVote={() => setAppVoteOpen(true)}
     />
+    </>
   ) : null;
   const continueAfterVerify = () => {
     setVerifyGateOpen(false);

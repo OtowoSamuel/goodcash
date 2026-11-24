@@ -3109,18 +3109,18 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
     return json(result, !result.ok && result.reason === 'bad_wallet' ? 400 : !result.ok && result.reason === 'error' ? 502 : 200);
   }
 
-  // POST /referral/join { wallet, ref } - a wallet connected with a friend's link saved. Only a wallet GoodDollar has
-  // not verified yet is recorded; it counts later, once it is verified and has claimed (checked on the schedule).
+  // POST /referral/join { wallet, ref, signature, issuedAt } - a friend accepts an invite, signed by their own wallet.
+  // Only a wallet GoodDollar has not verified yet is recorded; it counts later, once verified and claimed (on the schedule).
   if (m === 'POST' && pathname === '/referral/join') {
     const limited = await checkRateLimit(request, env, 'referral-join', 'strict');
     if (limited) return limited;
-    let body: { wallet?: unknown; ref?: unknown };
+    let body: { wallet?: unknown; ref?: unknown; signature?: unknown; issuedAt?: unknown };
     try {
-      body = (await request.json()) as { wallet?: unknown; ref?: unknown };
+      body = (await request.json()) as typeof body;
     } catch {
       return err('Invalid JSON body');
     }
-    const result = await joinReferral(env.ORDER_STORE, liveChain(env), body?.wallet, body?.ref);
+    const result = await joinReferral(env.ORDER_STORE, liveChain(env), { wallet: body?.wallet, ref: body?.ref, signature: body?.signature, issuedAt: body?.issuedAt });
     return json(result, !result.ok && result.reason === 'bad_wallet' ? 400 : result.ok || result.reason !== 'error' ? 200 : 502);
   }
 
