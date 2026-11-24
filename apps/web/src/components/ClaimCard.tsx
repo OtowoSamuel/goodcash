@@ -123,8 +123,8 @@ export const ClaimCard: React.FC<{
             GoodDollar gives free G$ to every person, every day. Claim yours right here.
           </div>
         </div>
-        <button type="button" className="gc-btn gc-btn--yellow gc-hit gc-claim__btn" onClick={onVerify}>
-          Start
+        <button type="button" className="gc-btn gc-btn--white gc-hit gc-claim__btn" onClick={onVerify}>
+          Claim free G$
         </button>
       </div>
     );

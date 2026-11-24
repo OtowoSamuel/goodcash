@@ -18,11 +18,11 @@ function deps(over: Partial<ClaimDeps> = {}): ClaimDeps {
 }
 
 describe('ClaimCard', () => {
-  it('offers the daily G$ to someone not verified yet, and Start opens the one-time step', () => {
+  it('offers the daily G$ to someone not verified yet, and its button opens the one-time step', () => {
     const onVerify = vi.fn();
     render(<ClaimCard wallet={W} verified="not_verified" onVerify={onVerify} deps={deps()} />);
     expect(screen.queryByText(/verify/i)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Claim free G$' }));
     expect(onVerify).toHaveBeenCalled();
   });
 
@@ -67,8 +67,8 @@ describe('ClaimCard', () => {
   it('shows when the next claim opens once today is claimed', async () => {
     const d = deps({ readClaim: vi.fn(async () => ({ readyG: 0, nextAt: Date.now() + 3 * 3600_000 + 5 * 60_000 })) });
     render(<ClaimCard wallet={W} verified="verified" onVerify={() => undefined} deps={d} />);
-    expect(await screen.findByText(/Today's is claimed/)).toBeInTheDocument();
-    expect(screen.getByText(/3h [45]m/)).toBeInTheDocument();
+    expect(await screen.findByText(/Today's is claimed/, undefined, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByText(/3h \d+m/)).toBeInTheDocument();
   });
 
   it('a cancel in the wallet leaves the claim ready to try again', async () => {

@@ -639,7 +639,7 @@ describe('dev mock gates', () => {
 
     render(<App />);
 
-    expect(screen.getAllByText('0.0').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('0.00').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('1,297.5')).not.toBeInTheDocument();
     expect(screen.queryByText('50,000')).not.toBeInTheDocument();
   });
@@ -697,7 +697,7 @@ describe('verifying is a step inside adding G$, not a banner', () => {
     vi.unstubAllEnvs();
   });
   const settle = () => new Promise((r) => setTimeout(r, 60));
-  const tapAdd = async () => fireEvent.click((await screen.findAllByRole('button', { name: /Add G\$/i }))[0]);
+  const tapAdd = async () => fireEvent.click((await screen.findAllByRole('button', { name: /Buy with naira/i }))[0]);
 
   it('shows no banner or warning, even to someone who is not verified', async () => {
     verifiedNow = false;

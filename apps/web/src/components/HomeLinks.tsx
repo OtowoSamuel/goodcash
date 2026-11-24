@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { getTranslations, type Language } from '../lib/i18n';
 import { BLOCKSCOUT_URL, SHORT_ROUTER_ADDRESS } from './SafetyBanner';
@@ -11,7 +11,7 @@ type Sheet = 'how' | 'costs' | 'safe';
  * "How it works", "What it costs" and "Stay safe" used to be three cards on the home page. They are answers people
  * look for once, so they now sit behind three small buttons and open in one pop-up.
  */
-export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; onAddCelo?: () => void }> = ({ language, wallet, onAddCelo }) => {
+export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; onAddCelo?: () => void; openCosts?: number }> = ({ language, wallet, onAddCelo, openCosts = 0 }) => {
   const t = getTranslations(language);
   const [open, setOpen] = useState<Sheet | null>(null);
   const [inviting, setInviting] = useState(false);
@@ -22,26 +22,36 @@ export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; o
     ['safe', t.staySafe],
   ];
   const label = (s: Sheet) => items.find(([k]) => k === s)![1];
+  // "See breakdown" on the balance card opens "What it costs"
+  useEffect(() => {
+    if (openCosts > 0) setOpen('costs');
+  }, [openCosts]);
 
   return (
     <>
       <div className="flex flex-wrap justify-center gap-2" role="group" aria-label="More about GoodCash">
         {items.map(([k, text]) => (
-          <button key={k} type="button" className="gc-pill gc-pill--white gc-hit" onClick={() => setOpen(k)}>
+          <button key={k} type="button" className="gc-pill gc-pill--white gc-pill--link gc-hit" onClick={() => setOpen(k)}>
             {text}
           </button>
         ))}
-        {wallet && (
-          <button type="button" className="gc-pill gc-pill--white gc-hit" onClick={() => setInviting(true)}>
-            Invite friends
-          </button>
-        )}
-        {wallet && (
-          <button type="button" className="gc-pill gc-pill--white gc-hit" onClick={() => setVoting(true)}>
-            Vote for GoodCash
-          </button>
-        )}
       </div>
+      {wallet && (
+        <div className="gc-promo-row" role="group" aria-label="Help GoodCash grow">
+          <button type="button" className="gc-promo gc-hit" onClick={() => setInviting(true)}>
+            <span>
+              <b>Invite friends</b>
+              <span className="gc-promo__sub">Earn G$ for every 2</span>
+            </span>
+          </button>
+          <button type="button" className="gc-promo gc-hit" onClick={() => setVoting(true)}>
+            <span>
+              <b>Vote for GoodCash</b>
+              <span className="gc-promo__sub">Free, takes a minute</span>
+            </span>
+          </button>
+        </div>
+      )}
       {inviting && wallet && <InviteModal wallet={wallet} onClose={() => setInviting(false)} onVote={() => { setInviting(false); setVoting(true); }} />}
       {voting && wallet && (
         <VoteModal

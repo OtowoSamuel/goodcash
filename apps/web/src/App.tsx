@@ -503,6 +503,9 @@ export function App({
   // The network fee is paid in CELO. Check it while a cash out is being reviewed, so the customer is told
   // before they press Confirm, not by a failed swap.
   const [networkFee, setNetworkFee] = useState<NetworkFeeInfo | null>(null);
+  const celoShort = networkFee && !networkFee.enough ? { needCelo: networkFee.needCelo, haveCelo: networkFee.haveCelo, celoUsd: networkFee.celoUsd } : null;
+  /** Bumped by "See breakdown" on the balance card to open "What it costs" */
+  const [costsTick, setCostsTick] = useState(0);
   const reviewing = !!pendingQuote || mobileView === 'review';
   useEffect(() => {
     if (isDemoMode || !walletAddress) {
@@ -540,9 +543,8 @@ export function App({
     return true;
   };
   /** The daily free G$ card on Home (real wallets only). Claiming refreshes the balance at once. */
+  const inviteCard = walletAddress && !isDemoMode ? <InviteAcceptCard wallet={walletAddress} /> : null;
   const claimCard = walletAddress && !isDemoMode ? (
-    <>
-    <InviteAcceptCard wallet={walletAddress} />
     <ClaimCard
       wallet={walletAddress}
       verified={verified.status}
@@ -557,7 +559,6 @@ export function App({
       onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined}
       onVote={() => setAppVoteOpen(true)}
     />
-    </>
   ) : null;
   const continueAfterVerify = () => {
     setVerifyGateOpen(false);
@@ -1511,11 +1512,7 @@ export function App({
       text: addPhase === 'working' ? 'Keep this tab open. Tap to watch.' : 'Keep this tab open. Tap to see where it is.',
       onClick: () => setAddOpen(true),
     },
-    networkFee && !networkFee.enough && {
-      id: 'top-up', tone: 'warn', title: 'Top up CELO to cash out.',
-      text: `You need about ${celoText(networkFee.needCelo)} CELO in your wallet for the network fee. G$ can't pay it. Tap to add some with naira.`,
-      onClick: ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined,
-    },
+    // A CELO shortfall is shown on the balance card and its button instead (ReadinessCard celoShort)
   ]);
   // The strip stays out of the way while a pop-up is open
   const strip = addOpen ? null : <StatusStrip notice={statusNotice} />;
@@ -1654,7 +1651,7 @@ export function App({
           {(currentTab === 'home') && strip}
           {currentTab === 'home' ? (
             <>
-            {claimCard}
+            {inviteCard}
             <ReadinessCard
               balanceG={balanceG}
               dailyClaimG={123.48}
@@ -1663,8 +1660,12 @@ export function App({
               language={language}
               isStale={balanceIsStale}
               ngnPerUsdt={liveNgnRate}
+              celoShort={celoShort}
+              onAddCelo={ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined}
+              onSeeCosts={() => setCostsTick((n) => n + 1)}
             />
-            <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} />
+            {claimCard}
+            <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} openCosts={costsTick} />
             </>
           ) : currentTab === 'cashout' ? (
             <>
@@ -2127,17 +2128,21 @@ export function App({
             {/* Mobile Content */}
             <div className="gc-col">
               {strip}
-              {claimCard}
+              {inviteCard}
               <ReadinessCard
                 balanceG={balanceG}
                 dailyClaimG={123.48}
                 onCashOutClick={() => setMobileView('cashout')}
                 onAddClick={ADDG_ENABLED ? () => handleAddClick() : undefined}
-                  language={language}
+                language={language}
                 isStale={balanceIsStale}
                 ngnPerUsdt={liveNgnRate}
+                celoShort={celoShort}
+                onAddCelo={ADDG_ENABLED && !isDemoMode ? () => handleAddClick('celo') : undefined}
+                onSeeCosts={() => setCostsTick((n) => n + 1)}
               />
-              <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} />
+              {claimCard}
+              <HomeLinks language={language} wallet={walletAddress} onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined} openCosts={costsTick} />
               <div className="gc-sm" style={{ textAlign: 'center', marginTop: 4 }}>
                 <a href="/about" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline' }}>About</a>
                 {' · '}
