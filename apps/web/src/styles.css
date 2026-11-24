@@ -1154,3 +1154,12 @@ body:has([role="dialog"]) .gc-banner { display: none; }
   .gc .gc-col--desk .gc-pills { gap: 6px; }
   .gc .gc-col--desk .gc-pill-btn { padding: 5px 12px; }
 }
+/* Phones: smaller help pills so the bottom of Home does not feel crowded (two neat rows) */
+@media (max-width: 767px) {
+  .gc .gc-pills { gap: 7px; margin-top: 6px; }
+  .gc .gc-pill-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    border-width: 2px;
+  }
+}
