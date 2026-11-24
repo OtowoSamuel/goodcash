@@ -1112,3 +1112,9 @@ body:has([role="dialog"]) .gc-banner { display: none; }
 @media (min-width: 900px) {
   .gc-naira { font-size: 16px; }
 }
+
+/* "Buy G$ with naira": the white second button */
+.gc .gc-btn.gc-buy-btn {
+  height: 50px;
+  font-size: 16px;
+}

@@ -143,12 +143,10 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
           {t.cashOutOpensAt.replace('{n}', getMinimumCashOutG().toLocaleString())}
         </button>
       )}
-      {onAddClick && !needsCelo && (
-        <div style={{ textAlign: 'center' }}>
-          <button type="button" onClick={onAddClick} className="gc-linkbtn gc-hit gc-buy">
-            Need more G$? Buy with naira
-          </button>
-        </div>
+      {onAddClick && (
+        <button type="button" onClick={onAddClick} className="gc-btn gc-btn--white gc-hit w-full gc-buy-btn">
+          Buy G$ with naira
+        </button>
       )}
 
       {isStale && (
