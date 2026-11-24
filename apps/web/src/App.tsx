@@ -1647,7 +1647,7 @@ export function App({
       />
 
       <main className="gc-main">
-        <div className="gc-col pb-24">
+        <div className="gc-col gc-col--desk">
           {(currentTab === 'home') && strip}
           {currentTab === 'home' ? (
             <>

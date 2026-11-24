@@ -1118,3 +1118,39 @@ body:has([role="dialog"]) .gc-banner { display: none; }
   height: 50px;
   font-size: 16px;
 }
+
+/* ── Desktop: keep Home and the footer on one screen ────────────
+   The phone layout needs room for its bottom tab bar; desktop does not, so it gets tighter spacing.
+   Fits a laptop window (about 1366 x 650 visible) with the footer showing. */
+@media (min-width: 768px) {
+  .gc .gc-col.gc-col--desk { gap: 10px; padding-bottom: 16px; }
+  .gc .gc-col--desk .gc-card { padding: 12px 18px; }
+  .gc .gc-col--desk .gc-divider { margin: 10px 0 9px; }
+  .gc .gc-col--desk .gc-see { margin-top: 2px; }
+  .gc .gc-col--desk .gc-btn { height: 50px; }
+  .gc .gc-col--desk .gc-btn.gc-buy-btn { height: 44px; font-size: 15px; }
+  .gc .gc-col--desk .gc-help { font-size: 13px; }
+  .gc .gc-col--desk .gc-free { padding: 9px 12px 9px 16px; }
+  .gc .gc-col--desk .gc-free__btn { height: 42px; }
+  .gc .gc-col--desk .gc-pills { gap: 8px; margin-top: 2px; }
+  .gc .gc-col--desk .gc-pill-btn { padding: 6px 14px; font-size: 13.5px; border-width: 2px; }
+}
+@media (min-width: 900px) {
+  .gc .gc-main { padding-top: 18px; }
+}
+/* Short laptop windows (about 720px tall or less): a little tighter still, so the footer stays on screen */
+@media (min-width: 768px) and (max-height: 720px) {
+  .gc .gc-main { padding-top: 10px; }
+  .gc .gc-col.gc-col--desk { gap: 7px; padding-bottom: 10px; }
+  .gc .gc-col--desk .gc-card { padding: 9px 16px; }
+  .gc .gc-col--desk .gc-big.gc-big--long { font-size: 38px; }
+  .gc .gc-col--desk .gc-naira { font-size: 15px; margin-top: 2px; }
+  .gc .gc-col--desk .gc-divider { margin: 7px 0; }
+  .gc .gc-col--desk .gc-btn { height: 46px; }
+  .gc .gc-col--desk .gc-btn.gc-buy-btn { height: 40px; }
+  .gc .gc-col--desk .gc-help { font-size: 12.5px; line-height: 1.35; }
+  .gc .gc-col--desk .gc-free { padding: 7px 12px 7px 16px; }
+  .gc .gc-col--desk .gc-free__btn { height: 38px; }
+  .gc .gc-col--desk .gc-pills { gap: 6px; }
+  .gc .gc-col--desk .gc-pill-btn { padding: 5px 12px; }
+}
