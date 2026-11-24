@@ -31,7 +31,26 @@ export const HomeLinks: React.FC<{ language: Language; wallet?: string | null; o
 
   return (
     <>
-      <div className="gc-more-row">
+      {/* Desktop: the five links as pills, as before */}
+      <div className="gc-pills gc-only-desk" role="group" aria-label="More about GoodCash">
+        {items.map(([k, text]) => (
+          <button key={k} type="button" className="gc-pill-btn gc-hit" onClick={() => setOpen(k)}>
+            {text}
+          </button>
+        ))}
+        {wallet && (
+          <button type="button" className="gc-pill-btn gc-hit" onClick={() => setInviting(true)}>
+            Invite friends
+          </button>
+        )}
+        {wallet && (
+          <button type="button" className="gc-pill-btn gc-hit" onClick={() => setVoting(true)}>
+            Vote for GoodCash
+          </button>
+        )}
+      </div>
+      {/* Phones: one calm "More" link that opens a sheet with all of them */}
+      <div className="gc-more-row gc-only-phone">
         <button type="button" className="gc-more gc-hit" onClick={() => setMore(true)} aria-haspopup="dialog">
           More
           <svg viewBox="0 0 24 24" aria-hidden="true" className="gc-more__icon"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
