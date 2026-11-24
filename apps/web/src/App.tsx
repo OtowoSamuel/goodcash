@@ -16,6 +16,7 @@ import { ReadinessCard } from './components/ReadinessCard';
 import { StatusStrip, pickNotice, type StatusNotice } from './components/StatusStrip';
 import { BLOCKSCOUT_URL } from './components/SafetyBanner';
 import { HomeLinks } from './components/HomeLinks';
+import { ClaimCard } from './components/ClaimCard';
 import { joinWithSavedReferral } from './lib/referral';
 const AddGsModal = React.lazy(() => import('./components/AddGsModal'));
 /** Naira -> G$ is parked (it needs the customer's BVN/NIN). Only builds that set VITE_ADDG_ENABLED=true show it. */
@@ -544,6 +545,22 @@ export function App({
     setVerifyGateOpen(true);
     return true;
   };
+  /** The daily free G$ card on Home (real wallets only). Claiming refreshes the balance at once. */
+  const claimCard = walletAddress && !isDemoMode ? (
+    <ClaimCard
+      wallet={walletAddress}
+      verified={verified.status}
+      onVerify={() => {
+        afterVerify.current = null;
+        setVerifyIntent('claim');
+        setVerifyGateOpen(true);
+      }}
+      onClaimed={() => {
+        void fetchGBalance(walletAddress).then((b) => setBalanceG(Math.floor(b * 100) / 100)).catch(() => undefined);
+      }}
+      onAddCelo={ADDG_ENABLED ? () => handleAddClick('celo') : undefined}
+    />
+  ) : null;
   const continueAfterVerify = () => {
     setVerifyGateOpen(false);
     const go = afterVerify.current;
@@ -564,6 +581,11 @@ export function App({
   /** Take a newly verified customer to what they were doing before they left for GoodDollar. */
   const continueIntent = (intent: VerifyIntent) => {
     if (intent === 'vote') return setAppVoteOpen(true);
+    if (intent === 'claim') {
+      setCurrentTab('home');
+      setMobileView('home');
+      return;
+    }
     if (intent === 'cashout') {
       setCurrentTab('cashout');
       setMobileView('cashout');
@@ -1634,6 +1656,7 @@ export function App({
           {(currentTab === 'home') && strip}
           {currentTab === 'home' ? (
             <>
+            {claimCard}
             <ReadinessCard
               balanceG={balanceG}
               dailyClaimG={123.48}
@@ -2106,6 +2129,7 @@ export function App({
             {/* Mobile Content */}
             <div className="gc-col">
               {strip}
+              {claimCard}
               <ReadinessCard
                 balanceG={balanceG}
                 dailyClaimG={123.48}

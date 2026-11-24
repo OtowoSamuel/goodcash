@@ -18,6 +18,7 @@ import { handleV1, isV1Path, partnerOrderUpdated, runPartnerSchedule, type V1Dep
 import { processLiveApprovals } from './v1/liveKeys';
 import { clearWorkIfIdle, markWork, shouldList } from './v1/work';
 import { claimLock } from './lock';
+import { askClaimGas } from './claimGas';
 import { checkWaitingFriends, inviterFrom, isWallet, joinReferral, liveChain, payRewards, referralSummary, type ReferralEnv } from './referral';
 import { parseRegisterBody, registerWithFlowState } from './vote';
 import { giveVoteFee, tankStatus, type TankEnv } from './voteTank';
@@ -68,6 +69,7 @@ export interface Env {
   VOTE_TANK_CELO?: string;        // Top-up size in CELO (default 0.1)
   VOTE_TANK_DAILY_CAP?: string;   // Top-ups per day (default 30)
   VOTE_TANK_RESERVE_CELO?: string; // The tank never goes below this (default 0.3)
+  CLAIM_GAS_ENABLED?: string; // "false" stops asking GoodDollar's faucet for claim fees (src/claimGas.ts)
   REFERRAL_PAY_ENABLED?: string; // "true": referral rewards are paid automatically (src/referral.ts)
   REFERRAL_KEY?: string; // Secret: the referral wallet's private key
   REFERRAL_DAILY_G?: string; // Most G$ of referral rewards paid per day (default 100,000)
@@ -3091,6 +3093,20 @@ async function handleRequest(request: Request, env: Env, waitUntil?: (p: Promise
     const wallet = url.searchParams.get('wallet') ?? '';
     if (!isWallet(wallet)) return err('Invalid wallet address', 400);
     return json(await referralSummary(env.ORDER_STORE, liveChain(env), wallet));
+  }
+
+  // POST /claim/gas { wallet } - a verified person short of CELO asks GoodDollar's faucet for the claim's network fee
+  if (m === 'POST' && pathname === '/claim/gas') {
+    const limited = await checkRateLimit(request, env, 'claim-gas', 'strict');
+    if (limited) return limited;
+    let body: { wallet?: unknown };
+    try {
+      body = (await request.json()) as { wallet?: unknown };
+    } catch {
+      return err('Invalid JSON body');
+    }
+    const result = await askClaimGas(env, body?.wallet);
+    return json(result, !result.ok && result.reason === 'bad_wallet' ? 400 : !result.ok && result.reason === 'error' ? 502 : 200);
   }
 
   // POST /referral/join { wallet, ref } - a wallet connected with a friend's link saved. Only a wallet GoodDollar has

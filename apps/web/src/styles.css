@@ -828,3 +828,88 @@ button {
 
 /* The "unfinished cash out" banner must never sit on top of an open pop-up */
 body:has([role="dialog"]) .gc-banner { display: none; }
+
+/* Yellow button (verify steps, claim card) */
+.gc-btn--yellow {
+  background: var(--gc-ye);
+  color: #111;
+}
+
+/* ── Daily claim card ────────────────────────────────────────── */
+.gc-claim {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gc-claim__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.gc-claim__amount {
+  font: 800 30px/1.05 'Bricolage Grotesque';
+  font-variant-numeric: tabular-nums;
+  margin: 2px 0 3px;
+}
+
+@media (min-width: 900px) {
+  .gc-claim__amount { font-size: 32px; }
+}
+
+.gc-claim__btn {
+  width: auto;
+  min-width: 96px;
+  height: 48px;
+  padding: 0 18px;
+}
+
+.gc-claim__btn:disabled {
+  cursor: progress;
+  box-shadow: 2px 2px 0 #111;
+  transform: translate(3px, 3px);
+}
+
+.gc-claim__done {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 2.5px solid #111;
+  background: var(--gc-ye);
+  box-shadow: 2px 2px 0 #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 800 22px 'Bricolage Grotesque';
+  transform: rotate(-8deg);
+}
+
+.gc-claim__done--muted {
+  background: var(--gc-pill-default);
+  box-shadow: none;
+}
+
+.gc-claim__link {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 800 12.5px 'Bricolage Grotesque';
+  text-decoration: underline;
+  cursor: pointer;
+  color: #111;
+}
+
+.gc-claim__spin {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: gc-claim-spin .8s linear infinite;
+}
+
+@keyframes gc-claim-spin {
+  to { transform: rotate(360deg); }
+}

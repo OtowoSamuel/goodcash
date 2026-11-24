@@ -66,7 +66,9 @@ export const VerifyGate: React.FC<Props> = ({ wallet, intent, onClose, onVerifie
       }
     >
       <p style={{ margin: '0 0 10px' }}>
-        Verifying with GoodDollar is part of adding G$ and cashing out. It is quick, free, and only needs to be done once.
+        {intent === 'claim'
+          ? 'Verifying with GoodDollar lets you claim free G$ here every day. It is quick and free.'
+          : 'Verifying with GoodDollar is part of adding G$ and cashing out. It is quick, free, and only needs to be done once.'}
       </p>
       <p style={{ margin: 0 }}>
         Your wallet will ask you to approve a free message (no money is sent). Then GoodDollar opens for a short face check, and brings you back here to carry on.

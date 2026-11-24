@@ -33,7 +33,7 @@ export function buildFvLink(input: { address: string; signature: string; nonce: 
 }
 
 /** What the customer was about to do when they went to verify, so we can take them straight back to it. */
-export type VerifyIntent = 'cashout' | 'add-g' | 'add-celo' | 'vote';
+export type VerifyIntent = 'cashout' | 'add-g' | 'add-celo' | 'vote' | 'claim';
 const PENDING_KEY = 'goodcash_verify_pending';
 const RETURN_FLAG = 'gdverify';
 /** A trip to GoodDollar older than this is treated as abandoned */
