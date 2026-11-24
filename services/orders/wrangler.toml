@@ -76,7 +76,7 @@ VOTE_TANK_ENABLED = "true"
 # Referral rewards (src/referral.ts): every 2 friends who verify with GoodDollar for the first time and claim earn the
 # inviter G$ 6,500, sent automatically from the referral wallet. Checking friends always runs; PAYING needs this set to
 # "true" AND the secret REFERRAL_KEY (the referral wallet's key, set with wrangler secret put). Top that wallet up by hand.
-REFERRAL_PAY_ENABLED = "false"
+REFERRAL_PAY_ENABLED = "true"
 # Most G$ of rewards paid in one day (about 15 rewards)
 REFERRAL_DAILY_G = "100000"
 # Each top-up fills the wallet to this much CELO. The shared vote (GoodCash + GoodBuildIt) needs about 0.2 CELO in the
