@@ -849,7 +849,8 @@ body:has([role="dialog"]) .gc-banner { display: none; }
 }
 
 .gc-claim__amount {
-  font: 800 30px/1.05 'Bricolage Grotesque';
+  font: 800 clamp(24px, 7.6vw, 30px)/1.05 'Bricolage Grotesque';
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   margin: 2px 0 3px;
 }
@@ -905,8 +906,8 @@ body:has([role="dialog"]) .gc-banner { display: none; }
 .gc-claim__spin {
   width: 20px;
   height: 20px;
-  border: 3px solid rgba(255, 255, 255, .45);
-  border-top-color: #fff;
+  border: 3px solid rgba(17, 17, 17, .25);
+  border-top-color: #111;
   border-radius: 50%;
   animation: gc-claim-spin .8s linear infinite;
 }
@@ -987,7 +988,7 @@ body:has([role="dialog"]) .gc-banner { display: none; }
 
 .gc-promo__sub {
   display: block;
-  font-size: 11.5px;
+  font-size: 12.5px;
   opacity: .75;
 }
 
@@ -1013,4 +1014,13 @@ body:has([role="dialog"]) .gc-banner { display: none; }
 }
 .gc-pill--link {
   color: #111;
+}
+
+.gc-claim__tick {
+  width: 24px;
+  height: 24px;
+}
+
+.gc-claim__unit {
+  font-size: .62em;
 }

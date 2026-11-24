@@ -35,7 +35,7 @@ describe('ClaimCard', () => {
     const d = deps();
     const onClaimed = vi.fn();
     render(<ClaimCard wallet={W} verified="verified" onVerify={() => undefined} onClaimed={onClaimed} deps={d} />);
-    expect(await screen.findByText('+120.87 G$')).toBeInTheDocument();
+    expect(await screen.findByText((_, el) => el?.className === 'gc-claim__amount' && el.textContent === '+120.87 G$')).toBeInTheDocument();
     (d.readClaim as ReturnType<typeof vi.fn>).mockResolvedValue({ readyG: 0, nextAt: Date.now() + 5 * 3600_000 });
     fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
     expect(await screen.findByText('Claimed today')).toBeInTheDocument();

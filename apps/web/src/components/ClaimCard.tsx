@@ -137,12 +137,12 @@ export const ClaimCard: React.FC<{
       <div className="gc-card gc-card--mint gc-claim" data-testid="claim-card" role="status">
         <div className="gc-claim__text">
           <div className="gc-lab">Claimed today</div>
-          <div className="gc-claim__amount">+{fmt(claimedG)} G$</div>
+          <div className="gc-claim__amount">+{fmt(claimedG)}<span className="gc-claim__unit"> G$</span></div>
           <div className="gc-sm">
             {info.nextAt > 0 ? `Next free G$ in ${timeUntil(info.nextAt, now)}.` : 'It is in your balance now.'}
           </div>
         </div>
-        <div className="gc-claim__done" aria-hidden="true">✓</div>
+        <div className="gc-claim__done" aria-hidden="true"><svg className="gc-claim__tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
         {onVote && <VoteNudge wallet={wallet} onVote={onVote} style={{ flexBasis: '100%' }} />}
         <div className="gc-sticker">Nice one</div>
       </div>
@@ -159,7 +159,7 @@ export const ClaimCard: React.FC<{
             Today's is claimed. Next one in <b>{timeUntil(info.nextAt, now)}</b>.
           </div>
         </div>
-        <div className="gc-claim__done gc-claim__done--muted" aria-hidden="true">✓</div>
+        <div className="gc-claim__done gc-claim__done--muted" aria-hidden="true"><svg className="gc-claim__tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg></div>
         {onVote && <VoteNudge wallet={wallet} onVote={onVote} style={{ flexBasis: '100%' }} />}
       </div>
     );
@@ -171,7 +171,7 @@ export const ClaimCard: React.FC<{
     <div className="gc-card gc-card--mint gc-claim" data-testid="claim-card">
       <div className="gc-claim__text">
         <div className="gc-lab">Your free G$ today</div>
-        <div className="gc-claim__amount">+{fmt(info.readyG)} G$</div>
+        <div className="gc-claim__amount">+{fmt(info.readyG)}<span className="gc-claim__unit"> G$</span></div>
         <div className="gc-sm" aria-live="polite">
           {busy ? STEP_TEXT[step as Exclude<Step, 'idle'>] : problem ?? 'From GoodDollar. Claim it once a day.'}
         </div>
@@ -181,7 +181,7 @@ export const ClaimCard: React.FC<{
           </button>
         )}
       </div>
-      <button type="button" className="gc-btn gc-hit gc-claim__btn" onClick={() => void claim()} disabled={busy} aria-busy={busy}>
+      <button type="button" className="gc-btn gc-btn--white gc-hit gc-claim__btn" onClick={() => void claim()} disabled={busy} aria-busy={busy}>
         {busy ? <span className="gc-claim__spin" aria-label="Working" /> : 'Claim'}
       </button>
       {!busy && !problem && <div className="gc-sticker">Daily</div>}

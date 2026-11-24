@@ -101,7 +101,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
           )}
         </div>
         <div className="gc-bar">
-          <div className="gc-bar__fill" style={{ width: `${percent}%` }} />
+          <div className="gc-bar__fill" style={{ width: `${percent}%`, ...(needsCelo ? { background: 'var(--gc-ye)' } : {}) }} />
         </div>
         <div className="gc-sm">
           {needsCelo
@@ -138,7 +138,7 @@ export const ReadinessCard: React.FC<ReadinessCardProps> = ({
             Add CELO to cash out
           </button>
           <div className="gc-sm" style={{ textAlign: 'center' }}>
-            The network fee is paid in CELO{feeNaira ? `, about ₦${feeNaira.toLocaleString('en-US')}` : ''}. G$ can't pay it. The smallest top-up is ₦1,000, and what is left stays in your wallet for next time.
+            Network fee: {feeNaira ? `about ₦${feeNaira.toLocaleString('en-US')} ` : ''}in CELO (G$ can't pay it). Smallest top-up is ₦1,000, and the rest stays for next time.
           </div>
         </>
       ) : minimumReached ? (
