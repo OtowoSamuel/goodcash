@@ -697,7 +697,7 @@ describe('verifying is a step inside adding G$, not a banner', () => {
     vi.unstubAllEnvs();
   });
   const settle = () => new Promise((r) => setTimeout(r, 60));
-  const tapAdd = async () => fireEvent.click((await screen.findAllByRole('button', { name: /Buy G\$ with naira/i }))[0]);
+  const tapAdd = async () => fireEvent.click((await screen.findAllByRole('button', { name: /Buy G\$ or CELO with naira/i }))[0]);
 
   it('shows no banner or warning, even to someone who is not verified', async () => {
     verifiedNow = false;
