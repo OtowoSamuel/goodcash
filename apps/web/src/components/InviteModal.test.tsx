@@ -10,7 +10,7 @@ vi.mock('../lib/rate', async (orig) => ({ ...(await orig<typeof import('../lib/r
 import { InviteModal } from './InviteModal';
 
 const W = '0x2222222222222222222222222222222222222222';
-const base: ReferralSummary = { open: true, endsAt: '2026-12-31T23:59:59Z', waiting: 0, friends: 0, perFriends: 2, rewardG: 6500, maxFriends: 20, paidG: 0, pendingG: 0, verified: true };
+const base: ReferralSummary = { open: true, endsAt: '2026-12-15T22:59:59Z', waiting: 0, friends: 0, perFriends: 2, rewardG: 6500, maxFriends: 20, paidG: 0, pendingG: 0, verified: true };
 
 describe('InviteModal', () => {
   beforeEach(() => {

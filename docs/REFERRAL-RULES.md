@@ -34,7 +34,7 @@ Written 24 November 2026, replacing the 19 November version (a first top-up of â
 
 ## When the campaign stops
 
-19. The campaign ends on 31 December 2026 at 23:59 UTC, or when the budget is used up, whichever comes first. A friend must connect before the end.
+19. The campaign ends on 15 December 2026 at 23:59 Lagos time (22:59 UTC), or when the budget is used up, whichever comes first. A friend must connect before the end.
 20. The budget is G$ 3,500,000 of rewards in total, about 538 rewards, which is about 1,070 friends.
 21. When the campaign is closed, the invite screen says the rewards have ended. Rewards already earned are still paid.
 

@@ -42,7 +42,7 @@ export const REFERRAL = {
   /** Friends one person can be counted for: 20 friends, 10 rewards, about ₦10,000 */
   maxFriends: 20,
   /** A friend who joins after this moment does not count */
-  endsAt: '2026-12-31T23:59:59Z',
+  endsAt: '2026-12-15T22:59:59Z', // 15 December 2026, 23:59 in Lagos
   /** The most G$ the campaign will ever commit to rewards */
   budgetG: 3_500_000,
   /** How long a joined friend has to verify and claim before they stop being checked */
