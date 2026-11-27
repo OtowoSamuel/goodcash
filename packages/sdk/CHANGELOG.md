@@ -2,6 +2,10 @@
 
 All notable changes to `@goodcash/sdk`. This package follows [semantic versioning](https://semver.org).
 
+## 0.2.2
+
+- `balanceG(wallet)`: the G$ a wallet holds right now, read from Celo (null with a test key).
+
 ## 0.2.1
 
 - `cashOut()` and `assertSafeTransaction()` now work out the amount that will leave the wallet from the amount you asked for

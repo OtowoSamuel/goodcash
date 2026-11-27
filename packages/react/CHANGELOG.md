@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.1
+
+- `<CashOutFlow />` shows the wallet's G$ balance on the amount step with a "Use all" link, and will not go on when the
+  amount is more than the wallet holds. New hook `useBalance(wallet)`. Requires `@goodcash/sdk` 0.2.2.
 
 - `<TopUpButton />` takes `wallet`, `signer` and `signTypedData`: an app that already has the customer's wallet can sign the
   one top-up approval itself, so the customer is not asked to connect a wallet a second time. `signTypedData` also receives
