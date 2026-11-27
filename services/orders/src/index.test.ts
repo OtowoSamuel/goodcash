@@ -1510,6 +1510,20 @@ describe('Add G$ orders', () => {
     expect(stored).not.toContain('Ada');
   });
 
+  it('A1b. Never writes the BVN, date of birth or name to any stored key or to the logs, even when the partner refuses', async () => {
+    const logs: string[] = [];
+    const spies = (['log', 'info', 'warn', 'error'] as const).map((m) => vi.spyOn(console, m).mockImplementation((...a: unknown[]) => void logs.push(a.map(String).join(' '))));
+    const all = () => [...((kv as any).store as Map<string, { value: string }>).entries()].map(([k, v]) => `${k} ${v.value}`).join('\n');
+    await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), makeEnv(kv));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (String(url).includes('/v2/rates/') ? new Response(JSON.stringify({ data: { buy: { rate: '1400' } } })) : new Response(JSON.stringify({ status: 'error', message: 'bad id 22212345678 for Ada Obi born 1995-03-02', data: [{ field: 'idNumber' }] }), { status: 400 }))));
+    await worker.fetch(makeRequest('POST', '/onramp/orders', BODY), makeEnv(kv));
+    spies.forEach((s) => s.mockRestore());
+    for (const secret of ['22212345678', 'Ada Obi', '1995-03-02']) {
+      expect(all()).not.toContain(secret);
+      expect(logs.join('\n')).not.toContain(secret);
+    }
+  });
+
   it('A2. Uses nationalID for a NIN, and refuses under-18s and malformed details', async () => {
     await worker.fetch(makeRequest('POST', '/onramp/orders', { ...BODY, idType: 'NIN' }), makeEnv(kv));
     expect(sent[0].source.kyc.personDetails.idDocument.type).toBe('nationalID');

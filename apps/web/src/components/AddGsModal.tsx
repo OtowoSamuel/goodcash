@@ -58,6 +58,16 @@ function friendlyOrderError(e: unknown): string {
   return m && m.length < 160 && !/[{}]|0x|Error|undefined/.test(m) ? m : 'We could not start this order. Please check your details and try again.';
 }
 
+/** What happens to the BVN or NIN, in plain words. Must stay true: the server passes it on once and never saves or logs it. */
+export const IdPrivacyNote: React.FC<{ idType: 'BVN' | 'NIN' }> = ({ idType }) => (
+  <div className="gc-note" data-testid="id-privacy-note">
+    <b>What happens to your {idType}</b>
+    <div className="gc-sm" style={{ marginTop: 4 }}>It goes straight to the company that takes your naira, only for this payment, so they can check it is really you.</div>
+    <div className="gc-sm" style={{ marginTop: 4 }}>GoodCash does not keep it. It is not saved on our server, in our records or on this phone.</div>
+    <div className="gc-sm" style={{ marginTop: 4 }}>GoodCash never asks for your BVN or NIN to cash out.</div>
+  </div>
+);
+
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div>
     <div className="gc-lab mb-1.5">{label}</div>
@@ -410,7 +420,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
     title = 'Your details';
     body = (
       <>
-        <div className="gc-note">By law, the payment partner must know who is paying. You will check everything on the next screen before anything is sent.</div>
+        <div className="gc-note">By law, the company that takes your naira must know who is paying. You will check everything on the next screen before anything is sent.</div>
         <Field label="Bank you will pay from">
           <BankPicker banks={bank.institutions} loading={bank.institutionsLoading} value={bank.institutionCode} onChange={bank.setInstitutionCode} label="Bank you will pay from" />
         </Field>
@@ -446,6 +456,7 @@ export const AddGsModal: React.FC<Props> = ({ wallet, onClose, onArrived, onOrde
           </div>
           <input className={INPUT} inputMode="numeric" maxLength={11} value={idNumber} onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, ''))} placeholder={`11-digit ${idType}`} aria-label="ID number" autoComplete="off" />
         </Field>
+        <IdPrivacyNote idType={idType} />
       </>
     );
     footer = (
