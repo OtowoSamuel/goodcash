@@ -40,7 +40,7 @@ import { LIVE_QUOTES, getLiveNetQuote } from './lib/liveQuote';
 import { decodeCashOutEvent, emitAnalyticsEvent } from './lib/analytics';
 import { detectMiniPay } from './lib/mobile';
 import { MiniPayNotice } from './components/MiniPayNotice';
-import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, SwapUncertainError, type NetworkFeeInfo } from './lib/router';
+import { executeRouterSwap, IS_DEMO_MODE, fetchGBalance, friendlySwapError, friendlyConnectError, disconnectInjectedWallet, hasInjectedWallet, fetchSwapForRecovery, sendUsdtDeposit, DepositPendingError, SwapPendingError, fetchUsdtBalance, subscribeWalletEvents, ONE_TAP_ENABLED, activeProviderKind, computeOneTapMinOut, executeOneTapCashOut, isOneTapRouterPaused, chooseCashOutFlow, getNetworkFeeInfo, SwapUncertainError, type NetworkFeeInfo } from './lib/router';
 import { findOneTapPayment, findRecentCashOut, fetchWalletHistoryFull, createPaycrestOrder, createOneTapOrder, linkOneTapSwap, fetchOrderDetails, fetchOrderStatus, fetchUnfinishedSwaps, fetchWalletHistory, paycrestOrderAmount, type OffRampOrder, type OneTapOrder } from './lib/useOffRamp';
 import { mergeServerHistory, isHiddenSwap } from './lib/historySync';
 import { disconnectWalletConnect, restoreWalletConnect } from './lib/walletConnect';
@@ -258,6 +258,8 @@ export function App({
   const walletStepTitle = walletStep
     ? walletStep.kind === 'order'
       ? 'Setting up your payout'
+      : activeProviderKind() === 'magic'
+      ? walletStep.total === 1 ? 'Sending your cash out' : `Sending, step ${walletStep.n} of ${walletStep.total}`
       : walletStep.total === 1
       ? 'Confirm in your wallet'
       : `Step ${walletStep.n} of ${walletStep.total}`
@@ -1595,7 +1597,9 @@ export function App({
           <p className="gc-sm" style={{ margin: 0, fontWeight: 800, fontSize: 16 }}>{walletStepBody}</p>
           {walletStep.kind !== 'order' && (
             <p className="gc-sm" style={{ margin: 0 }}>
-              {phoneWallet
+              {activeProviderKind() === 'magic'
+                ? 'Your email wallet confirms this for you. This page carries on by itself.'
+                : phoneWallet
                 ? `Tap the button, confirm in ${walletName}, then come back to this page. It carries on by itself.`
                 : `Confirm in your wallet. This page carries on by itself.`}
             </p>

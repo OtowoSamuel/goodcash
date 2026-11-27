@@ -1,8 +1,12 @@
+import { activeProviderKind } from './router';
+
 /**
  * The wallet app the customer picked on their phone (WalletConnect remembers it). Phone browsers only let a page
  * open another app straight from a tap, so each wallet step shows an "Open wallet" button that uses this.
  */
 export function getWalletLink(): { name: string; href: string } | null {
+  // An email wallet signs by itself. A wallet app picked on this phone before must not be offered.
+  if (activeProviderKind() === 'magic') return null;
   try {
     const raw = localStorage.getItem('WALLETCONNECT_DEEPLINK_CHOICE');
     if (!raw) return null;

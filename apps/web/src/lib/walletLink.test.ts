@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getWalletLink } from './walletLink';
+import { setActiveProvider } from './router';
 
 function stubStorage(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -27,5 +28,15 @@ describe('getWalletLink', () => {
   it('ignores junk', () => {
     stubStorage({ WALLETCONNECT_DEEPLINK_CHOICE: 'not json' });
     expect(getWalletLink()).toBeNull();
+  });
+  it('offers no wallet app to someone signed in with email, even if one was picked on this phone before', () => {
+    stubStorage({ WALLETCONNECT_DEEPLINK_CHOICE: JSON.stringify({ name: 'MetaMask', href: 'metamask://' }) });
+    setActiveProvider({ request: async () => null } as never, 'magic');
+    try {
+      expect(getWalletLink()).toBeNull();
+    } finally {
+      setActiveProvider(null);
+    }
+    expect(getWalletLink()).toEqual({ name: 'MetaMask', href: 'metamask://' });
   });
 });

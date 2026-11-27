@@ -1,4 +1,4 @@
-import { ONE_TAP_ENABLED, celoText, networkFeeMessage, type NetworkFeeInfo } from '../lib/router';
+import { ONE_TAP_ENABLED, activeProviderKind, celoText, networkFeeMessage, type NetworkFeeInfo } from '../lib/router';
 import React, { useState } from 'react';
 import type { BankDetailsState } from '../lib/useBankDetails';
 import { BankDetailsModal, type SavedBank } from '../components/BankDetailsModal';
@@ -158,7 +158,9 @@ export const MobileReviewView: React.FC<MobileReviewViewProps> = ({
           </div>
         )}
         <div className="gc-note" style={{ marginBottom: 10 }}>
-          {(oneTap ?? ONE_TAP_ENABLED) ? (
+          {activeProviderKind() === 'magic' ? (
+            <><b>No wallet app needed.</b> Your email wallet confirms it for you after you tap the button.</>
+          ) : (oneTap ?? ONE_TAP_ENABLED) ? (
             <><b>You'll confirm once in your wallet.</b> Open your wallet app, tap Confirm, then come back here.</>
           ) : (
             <><b>You'll confirm in your wallet up to 3 times.</b> Each time, open your wallet app, tap Confirm, then come back here.</>
