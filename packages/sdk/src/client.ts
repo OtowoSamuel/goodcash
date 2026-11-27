@@ -1,4 +1,4 @@
-import { checkCashOutTransaction, CELO_RPC_DEFAULT, ROUTER_V2, type Hex } from './core';
+import { checkCashOutTransaction, CELO_RPC_DEFAULT, encodeBalanceOf, G_DOLLAR, readWord, ROUTER_V2, type Hex } from './core';
 import { GoodCashError, type GoodCashErrorCode } from './errors';
 import type { Bank, CashOut, CreatedCashOut, Limits, Mode, NetworkFeeInfo, Page, PartnerInfo, Quote, Recipient, TopUp, TopUpAsset, TopUpQuote } from './types';
 import { findPaymentOnChain, sendTransaction, signerAddress, sleep, type Signer } from './wallet';
@@ -87,6 +87,23 @@ export class GoodCash {
     this.fetchImpl = opts.fetch ?? ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a));
     this.appId = opts.appId;
     this.router = (opts.routerAddress ?? ROUTER_V2).toLowerCase();
+  }
+
+  /**
+   * The G$ a wallet holds right now, read from Celo, in the token's smallest unit (18 decimals). Null with a test key
+   * (test cash outs never move G$, so there is nothing to check).
+   */
+  async balanceG(wallet: string): Promise<bigint | null> {
+    if (this.mode === 'test') return null;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) throw new GoodCashError('invalid_request', { message: 'That is not a wallet address.' });
+    const res = await this.fetchImpl(this.rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: G_DOLLAR, data: encodeBalanceOf(wallet as Hex) }, 'latest'] }),
+    });
+    const body = (await res.json()) as { result?: string; error?: { message?: string } };
+    if (!res.ok || body.error || typeof body.result !== 'string') throw new GoodCashError('unavailable', { message: 'Could not read your G$ balance.' });
+    return readWord(body.result, 0);
   }
 
   // ---------------------------------------------------------------------------- raw API

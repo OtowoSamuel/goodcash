@@ -18,6 +18,8 @@ export const CSS = `
 .gcw-btn[disabled]{opacity:.55;cursor:not-allowed}
 .gcw-btn--ghost{background:var(--gcw-surface);color:var(--gcw-ink)}
 .gcw-note{font-size:15px;background:var(--gcw-surface);border:2px dashed var(--gcw-ink);border-radius:calc(var(--gcw-radius) - 6px);padding:12px 14px;margin:10px 0}
+.gcw-link{font:inherit;font-size:15px;font-weight:800;color:var(--gcw-ink);background:none;border:0;padding:10px 0 10px 12px;min-height:44px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.gcw-link:focus-visible{outline:3px solid var(--gcw-accent);outline-offset:2px}
 .gcw-err{font-size:15px;font-weight:700;background:#ffe1e1;color:#5a0000;border:2.5px solid #5a0000;border-radius:calc(var(--gcw-radius) - 6px);padding:12px 14px;margin:10px 0}
 .gcw-steps{display:flex;gap:8px;margin:0 0 14px}
 .gcw-step{flex:1;height:8px;border-radius:99px;border:2px solid var(--gcw-ink);background:var(--gcw-surface)}

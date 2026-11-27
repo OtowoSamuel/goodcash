@@ -1,6 +1,6 @@
 export { GoodCashProvider, useGoodCash } from './context';
 export type { GoodCashProviderProps } from './context';
-export { useQuote, useBanks, useVerifyAccount, useCashOut, useCashOutStatus } from './hooks';
+export { useQuote, useBanks, useVerifyAccount, useCashOut, useCashOutStatus, useBalance } from './hooks';
 export { CashOutFlow } from './CashOutFlow';
 export type { CashOutFlowProps, CashOutEvent } from './CashOutFlow';
 export { CashOutButton } from './CashOutButton';

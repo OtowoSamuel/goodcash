@@ -142,3 +142,28 @@ export function useCashOutStatus(id: string | null | undefined) {
   }, [client, id]);
   return { cashOut, error };
 }
+
+/**
+ * The G$ the wallet holds, read from Celo. `balance` is null while loading, with a test key, or when it could not be
+ * read (the server still checks the balance before a cash out is created, so a failed read never lets one through).
+ */
+export function useBalance(wallet: string | null | undefined) {
+  const { client } = useGoodCash();
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setBalance(null);
+    if (!wallet || client.mode === 'test') return;
+    let live = true;
+    setLoading(true);
+    client
+      .balanceG(wallet)
+      .then((b) => live && setBalance(b))
+      .catch(() => live && setBalance(null))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [client, wallet]);
+  return { balance, loading };
+}

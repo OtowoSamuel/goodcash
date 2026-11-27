@@ -27,6 +27,7 @@ function fakeApi(status: string[] = ['sent', 'processing', 'paid']) {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ method, url, body });
     const json = (d: unknown, s = 200) => new Response(JSON.stringify(d), { status: s });
+    if (url.includes('forno')) return json({ jsonrpc: '2.0', id: 1, result: '0x' + (500n * 10n ** 18n + 25n * 10n ** 16n).toString(16).padStart(64, '0') });
     if (url.includes('/v1/quote')) return json({ ...QUOTE, enough: !url.includes('amountG=10&') && !url.endsWith('amountG=10') });
     if (url.endsWith('/v1/banks')) return json({ object: 'list', data: [{ code: 'TESTBANKA', name: 'Test Bank A', popular: true }, { code: 'TESTBANKB', name: 'Test Bank B', popular: true }] });
     if (url.endsWith('/v1/banks/verify')) return json({ accountName: 'TEST ACCOUNT' });
@@ -45,10 +46,10 @@ function fakeApi(status: string[] = ['sent', 'processing', 'paid']) {
 const WALLET = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' as const;
 const send = vi.fn(async () => `0x${'ab'.repeat(32)}` as `0x${string}`);
 
-function setup(ui: React.ReactElement, status?: string[]) {
+function setup(ui: React.ReactElement, status?: string[], key = 'gc_pk_test_' + 'a'.repeat(32)) {
   const api = fakeApi(status);
   render(
-    <GoodCashProvider publishableKey={'gc_pk_test_' + 'a'.repeat(32)} fetch={api.f}>
+    <GoodCashProvider publishableKey={key} fetch={api.f}>
       {ui}
     </GoodCashProvider>
   );
@@ -56,6 +57,21 @@ function setup(ui: React.ReactElement, status?: string[]) {
 }
 
 describe('CashOutFlow', () => {
+  it('shows the wallet balance and will not go on with more G$ than the wallet holds (live key)', async () => {
+    const user = userEvent.setup();
+    setup(<CashOutFlow signer={send} wallet={WALLET} />, undefined, 'gc_pk_live_' + 'a'.repeat(32));
+    await screen.findByText('You have 500.25 G$');
+    await user.type(screen.getByLabelText('How much G$?'), '5000');
+    await screen.findByText("That's more G$ than your wallet holds. You have 500.25 G$.");
+    await screen.findByText('₦781');
+    expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', true);
+    await user.click(screen.getByRole('button', { name: 'Use all' }));
+    expect(screen.getByLabelText('How much G$?')).toHaveProperty('value', '500.25');
+    await waitFor(() => expect(screen.queryByText(/more G\$ than your wallet holds/)).toBeNull());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', false));
+  });
+
+
   it('walks amount -> bank -> review -> paid, showing every fee in plain words', async () => {
     const user = userEvent.setup();
     const events: string[] = [];

@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import type { Bank, CashOut, CashOutStep, Signer } from '@goodcash/sdk';
+import { gToWei, type Bank, type CashOut, type CashOutStep, type Signer } from '@goodcash/sdk';
 import { useGoodCash } from './context';
-import { useBanks, useCashOut, useCashOutStatus, useQuote, useVerifyAccount } from './hooks';
+import { useBalance, useBanks, useCashOut, useCashOutStatus, useQuote, useVerifyAccount } from './hooks';
 import { injectStyles } from './styles';
 import { themeVars } from './theme';
 
@@ -27,6 +27,11 @@ export interface CashOutFlowProps {
 }
 
 const naira = (n: number) => `₦${Math.round(n).toLocaleString('en-US')}`;
+/** Whole G$ with up to 2 decimals, rounded down so 'Use all' never asks for more than the wallet holds. */
+const weiToG = (wei: bigint) => {
+  const cents = wei / 10n ** 16n;
+  return `${cents / 100n}${cents % 100n ? `.${String(cents % 100n).padStart(2, '0').replace(/0$/, '')}` : ''}`;
+};
 const gText = (n: number | string) => `${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })} G$`;
 
 const WORKING: Record<CashOutStep, string> = {
@@ -88,7 +93,11 @@ export function CashOutFlow({ signer, wallet, defaultAmountG, partnerRef, onEven
     return banks.filter((b) => !q || b.name.toLowerCase().includes(q));
   }, [banks, search]);
 
-  const enough = !!quote && quote.enough;
+  const { balance } = useBalance(wallet);
+  const amountWei = gToWei(amount.trim());
+  const tooMuch = balance !== null && amountWei !== null && amountWei > balance;
+  const balanceText = balance === null ? null : gText(weiToG(balance));
+  const enough = !!quote && quote.enough && !tooMuch;
   const stepIndex = { amount: 0, bank: 1, review: 2, working: 3, tracking: 3 }[stage];
 
   async function confirm() {
@@ -146,13 +155,24 @@ export function CashOutFlow({ signer, wallet, defaultAmountG, partnerRef, onEven
               value={amount}
               onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
             />
+            {balanceText && (
+              <div className="gcw-row">
+                <span>You have {balanceText}</span>
+                {balance! > 0n && (
+                  <button type="button" className="gcw-link" onClick={() => setAmount(weiToG(balance!))}>
+                    Use all
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div className="gcw-card gcw-card--ok" aria-live="polite">
             <span className="gcw-lab">You get about</span>
             <div className="gcw-big">{quote ? naira(quote.receive.naira) : quoting ? '…' : '₦0'}</div>
             {quote && <div className="gcw-row">at least {naira(quote.receive.minimumNaira)}</div>}
           </div>
-          {quote && !quote.enough && <p className="gcw-note">The smallest cash out is about {gText(quote.minimumG)}.</p>}
+          {tooMuch && <p className="gcw-err">That's more G$ than your wallet holds. You have {balanceText}.</p>}
+          {quote && !quote.enough && !tooMuch && <p className="gcw-note">The smallest cash out is about {gText(quote.minimumG)}.</p>}
           {quoteError && <p className="gcw-err">{quoteError.message}</p>}
           <button type="button" className="gcw-btn" disabled={!enough} onClick={() => setStage('bank')}>
             Next
