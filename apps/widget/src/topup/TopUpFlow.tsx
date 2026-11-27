@@ -384,7 +384,7 @@ export function TopUpFlow({ client, theme, wallet, provider, apiBase, defaultNai
             <input id="gcw-dob" className="gcw-input" type="date" autoComplete="off" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
             {birthDate && !isAdultDate(birthDate) && <p className="gcw-err">You must be 18 or older to use this.</p>}
             <p className="gcw-sub" data-testid="id-privacy-note">
-              <b>What happens to your {idType}:</b> it goes straight to the company that takes your naira, only for this payment, so they can check it is really you. GoodCash does not keep it. It is not saved on our server, in our records or on this device.
+              <b>What happens to your {idType}:</b> it goes only to the company that takes your naira, for this one payment. GoodCash does not keep it.
             </p>
           </div>
           <label className="gcw-sub">

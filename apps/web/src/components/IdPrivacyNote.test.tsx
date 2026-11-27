@@ -7,7 +7,7 @@ describe('IdPrivacyNote', () => {
     render(<IdPrivacyNote idType="NIN" />);
     const note = screen.getByTestId('id-privacy-note');
     expect(note.textContent).toContain('What happens to your NIN');
-    expect(note.textContent).toContain('only for this payment');
+    expect(note.textContent).toContain('for this one payment');
     expect(note.textContent).toContain('GoodCash does not keep it');
     expect(note.textContent).not.toMatch(/partner|KYC|token/i);
   });

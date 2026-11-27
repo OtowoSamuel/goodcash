@@ -61,10 +61,7 @@ function friendlyOrderError(e: unknown): string {
 /** What happens to the BVN or NIN, in plain words. Must stay true: the server passes it on once and never saves or logs it. */
 export const IdPrivacyNote: React.FC<{ idType: 'BVN' | 'NIN' }> = ({ idType }) => (
   <div className="gc-note" data-testid="id-privacy-note">
-    <b>What happens to your {idType}</b>
-    <div className="gc-sm" style={{ marginTop: 4 }}>It goes straight to the company that takes your naira, only for this payment, so they can check it is really you.</div>
-    <div className="gc-sm" style={{ marginTop: 4 }}>GoodCash does not keep it. It is not saved on our server, in our records or on this phone.</div>
-    <div className="gc-sm" style={{ marginTop: 4 }}>GoodCash never asks for your BVN or NIN to cash out.</div>
+    <b>What happens to your {idType}:</b> it goes only to the company that takes your naira, for this one payment. GoodCash does not keep it.
   </div>
 );
 
