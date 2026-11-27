@@ -2,7 +2,7 @@
  * What a cash out is worth right now, with every fee line. Live keys read the real prices on Celo (the same reads
  * and maths as goodcash.xyz, from @goodcash/core). Test keys use fixed prices so partners' tests are repeatable.
  */
-import { computeOneTapMinOut, gToWei, getLiveQuote, getNetQuote, parseDecimal, payoutUsdt, PAYOUT_FEE_RESERVE_USDT, type EthCall, type Hex } from '@goodcash/core';
+import { computeOneTapMinOut, gToWei, getLiveQuote, getNetQuote, MIN_NET_USDT_REQUIRED, parseDecimal, payoutUsdt, PAYOUT_FEE_RESERVE_USDT, type EthCall, type Hex } from '@goodcash/core';
 import { V1Error } from './http';
 import type { Env, Mode, Partner, V1Deps } from './types';
 
@@ -99,12 +99,15 @@ export function feeLines(p: Priced, partnerName: string) {
   return lines;
 }
 
-/** Smallest G$ that pays out after every fee, rounded up to 10 G$ with a 1% margin. */
+/**
+ * Smallest G$ that pays out after every fee: the same tested floor as goodcash.xyz (MIN_NET_USDT_REQUIRED, which already
+ * covers the 1% GoodCash fee), raised in step with any partner fee on top, then a 1% margin, rounded up to 10 G$.
+ * The old $0.50 rule let about 4,700 G$ through, and the payout company refused those orders.
+ */
 export function minimumG(p: Priced): number {
   const perG = Number(p.usdtOut) / 1e6 / Number(p.amountG);
   if (!(perG > 0)) return 0;
-  // order amount = (minOut - 0.02) / (1 + fee) must be >= 0.50; minOut = 99.5% of the swap
-  const needUsdt = (0.5 * (1 + p.feePercent / 100) + 0.02) / 0.995;
+  const needUsdt = MIN_NET_USDT_REQUIRED * Math.max(1, (1 + p.feePercent / 100) / 1.01);
   return Math.ceil(((needUsdt / perG) * 1.01) / 10) * 10;
 }
 
