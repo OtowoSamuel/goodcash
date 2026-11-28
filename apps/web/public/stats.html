@@ -4,89 +4,146 @@
 <title>Stats · GoodCash</title>
 <meta name="description" content="Live numbers for GoodCash: G$ added with naira and G$ cashed out">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/legal.css">
 <style>
-.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:16px 0}
-.tile{border:2.5px solid var(--ink);border-radius:14px;padding:12px 14px;background:#fff}
-.tile:nth-child(1){background:var(--mi)}.tile:nth-child(2){background:var(--ye)}
-.tile:last-child:nth-child(odd){grid-column:1/-1}
-.tile b{display:block;font:800 28px/1.1 'Bricolage Grotesque',sans-serif}
-.tile span{font-size:13.5px;color:#333}
-.chart{width:100%;height:auto;max-height:260px;display:block;margin-top:8px}
-.chart rect{fill:var(--pu)}.chart rect.zero{fill:#e6e0f5}
-.axis{display:flex;justify-content:space-between;font-size:12.5px;color:#444}
+.wrap{max-width:980px}
+.card{margin-bottom:20px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.head h1{margin:0}
+.live{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:#333;font-weight:600}
+.live i{width:10px;height:10px;border-radius:50%;background:#1aa35a;border:2px solid var(--ink)}
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0 4px}
+.big{border:2.5px solid var(--ink);border-radius:16px;box-shadow:4px 4px 0 var(--ink);padding:14px 16px;background:#fff;min-width:0}
+.big.mi{background:var(--mi)}.big.ye{background:var(--ye)}
+.big b{display:block;font:800 34px/1.05 'Bricolage Grotesque',sans-serif;letter-spacing:-.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.big span{display:block;font-weight:700;font-size:14.5px;margin-top:4px}
+.big small{display:block;font-size:13px;color:#333;margin-top:2px}
+.week{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;align-items:center}
+.week .lab{font-weight:700;font-size:14px;margin-right:2px}
+.chip{border:2px solid var(--ink);border-radius:999px;padding:3px 12px;font-size:13.5px;font-weight:600;background:#f4efff}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+.tab{font:700 14px Inter,sans-serif;border:2px solid var(--ink);border-radius:999px;padding:9px 14px;min-height:44px;background:#fff;color:var(--ink);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--pu);color:#fff}
+.tab:focus-visible{outline:3px solid var(--pu);outline-offset:2px}
+.bars{display:flex;align-items:flex-end;gap:10px;height:230px;margin-top:14px;padding-top:6px;border-bottom:2.5px solid var(--ink)}
+.col{flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+.col .v{font:800 16px 'Bricolage Grotesque',sans-serif;margin-bottom:4px;white-space:nowrap}
+.col .bar{width:100%;max-width:84px;background:var(--pu);border:2.5px solid var(--ink);border-bottom:0;border-radius:10px 10px 0 0}
+.col .bar.now{background:repeating-linear-gradient(135deg,var(--pu) 0 8px,#9a6bff 8px 16px)}
+.dates{display:flex;gap:10px;margin-top:6px}
+.dates span{flex:1 1 0;text-align:center;font-size:12.5px;color:#333;min-width:0;white-space:nowrap}
+.foot-note{font-size:13px;color:#444;margin:10px 0 0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.grid3 .card{margin:0}
+.rows{margin:8px 0 0;padding:0}
+.rows div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1.5px solid #ece6fa}
+.rows div:last-child{border-bottom:0}
+.rows dt{font-size:14.5px;color:#333}
+.rows dd{margin:0;font:800 18px 'Bricolage Grotesque',sans-serif;white-space:nowrap}
+.def{font-size:13.5px;color:#444;margin:4px 0 0}
+.list{margin-top:8px}
+.item{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:6px 16px;padding:11px 0;border-bottom:1.5px solid #ece6fa}
+.item:last-child{border-bottom:0}
+.item .when{font-weight:700;font-size:15px}
+.item .who{font-size:13px;color:#555;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.item .amt{text-align:right}
+.item .amt b{display:block;font:800 17px 'Bricolage Grotesque',sans-serif;white-space:nowrap}
+.item .amt span{font-size:13px;color:#444}
+.item a{font-weight:700;font-size:14px;display:inline-flex;align-items:center;min-height:44px}
+details{margin-top:12px;border-top:1.5px solid #ece6fa;padding-top:8px}
+summary{cursor:pointer;font-weight:700;font-size:15px;min-height:44px;display:flex;align-items:center;justify-content:space-between;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:'Show';font-size:13.5px;text-decoration:underline;color:#4a1fb8}
+details[open] summary::after{content:'Hide'}
+summary:focus-visible{outline:3px solid var(--pu);outline-offset:2px}
 table{width:100%;border-collapse:collapse;font-size:14.5px}
-th,td{text-align:left;padding:7px 4px;border-bottom:1.5px solid #e6e0f5}
+th,td{text-align:left;padding:7px 4px;border-bottom:1.5px solid #ece6fa}
 th{font-weight:600;color:#444;font-size:13px}
 td.n,th.n{text-align:right}
-#recent td:last-child,#recent-head th:last-child{padding-left:14px}
-
-.chart text{font:700 22px Inter,sans-serif;fill:#111;text-anchor:middle}
-.wrapx{overflow-x:auto}
-h3{font:600 15px Inter,sans-serif;margin:20px 0 4px;color:#333}
-.def{font-size:14px;color:#333;margin:2px 0 4px}
-.err{background:var(--ye);border:2.5px solid var(--ink);border-radius:14px;padding:10px 12px;font-weight:600}
+.err{background:var(--ye);border:2.5px solid var(--ink);border-radius:14px;padding:10px 12px;font-weight:600;margin-top:14px}
+.skel b{color:transparent;background:#ece6fa;border-radius:8px}
+@media (max-width:860px){.grid3{grid-template-columns:1fr}.hero{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){
+  .card{padding:18px 16px}
+  h1{font-size:26px}
+  .hero{gap:10px}
+  .big{padding:12px}
+  .big b{font-size:26px}
+  .big span{font-size:13.5px}
+  .bars,.dates{gap:6px}
+  .bars{height:190px}
+  .col .v{font-size:13px}
+  .dates span{font-size:11px}
+  .item{grid-template-columns:1fr auto;gap:2px 12px}
+  .item a{grid-column:1/-1;min-height:32px}
+}
 </style>
 </head><body><div class="wrap">
 <div class="top"><a class="logo" href="/"><img src="/email-logo.png" alt="" width="40" height="40">GoodCash</a><a class="open" href="/">Open the app</a></div>
-<div class="card">
-<h1>GoodCash in numbers</h1>
-<p class="sub" id="updated">Loading…</p>
-<p class="sub" id="excluded"></p>
-<div id="error" class="err" hidden></div>
-<div id="users" hidden>
-<h2>People using GoodCash</h2>
-<p class="def">Everyone who has added G$ with naira or cashed out, counted once whichever they did. GoodCash is for GoodDollar-verified people, and several wallets of one verified person count as one person.</p>
-<div class="tiles">
-<div class="tile"><b id="us-people">–</b><span id="usl-people">verified people</span></div>
-<div class="tile"><b id="us-wallets">–</b><span id="usl-wallets">wallets in total</span></div>
-<div class="tile"><b id="us-back">–</b><span id="usl-back">wallets that came back (2 or more top-ups or cash outs)</span></div>
-<div class="tile"><b id="us-both">–</b><span id="usl-both">wallets that both added and cashed out</span></div>
-<div class="tile"><b id="us-tx">–</b><span>top-ups and cash outs in total</span></div>
-<div class="tile" id="us-partners-tile" hidden><b id="us-partners">–</b><span id="usl-partners">partners using the SDK</span></div>
+
+<section class="card">
+  <div class="head">
+    <h1>GoodCash in numbers</h1>
+    <span class="live" id="updated"><i aria-hidden="true"></i>Loading…</span>
+  </div>
+  <div class="hero skel" id="hero">
+    <div class="big mi"><b id="h-people">00</b><span id="hl-people">verified people</span><small>verified by GoodDollar</small></div>
+    <div class="big ye"><b id="h-g">0,000,000</b><span>G$ cashed out</span><small id="h-usd">&nbsp;</small></div>
+    <div class="big"><b id="h-cashouts">00</b><span id="hl-cashouts">cash outs</span><small>paid to Nigerian banks</small></div>
+    <div class="big"><b id="h-naira">₦00,000</b><span>added with naira</span><small id="h-topups">&nbsp;</small></div>
+  </div>
+  <div class="week" id="week" hidden><span class="lab">This week so far</span></div>
+  <div id="error" class="err" hidden></div>
+  <p class="sub" id="excluded" style="margin-top:10px"></p>
+</section>
+
+<section class="card" id="weekly" hidden>
+  <h2 style="margin-top:0">Week by week</h2>
+  <div class="tabs" role="tablist" aria-label="Choose what the chart shows">
+    <button class="tab" role="tab" aria-selected="true" data-k="cashOuts">Cash outs</button>
+    <button class="tab" role="tab" aria-selected="false" data-k="gDollars">G$ cashed out</button>
+    <button class="tab" role="tab" aria-selected="false" data-k="topUps">Top-ups</button>
+    <button class="tab" role="tab" aria-selected="false" data-k="wallets">New wallets</button>
+  </div>
+  <div class="bars" id="bars" role="img"></div>
+  <div class="dates" id="dates" aria-hidden="true"></div>
+  <p class="foot-note" id="chart-note">Weeks start on Monday. The striped bar is this week so far.</p>
+</section>
+
+<div class="grid3">
+  <section class="card">
+    <h2 style="margin-top:0">People</h2>
+    <p class="def">Everyone who has cashed out or added G$ with naira. Several wallets of one person count once.</p>
+    <dl class="rows" id="r-people"></dl>
+  </section>
+  <section class="card">
+    <h2 style="margin-top:0">Cashed out</h2>
+    <p class="def">G$ turned into naira and paid to a bank, read from the public record on Celo.</p>
+    <dl class="rows" id="r-cash"></dl>
+  </section>
+  <section class="card">
+    <h2 style="margin-top:0">Added with naira</h2>
+    <p class="def">Naira bank transfers that were confirmed and turned into G$ or CELO. <span id="since"></span></p>
+    <dl class="rows" id="r-top"></dl>
+  </section>
 </div>
-<p class="sub" id="us-not"></p>
-<h3>New wallets per week (last 12 weeks)</h3>
-<p class="def">A wallet counts in the week it first used GoodCash.</p>
-<svg id="nchart" class="chart" role="img" aria-label="New wallets per week for the last 12 weeks"></svg>
-<div class="axis"><span id="nfrom"></span><span>this week so far</span></div>
-<p class="sub" id="us-undated"></p>
-</div>
-<h2>Added with naira</h2>
-<p class="def">A top-up is a naira bank transfer that was confirmed and turned into G$. Each one is counted once, when it is confirmed. <span id="since"></span></p>
-<div class="tiles">
-<div class="tile"><b id="u-topups">–</b><span>top-ups so far</span></div>
-<div class="tile"><b id="u-naira">–</b><span>naira added in total</span></div>
-<div class="tile"><b id="u-people">–</b><span id="ul-people">different wallets</span></div>
-<div class="tile"><b id="u-avg">–</b><span>average top-up</span></div>
-<div class="tile" id="u-back-tile" hidden><b id="u-back">–</b><span id="ul-back">wallets that came back</span></div>
-</div>
-<p id="uweek" class="sub"></p>
-<h3>Top-ups per week (last 12 weeks)</h3>
-<svg id="uchart" class="chart" role="img" aria-label="Top-ups per week for the last 12 weeks"></svg>
-<div class="axis"><span id="ufrom"></span><span>this week so far</span></div>
-<h2>Cashed out</h2>
-<p class="def">A cash out is G$ swapped to US dollars by our contracts and paid to a bank in naira. These are read from the public record on the Celo network.</p>
-<div class="tiles">
-<div class="tile"><b id="t-cashouts">–</b><span>cash outs so far</span></div>
-<div class="tile"><b id="t-g">–</b><span>G$ cashed out</span></div>
-<div class="tile"><b id="t-usd">–</b><span>worth in US dollars</span></div>
-<div class="tile"><b id="t-avg">–</b><span>average cash out, in US dollars</span></div>
-<div class="tile"><b id="t-people">–</b><span id="l-people">different wallets</span></div>
-<div class="tile"><b id="t-repeat">–</b><span id="l-repeat">wallets that came back</span></div>
-</div>
-<p id="week" class="sub"></p>
-<h3>Cash outs per week (last 12 weeks)</h3>
-<svg id="chart" class="chart" role="img" aria-label="Cash outs per week for the last 12 weeks"></svg>
-<div class="axis"><span id="from"></span><span>this week so far</span></div>
-<h2>Latest cash outs</h2>
-<div class="wrapx"><table><thead id="recent-head"><tr><th>When (UTC)</th><th>Wallet</th><th class="n">G$</th><th class="n">US dollars</th><th>Receipt</th></tr></thead><tbody id="recent"></tbody></table></div>
-<h3>By contract (technical detail)</h3>
-<div class="wrapx"><table><thead><tr><th>Contract</th><th class="n">Cash outs</th><th class="n">G$</th></tr></thead><tbody id="routers"></tbody></table></div>
-<h2>Where these numbers come from</h2>
-<p><b>Cash outs</b> are read from the public records of our two contracts on the Celo network, the same records anyone can open on the block explorer. <b>Top-ups</b> are a running count we keep: each confirmed naira payment is added once, as a count and an amount in naira. No name, bank detail or wallet is kept in that count or shown here. People and partner numbers are counts only; no wallet or partner is named. The verify step started on 20 Nov 2026, so wallets used before then may not be verified yet. Weeks start on Monday (UTC). Wallets are shortened. The page refreshes about every 10 minutes.</p>
-<p><a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/topupStats.ts" rel="noopener noreferrer" target="_blank">How top-ups are counted</a> · <a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/stats.ts" rel="noopener noreferrer" target="_blank">How cash outs are counted</a></p>
-</div>
+
+<section class="card" style="margin-top:20px">
+  <h2 style="margin-top:0">Latest cash outs</h2>
+  <p class="def">Lagos time. Wallets are shortened. Each receipt opens the public record.</p>
+  <div class="list" id="recent"></div>
+</section>
+
+<section class="card">
+  <h2 style="margin-top:0">Where these numbers come from</h2>
+  <p><b>Cash outs</b> come from the public records of our contracts on the Celo network, the same records anyone can open on the block explorer. <b>Top-ups</b> are a running count we keep: each confirmed naira payment is added once, as a count and an amount. No name or bank detail is kept in these counts or shown here, and no partner is named. <b>Verified people</b> are checked with GoodDollar. Its first verification lasts 3 days and the next one 180 days, so everyone GoodDollar has verified is counted, even if they need to verify again. The page refreshes about every 10 minutes.</p>
+  <details>
+    <summary>By contract (technical detail)</summary>
+    <div style="overflow-x:auto"><table><thead><tr><th>Contract</th><th class="n">Cash outs</th><th class="n">G$</th></tr></thead><tbody id="routers"></tbody></table></div>
+  </details>
+  <p style="margin-bottom:0"><a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/topupStats.ts" rel="noopener noreferrer" target="_blank">How top-ups are counted</a>, <a href="https://github.com/OtowoSamuel/goodcash/blob/main/services/orders/src/stats.ts" rel="noopener noreferrer" target="_blank">how cash outs are counted</a></p>
+</section>
+
 <nav class="foot"><a href="/about">About</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
 </div><script src="/stats.js"></script></body></html>
